@@ -1,0 +1,22 @@
+{
+  "name": "ocr-web-app",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run start:dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:paddleocr": "paddleocr-service\\.venv\\Scripts\\python -m uvicorn --app-dir paddleocr-service main:app --host 0.0.0.0 --port 8000",
+    "smoke:paddleocr": "paddleocr-service\\.venv\\Scripts\\python paddleocr-service\\smoke_test.py",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build": "npm run build:frontend && npm run build:backend",
+    "start:prod": "node backend/dist/main.js"
+  },
+  "devDependencies": {
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2"
+  }
+}
