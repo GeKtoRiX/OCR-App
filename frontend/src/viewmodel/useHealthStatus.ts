@@ -12,30 +12,57 @@ export interface HealthStatus {
 const POLL_INTERVAL_MS = 30_000;
 
 function computeStatus(health: HealthResponse): HealthStatus {
-  const { paddleOcrReachable, paddleOcrDevice, lmStudioReachable, lmStudioModels } = health;
+  const {
+    paddleOcrReachable,
+    paddleOcrDevice,
+    lmStudioReachable,
+    superToneReachable,
+    kokoroReachable,
+    qwenTtsReachable,
+    qwenTtsDevice,
+  } = health;
 
+  const qwenLabel = !qwenTtsReachable
+    ? 'Qwen TTS ✗'
+    : qwenTtsDevice === 'cpu'
+      ? 'Qwen TTS CPU ⚠'
+      : 'Qwen TTS ✓';
+
+  // 🔴 PaddleOCR down — nothing works
   if (!paddleOcrReachable) {
     return { color: 'red', tooltip: 'PaddleOCR unreachable' };
   }
 
+  // 🟡 PaddleOCR reachable but on CPU
   if (paddleOcrDevice === 'cpu') {
-    return { color: 'yellow', tooltip: 'PaddleOCR running on CPU (GPU unavailable)' };
-  }
-
-  const hasQwen = lmStudioModels.some((m) => m.toLowerCase().includes('qwen'));
-
-  if (!lmStudioReachable) {
-    return { color: 'green', tooltip: 'PaddleOCR GPU ✓ | LM Studio unreachable' };
-  }
-
-  if (!hasQwen) {
     return {
-      color: 'green',
-      tooltip: `PaddleOCR GPU ✓ | LM Studio ✓ | qwen3.5 not found (${lmStudioModels.join(', ') || 'no models loaded'})`,
+      color: 'yellow',
+      tooltip: `PaddleOCR CPU ⚠ | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${qwenLabel} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
     };
   }
 
-  return { color: 'blue', tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓ | qwen3.5 ✓' };
+  // 🔵 All systems fully operational
+  if (
+    lmStudioReachable &&
+    qwenTtsReachable &&
+    qwenTtsDevice === 'gpu' &&
+    kokoroReachable &&
+    superToneReachable
+  ) {
+    return {
+      color: 'blue',
+      tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓ | Qwen TTS ✓ | Kokoro ✓ | Supertone ✓',
+    };
+  }
+
+  // 🟢 PaddleOCR GPU OK, but something else missing
+  const parts: string[] = ['PaddleOCR GPU ✓'];
+  parts.push(`LM Studio ${lmStudioReachable ? '✓' : '✗'}`);
+  parts.push(qwenLabel);
+  parts.push(`Kokoro ${kokoroReachable ? '✓' : '✗'}`);
+  parts.push(`Supertone ${superToneReachable ? '✓' : '✗'}`);
+
+  return { color: 'green', tooltip: parts.join(' | ') };
 }
 
 export function useHealthStatus(): HealthStatus {

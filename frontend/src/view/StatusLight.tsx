@@ -1,4 +1,5 @@
 import type { LightColor } from '../viewmodel/useHealthStatus';
+import './StatusLight.css';
 
 interface Props {
   color: LightColor;

@@ -1,0 +1,331 @@
+.tts-panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-accent);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  animation: rise-in 0.2s ease both;
+}
+
+.tts-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.tts-panel__title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.tts-panel__model {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--border-accent);
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+}
+
+/* ── Engine toggle ────────────────────────────────────────────── */
+
+.tts-panel__engine-row {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tts-panel__engine-btn {
+  flex: 1;
+  padding: 0;
+  height: 2.1rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.tts-panel__engine-btn:hover:not(.tts-panel__engine-btn--active) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tts-panel__engine-btn--active {
+  background: var(--accent-dim);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Settings grid ────────────────────────────────────────────── */
+
+.tts-panel__settings {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.tts-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tts-panel__field-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  min-width: 4.5rem;
+  flex-shrink: 0;
+}
+
+/* ── Voice chips ──────────────────────────────────────────────── */
+
+.tts-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tts-panel__chip {
+  padding: 0 0.65rem;
+  height: 2rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+}
+
+.tts-panel__chip:hover {
+  border-color: rgba(255,255,255,0.18);
+  color: var(--text);
+}
+
+.tts-panel__chip--active {
+  background: var(--accent-dim);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+/* Fixed size so all two-line voice chips are identical (Piper / Kokoro) */
+.tts-panel__chips--wrap .tts-panel__chip {
+  width: 5.2rem;
+  height: 3.4rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.5rem;
+}
+
+.tts-panel__chip-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.tts-panel__chip-lang {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 0.15rem;
+}
+
+.tts-panel__chip--active .tts-panel__chip-lang {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* ── Slider labels ────────────────────────────────────────────── */
+
+.tts-panel__label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0.3rem 0.5rem;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tts-panel__label span:first-child {
+  grid-column: 1;
+}
+
+.tts-panel__value {
+  grid-column: 2;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 0.78rem;
+  color: var(--accent);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tts-panel__slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+}
+
+/* ── Custom voice input (Piper) ───────────────────────────────── */
+
+.tts-panel__voice-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-family: monospace;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.tts-panel__voice-input:focus {
+  border-color: var(--border-accent);
+}
+
+.tts-panel__voice-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ── Hint text ────────────────────────────────────────────────── */
+
+.tts-panel__hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.tts-panel__hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.tts-panel__hint a:hover {
+  text-decoration: underline;
+}
+
+/* ── Audio player ─────────────────────────────────────────────── */
+
+.tts-panel__player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.tts-panel__player-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.tts-panel__audio {
+  flex: 1;
+  height: 2.2rem;
+  min-width: 0;
+  accent-color: var(--accent);
+  border-radius: 4px;
+}
+
+.tts-panel__download {
+  flex-shrink: 0;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.tts-panel__download:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.tts-panel__playrate {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.tts-panel__rate-btn {
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tts-panel__rate-btn:hover:not(.tts-panel__rate-btn--active) {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.tts-panel__rate-btn--active {
+  color: var(--accent);
+  border-color: var(--border-accent);
+  background: var(--accent-dim);
+}
+
+/* ── Footer ───────────────────────────────────────────────────── */
+
+.tts-panel__footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tts-panel__error {
+  flex: 1;
+  font-size: 0.82rem;
+  color: var(--red);
+}
+
+.tts-panel__generate {
+  margin-left: auto;
+  min-height: 2.4rem;
+  padding: 0.55rem 1.2rem;
+  font-size: 0.86rem;
+}

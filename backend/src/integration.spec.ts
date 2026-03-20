@@ -22,8 +22,15 @@ const TEST_IMAGE = path.resolve(__dirname, '..', '..', 'image_test.jpg');
 const LM_STUDIO_URL = process.env.LM_STUDIO_BASE_URL || 'http://localhost:1234/v1';
 const STRUCTURING_MODEL = process.env.STRUCTURING_MODEL || 'qwen/qwen3.5-9b';
 
+const SUPERTONE_URL = `http://${process.env.SUPERTONE_HOST || 'localhost'}:${process.env.SUPERTONE_PORT || '8100'}`;
+const KOKORO_URL = `http://${process.env.KOKORO_HOST || 'localhost'}:${process.env.KOKORO_PORT || '8200'}`;
+const QWEN_TTS_URL = `http://${process.env.QWEN_TTS_HOST || 'localhost'}:${process.env.QWEN_TTS_PORT || '8300'}`;
+
 let lmStudioAvailable = false;
 let paddleOcrAvailable = false;
+let supertoneAvailable = false;
+let kokoroAvailable = false;
+let qwenTtsAvailable = false;
 let imageExists = false;
 let structuringModelLoaded = false;
 
@@ -60,8 +67,43 @@ beforeAll(async () => {
     paddleOcrAvailable = false;
   }
 
+  try {
+    const res = await fetch(`${SUPERTONE_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    supertoneAvailable = res.ok;
+  } catch {
+    supertoneAvailable = false;
+  }
+
+  try {
+    const res = await fetch(`${KOKORO_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    kokoroAvailable = res.ok;
+  } catch {
+    kokoroAvailable = false;
+  }
+
+  try {
+    const res = await fetch(`${QWEN_TTS_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { ready?: boolean; device?: string | null };
+      qwenTtsAvailable = data.ready === true && data.device === 'gpu';
+    } else {
+      qwenTtsAvailable = false;
+    }
+  } catch {
+    qwenTtsAvailable = false;
+  }
+
   if (!lmStudioAvailable) console.warn('LM Studio not running');
   if (!paddleOcrAvailable) console.warn('PaddleOCR sidecar not running');
+  if (!supertoneAvailable) console.warn(`Supertone sidecar not running (${SUPERTONE_URL})`);
+  if (!kokoroAvailable) console.warn(`Kokoro sidecar not running (${KOKORO_URL})`);
+  if (!qwenTtsAvailable) console.warn(`Qwen TTS sidecar not running (${QWEN_TTS_URL})`);
   if (!imageExists) console.warn(`Test image not found at ${TEST_IMAGE}`);
 });
 
@@ -176,6 +218,118 @@ describe('Integration: PaddleOCR sidecar', () => {
 
     expect(text.length).toBeGreaterThan(20);
   }, 180000);
+});
+
+describe('Smoke: Supertone TTS sidecar', () => {
+  it('should be reachable when available', async () => {
+    if (!supertoneAvailable) {
+      skipIf('Supertone sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${SUPERTONE_URL}/health`);
+    expect(res.ok).toBe(true);
+    const data: any = await res.json();
+    expect(data.status).toBe('healthy');
+  }, 10000);
+
+  it('should synthesize speech and return audio bytes when available', async () => {
+    if (!supertoneAvailable) {
+      skipIf('Supertone sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${SUPERTONE_URL}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: 'Integration test.',
+        engine: 'supertone',
+        voice: 'M1',
+        lang: 'en',
+        speed: 1.0,
+        total_steps: 3,
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.headers.get('content-type')).toMatch(/audio/);
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.length).toBeGreaterThan(100);
+  }, 60000);
+});
+
+describe('Smoke: Kokoro TTS sidecar', () => {
+  it('should be reachable when available', async () => {
+    if (!kokoroAvailable) {
+      skipIf('Kokoro sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${KOKORO_URL}/health`);
+    expect(res.ok).toBe(true);
+  }, 10000);
+
+  it('should synthesize speech and return audio bytes when available', async () => {
+    if (!kokoroAvailable) {
+      skipIf('Kokoro sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${KOKORO_URL}/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: 'Integration test.',
+        voice: 'af_heart',
+        speed: 1.0,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    expect(res.ok).toBe(true);
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.length).toBeGreaterThan(100);
+  }, 30000);
+});
+
+describe('Smoke: Qwen TTS sidecar', () => {
+  it('should be reachable when available', async () => {
+    if (!qwenTtsAvailable) {
+      skipIf('Qwen TTS sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${QWEN_TTS_URL}/health`);
+    expect(res.ok).toBe(true);
+    const data: any = await res.json();
+    expect(data.ready).toBe(true);
+    expect(data.device).toBe('gpu');
+  }, 10000);
+
+  it('should synthesize speech in custom_voice mode when available', async () => {
+    if (!qwenTtsAvailable) {
+      skipIf('Qwen TTS sidecar not running');
+      return;
+    }
+
+    const res = await fetch(`${QWEN_TTS_URL}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: 'Integration test.',
+        lang: 'English',
+        speaker: 'Ryan',
+        instruct: 'Calm and clear',
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    expect(res.ok).toBe(true);
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.length).toBeGreaterThan(100);
+  }, 120000);
 });
 
 describe('Integration: Full NestJS pipeline', () => {

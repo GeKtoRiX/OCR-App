@@ -1,0 +1,133 @@
+.vocab-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.vocab-panel__controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #444);
+  margin-bottom: 8px;
+}
+
+.vocab-panel__lang-pair {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.vocab-panel__lang-input {
+  width: 40px;
+  padding: 4px 6px;
+  background: var(--surface-1, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: var(--text, #e0e0e0);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.vocab-panel__arrow {
+  color: var(--text-muted, #888);
+  font-size: 0.9rem;
+}
+
+.vocab-panel__practice-btn {
+  padding: 6px 12px;
+  background: var(--accent, #4a6fa5);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.vocab-panel__practice-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vocab-panel__badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 0.75rem;
+}
+
+.vocab-panel__empty {
+  color: var(--text-muted, #888);
+  font-size: 0.85rem;
+  padding: 16px 0;
+  text-align: center;
+}
+
+.vocab-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.vocab-panel__item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.vocab-panel__item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vocab-panel__word {
+  font-weight: 600;
+  color: var(--text, #e0e0e0);
+  font-size: 0.9rem;
+}
+
+.vocab-panel__type-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-3, #3a3a3a);
+  color: var(--text-muted, #888);
+}
+
+.vocab-panel__translation {
+  color: var(--text-muted, #aaa);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.vocab-panel__meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--text-muted, #666);
+}
+
+.vocab-panel__delete-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 4px;
+}
+
+.vocab-panel__delete-btn:hover {
+  color: #e04040;
+}

@@ -1,0 +1,103 @@
+.dropzone {
+  border: 1.5px dashed var(--border-accent);
+  border-radius: 16px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-code);
+}
+
+.dropzone:hover,
+.dropzone--active {
+  border-color: var(--accent);
+  background: rgba(45, 212, 191, 0.05);
+}
+
+.dropzone--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.dropzone__preview-shell {
+  width: 100%;
+}
+
+.dropzone__preview {
+  max-width: 100%;
+  max-height: 340px;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dropzone__preview-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.dropzone__preview-meta strong {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropzone__preview-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropzone__placeholder {
+  max-width: 28rem;
+  text-align: center;
+}
+
+.dropzone__placeholder h3 {
+  font-family: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
+  line-height: 1.15;
+  margin: 0.75rem 0 0.6rem;
+  color: var(--text);
+}
+
+.dropzone__placeholder p {
+  color: var(--text-muted);
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+
+.dropzone__capsules {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.dropzone__capsules span {
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--border-accent);
+}
+
+.dropzone__hint {
+  font-size: 0.82rem;
+  margin-top: 0.9rem;
+  color: var(--text-faint);
+}

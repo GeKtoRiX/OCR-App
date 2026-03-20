@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { IHealthCheckPort } from '../../domain/ports/health-check.port';
+import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
 import { PaddleOCRConfig } from '../config/paddleocr.config';
 
 interface PaddleOCRHealthResponse {
@@ -13,7 +13,7 @@ interface PaddleOCRModelsResponse {
 }
 
 @Injectable()
-export class PaddleOCRHealthService extends IHealthCheckPort {
+export class PaddleOCRHealthService extends IPaddleOcrHealthPort {
   constructor(private readonly config: PaddleOCRConfig) {
     super();
   }

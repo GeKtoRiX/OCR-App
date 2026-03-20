@@ -1,0 +1,275 @@
+.practice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.practice-card {
+  background: var(--surface-2, #2a2a2a);
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.practice-card--analysis {
+  max-width: 600px;
+}
+
+.practice-card__progress {
+  height: 4px;
+  background: var(--surface-1, #1e1e1e);
+  border-radius: 2px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.practice-card__progress-bar {
+  height: 100%;
+  background: var(--accent, #4a6fa5);
+  transition: width 0.3s;
+  border-radius: 2px;
+}
+
+.practice-card__counter {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  margin-bottom: 20px;
+}
+
+.practice-card__type {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--accent, #4a6fa5);
+  margin-bottom: 8px;
+}
+
+.practice-card__prompt {
+  font-size: 1.15rem;
+  color: var(--text, #e0e0e0);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.practice-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.practice-card__input {
+  padding: 12px;
+  background: var(--surface-1, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  color: var(--text, #e0e0e0);
+  font-size: 1rem;
+}
+
+.practice-card__btn {
+  padding: 10px 20px;
+  background: var(--accent, #4a6fa5);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.15s;
+}
+
+.practice-card__btn:hover {
+  background: var(--accent-hover, #5a7fb5);
+}
+
+.practice-card__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.practice-card__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.practice-card__option {
+  padding: 12px;
+  background: var(--surface-1, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  color: var(--text, #e0e0e0);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: border-color 0.15s;
+}
+
+.practice-card__option:hover {
+  border-color: var(--accent, #4a6fa5);
+}
+
+.practice-card__option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.practice-card__feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.practice-card__result {
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.practice-card__result--correct {
+  color: #40c060;
+  background: rgba(64, 192, 96, 0.1);
+}
+
+.practice-card__result--wrong {
+  color: #e04040;
+  background: rgba(224, 64, 64, 0.1);
+}
+
+.practice-card__correct-answer {
+  text-align: center;
+  color: var(--text-muted, #aaa);
+  font-size: 0.9rem;
+}
+
+.practice-card__error-pos {
+  color: var(--text-muted, #888);
+  font-size: 0.8rem;
+}
+
+.practice-card__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.practice-card__close:hover {
+  color: var(--text, #e0e0e0);
+}
+
+.practice-card__loading {
+  text-align: center;
+  color: var(--text-muted, #888);
+  padding: 40px 0;
+}
+
+.practice-card__error {
+  text-align: center;
+  color: #e04040;
+  padding: 20px 0;
+}
+
+.practice-card__title {
+  text-align: center;
+  margin: 0 0 12px;
+  font-size: 1.3rem;
+  color: var(--text, #e0e0e0);
+}
+
+.practice-card__score {
+  text-align: center;
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--accent, #4a6fa5);
+  margin-bottom: 4px;
+}
+
+.practice-card__stats {
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+}
+
+.practice-card__summary {
+  text-align: center;
+  color: var(--text, #ccc);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.practice-card__analyses {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.word-analysis {
+  background: var(--surface-1, #1e1e1e);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.word-analysis__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.word-analysis__word {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text, #e0e0e0);
+}
+
+.word-analysis__diff {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.word-analysis__diff--easy {
+  background: rgba(64, 192, 96, 0.15);
+  color: #40c060;
+}
+
+.word-analysis__diff--medium {
+  background: rgba(240, 160, 48, 0.15);
+  color: #f0a030;
+}
+
+.word-analysis__diff--hard {
+  background: rgba(224, 64, 64, 0.15);
+  color: #e04040;
+}
+
+.word-analysis__row {
+  font-size: 0.85rem;
+  color: var(--text-muted, #aaa);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.word-analysis__row strong {
+  color: var(--text, #ccc);
+}

@@ -4,4 +4,8 @@ export interface HealthCheckOutput {
   paddleOcrDevice: 'gpu' | 'cpu' | null;
   lmStudioReachable: boolean;
   lmStudioModels: string[];
+  superToneReachable: boolean;
+  kokoroReachable: boolean;
+  qwenTtsReachable: boolean;
+  qwenTtsDevice: 'gpu' | 'cpu' | null;
 }

@@ -1,0 +1,23 @@
+# Supertone TTS (ONNX Runtime based, auto-downloads model from HuggingFace)
+supertonic>=1.1.2
+
+# Piper TTS (ONNX Runtime based, many voices, requires libespeak-ng system package)
+piper-tts>=1.4.1
+pathvalidate>=3.3.1     # required by piper CLI (pulled in automatically by piper-tts)
+huggingface_hub>=0.23.0 # for auto-downloading piper voice models
+
+# Web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Audio output
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# For GPU inference install ONE of these instead of plain onnxruntime:
+#   CUDA:  pip install onnxruntime-gpu
+#   ROCm:  pip install onnxruntime-rocm  (from AMD wheels index)
+# The supertonic package pulls in onnxruntime (CPU); piper-tts also pulls in onnxruntime.
+# For GPU, uninstall onnxruntime first, then install the GPU variant:
+#   pip uninstall onnxruntime && pip install onnxruntime-rocm
+# System prerequisite for Piper: libespeak-ng1 (sudo apt install espeak-ng-data libespeak-ng1)

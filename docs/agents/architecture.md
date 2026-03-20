@@ -4,8 +4,8 @@
 
 ```
 domain        ← entities, ports, constants (zero dependencies)
-application   ← use cases, DTOs (depends on domain only)
-infrastructure ← port implementations: PaddleOCRService, LMStudio*, configs
+application   ← use cases, DTOs, utils (depends on domain only)
+infrastructure ← port implementations: PaddleOCRService, LMStudio*, Sqlite*, configs
 presentation  ← NestJS controllers, modules, response DTOs (wires DI)
 agentic       ← isolated bounded context for agent orchestration
 ```
@@ -24,16 +24,37 @@ agentic       ← isolated bounded context for agent orchestration
 
 Used as NestJS DI tokens. Concrete implementations are registered via `useExisting`.
 
-| Port | Primary Implementation | Purpose |
-|------|------------------------|---------|
+| Port | Implementation | Purpose |
+|------|----------------|---------|
 | `IOCRService` | `PaddleOCRService` | Extract text from image |
 | `ITextStructuringService` | `LMStudioStructuringService` | Convert raw text → Markdown |
-| `IHealthCheckPort` | `PaddleOCRHealthService` / `LMStudioClient` | Check reachability + list models |
+| `IPaddleOcrHealthPort` | `PaddleOCRHealthService` | PaddleOCR reachability, models, device |
+| `ILmStudioHealthPort` | `LMStudioClient` | LM Studio reachability + model list |
+| `ISupertonePort` | `SupertoneService` | Supertone TTS synthesis + health |
+| `IKokoroPort` | `KokoroService` | Kokoro TTS synthesis + health |
+| `IQwenTtsPort` | `QwenTtsService` | Qwen TTS synthesis + health with device |
+| `ISavedDocumentRepository` | `SqliteSavedDocumentRepository` | Document CRUD |
+| `IVocabularyRepository` | `SqliteVocabularyRepository` | Vocabulary CRUD + SRS queries |
+| `IPracticeSessionRepository` | `SqlitePracticeSessionRepository` | Practice session + attempt CRUD |
+| `IVocabularyLlmService` | `LMStudioVocabularyService` | Exercise generation + session analysis |
+
+## NestJS Module Map
+
+```
+AppModule
+├── DatabaseModule          ← SqliteConfig + SqliteConnectionProvider (singleton)
+├── OcrModule               ← ProcessImageUseCase; exports IPaddleOcrHealthPort, ILmStudioHealthPort
+├── HealthModule            ← HealthCheckUseCase; imports OcrModule + TtsModule
+├── TtsModule               ← SynthesizeSpeechUseCase; exports ISupertonePort, IKokoroPort, IQwenTtsPort
+├── DocumentModule          ← SavedDocumentUseCase; imports DatabaseModule
+├── VocabularyModule        ← VocabularyUseCase + PracticeUseCase; imports DatabaseModule
+└── AgentEcosystemModule    ← isolated agentic bounded context
+```
 
 ## OCR Pipeline
 
 ```
-OcrController
+OcrController (POST /api/ocr)
   → ProcessImageUseCase
     → IOCRService (PaddleOCRService)
       → PaddleOCR sidecar /api/extract/base64
@@ -47,14 +68,67 @@ OcrController
 ## Health Check Pipeline
 
 ```
-HealthController
+HealthController (GET /api/health)
   → HealthCheckUseCase
-    → IHealthCheckPort (PaddleOCRHealthService)
+    → IPaddleOcrHealthPort (PaddleOCRHealthService)
       → GET sidecar /health  → paddleOcrReachable, paddleOcrDevice
       → GET sidecar /models  → paddleOcrModels
-    → IHealthCheckPort (LMStudioClient)
+    → ILmStudioHealthPort (LMStudioClient)
       → GET LM Studio /models → lmStudioReachable, lmStudioModels
-  ← { paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels }
+    → ISupertonePort.checkHealth()
+      → GET Supertone sidecar /health → superToneReachable
+    → IKokoroPort.checkHealth()
+      → GET Kokoro sidecar /health → kokoroReachable
+    → IQwenTtsPort.getHealth()
+      → GET Qwen sidecar /health → qwenTtsReachable, qwenTtsDevice
+  ← { paddleOcrReachable, paddleOcrModels, paddleOcrDevice,
+       lmStudioReachable, lmStudioModels,
+       superToneReachable, kokoroReachable,
+       qwenTtsReachable, qwenTtsDevice }
+```
+
+Status lamp logic (frontend `useHealthStatus`):
+- 🔴 `paddleOcrReachable = false` → PaddleOCR unreachable
+- 🟡 `paddleOcrDevice = 'cpu'` → PaddleOCR on CPU
+- 🔵 GPU + `lmStudioReachable` + qwen loaded + all TTS reachable → all systems OK
+- 🟢 GPU OK but LM Studio / some TTS service not fully available
+
+## TTS Pipeline
+
+```
+TtsController (POST /api/tts)
+  → SynthesizeSpeechUseCase
+    engine='qwen'     → IQwenTtsPort.synthesize({ text, lang, speaker, instruct })
+    engine='kokoro'   → IKokoroPort.synthesize({ text, voice, speed })
+    default           → ISupertonePort.synthesize({ text, engine, voice, lang, speed, totalSteps })
+  ← audio/wav binary (44100 Hz, mono)
+```
+
+HTTP input validation (`qwenMode`, text length, empty text) stays in `TtsController` as a presentation concern.
+
+## Document Pipeline
+
+```
+DocumentController (POST/GET/PUT/DELETE /api/documents)
+  → SavedDocumentUseCase
+    → ISavedDocumentRepository (SqliteSavedDocumentRepository)
+      → SQLite (DatabaseModule provides connection)
+```
+
+## Vocabulary & Practice Pipeline
+
+```
+VocabularyController (/api/vocabulary)
+  → VocabularyUseCase
+    → IVocabularyRepository (SqliteVocabularyRepository)
+
+PracticeController (/api/practice)
+  → PracticeUseCase
+    → IVocabularyRepository     — select words due for review
+    → IVocabularyLlmService     — generate exercises, analyze session
+      → LM Studio /v1/chat/completions
+    → IPracticeSessionRepository — persist sessions and attempts
+    → SM-2 algorithm (application/utils/sm2.ts) — update SRS fields
 ```
 
 ## Agentic Bounded Context
@@ -132,8 +206,11 @@ AgentEcosystemService.deploy({ request, workspaceName })
 
 ## Architectural Assessment
 
-- Clean/hexagonal backend structure preserved; layers are not mixed.
+- Clean/hexagonal backend structure enforced; no layer violations remain.
+- `HealthCheckUseCase` depends exclusively on domain ports (ADR-007).
+- `TtsController` delegates to `SynthesizeSpeechUseCase`; no infrastructure imports in presentation (ADR-008).
+- `DatabaseModule` owns the SQLite connection singleton; `DocumentModule` and `VocabularyModule` import it (ADR-009).
 - `agentic` bounded context correctly isolated and does not overlap with OCR layers.
 - Frontend MVVM maintained: hooks hold logic, components handle rendering only.
-- Documentation aligned with actual code during the 2026-03-19 revision.
+- Documentation aligned with actual code — updated 2026-03-21.
 - Open risk: graceful degradation of the agentic runtime when the OpenAI API key is absent is not yet implemented.

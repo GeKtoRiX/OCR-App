@@ -1,0 +1,149 @@
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.result__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.result__title {
+  font-family: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  font-size: 1.3rem;
+  line-height: 1.15;
+  margin-top: 0.25rem;
+  color: var(--text);
+}
+
+.result__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.result__stat {
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.result__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-raised);
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.result__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.result__tab {
+  padding: 0.5rem 0.8rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.result__tab--active {
+  background: var(--accent-dim);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.result__tab:hover:not(.result__tab--active) {
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+}
+
+.result__actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.result__copy,
+.result__action-btn {
+  padding: 0.5rem 0.9rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.result__copy:hover,
+.result__action-btn:hover {
+  border-color: rgba(255,255,255,0.18);
+}
+
+.result__action-btn--active {
+  background: var(--accent-dim);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.result__action-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.result__editor {
+  padding: 1rem 1.1rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  background: var(--bg-code);
+  border-radius: 14px;
+  color: #c8d6e0;
+  border: 1px solid var(--border-accent);
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  resize: vertical;
+  min-height: 12rem;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.result__editor:focus {
+  border-color: var(--accent);
+}
+
+.result__content {
+  padding: 1rem 1.1rem;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  background: var(--bg-code);
+  border-radius: 14px;
+  color: #c8d6e0;
+  border: 1px solid var(--border);
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+}

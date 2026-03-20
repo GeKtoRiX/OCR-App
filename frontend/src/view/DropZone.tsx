@@ -1,4 +1,5 @@
 import { useRef, useState, type DragEvent, type ChangeEvent } from 'react';
+import './DropZone.css';
 
 interface Props {
   preview: string | null;

@@ -1,0 +1,88 @@
+.status-light-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.status-light-pill .status-light__tooltip {
+  right: 0;
+  top: calc(100% + 8px);
+}
+
+.status-light-pill:hover .status-light__tooltip {
+  display: block;
+}
+
+/* ─── Status light card ─── */
+
+.status-light-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  align-items: center;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.status-light-card__content {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.status-light-card__content strong {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.92); }
+}
+
+.status-light {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-light--blue   { background: #60a5fa; }
+.status-light--green  { background: var(--green); }
+.status-light--yellow { background: var(--yellow); }
+.status-light--red    { background: var(--red); }
+
+.status-light__tooltip {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 240px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+.status-light__tooltip-row {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 0.2rem 0;
+}
+
+.status-light__tooltip-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.2rem;
+}
+
+.status-light-card:hover .status-light__tooltip {
+  display: block;
+}

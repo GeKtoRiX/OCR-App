@@ -2,7 +2,7 @@ node_modules/
 dist/
 .env
 .venv/
-paddleocr-service/.venv/
+logs/
 *.js.map
 *.d.ts
 !vite.config.ts
@@ -12,3 +12,6 @@ __pycache__/
 *.tsbuildinfo
 *.log
 .*.pid
+.pids/
+data/
+services/tts/kokoro-service/models/

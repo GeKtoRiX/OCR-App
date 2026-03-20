@@ -1,0 +1,50 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  font-family: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --bg:          #1b1e26;
+  --bg-surface:  #22262f;
+  --bg-raised:   #272c36;
+  --bg-code:     #1e2330;
+  --border:      rgba(255, 255, 255, 0.08);
+  --border-accent: rgba(45, 212, 191, 0.22);
+  --text:        #dde3ec;
+  --text-muted:  #7a8899;
+  --text-faint:  #4e5968;
+  --accent:      #2dd4bf;
+  --accent-dim:  rgba(45, 212, 191, 0.12);
+  --accent-hover:rgba(45, 212, 191, 0.18);
+  --green:       #34d399;
+  --green-dim:   rgba(52, 211, 153, 0.12);
+  --yellow:      #fbbf24;
+  --red:         #f87171;
+  --red-dim:     rgba(248, 113, 113, 0.12);
+  color: var(--text);
+  background: var(--bg);
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100%;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}

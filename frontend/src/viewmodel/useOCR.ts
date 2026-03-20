@@ -38,7 +38,7 @@ export function useOCR() {
         return;
       }
 
-      const msg = e instanceof Error ? e.message : 'ÐÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð°Ñ Ð¾ÑˆÐ¸Ð±ÐºÐ°';
+      const msg = e instanceof Error ? e.message : 'Unknown error';
       setError(msg);
       setStatus('error');
     } finally {

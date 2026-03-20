@@ -6,67 +6,75 @@ Short memory of recent significant changes, allowing quick context recovery at t
 
 ## Latest Significant Update
 
-### 2026-03-19 - Frontend Redesign, Scripts Cleanup, Log Removal
+### 2026-03-21 - Architecture Enforcement Refactoring + Full Documentation Update
 
-- Frontend fully redesigned: dark theme (`#1b1e26` base), minimalist layout, no hero block.
-- All UI text translated to English; Russian strings removed from all frontend files.
-- `StatusLight` health indicator moved into Pipeline panel header.
-- Layout changed to fit viewport by default; expands naturally when OCR result is present.
-- `scripts/windows/` directory removed — project targets Linux/macOS only.
-- `scripts/linux/start.sh`, `stop.sh`, `kill.sh` replaced by unified `scripts/linux/ocr.sh` (`start|stop|wipe|status`).
-- Backend process now runs with `> /dev/null` — no `app.log` or `paddleocr.log` created in project root.
-- `.gitignore` updated: `*.log` and `.*.pid` patterns added.
-- `structure.md`, `docs/agents/file-map.md`, `docs/agents/runbook.md`, `docs/agents/context.md` updated to reflect all changes.
+**Problem:** Three structural violations existed where concrete infrastructure classes were imported directly into application/presentation layers, bypassing the port abstraction boundary. Additionally, vocabulary, document, practice, Kokoro, and Qwen TTS domains added in a previous session were not reflected in any documentation.
+
+**Backend changes (no business logic changed):**
+
+- **ADR-007 — Health port split:** Removed generic `IHealthCheckPort`. Created five named domain ports: `IPaddleOcrHealthPort`, `ILmStudioHealthPort`, `ISupertonePort`, `IKokoroPort`, `IQwenTtsPort`. Each concrete service now declares `extends <Port>`. `HealthCheckUseCase` now imports only from `domain/ports/` — the application→infrastructure violation is eliminated.
+- **ADR-008 — SynthesizeSpeechUseCase:** Created `application/use-cases/synthesize-speech.use-case.ts` with engine-routing logic (previously in `TtsController`). `TtsController` now injects only `SynthesizeSpeechUseCase`; HTTP validation stays in the controller. New `synthesize-speech.use-case.spec.ts` covers routing. `tts.controller.spec.ts` updated to mock the use case.
+- **ADR-009 — DatabaseModule:** Created `presentation/modules/database.module.ts` owning `SqliteConfig` + `SqliteConnectionProvider`. `DocumentModule` and `VocabularyModule` both import it. `VocabularyModule` no longer imports `DocumentModule`. `AppModule` imports `DatabaseModule` at root for singleton guarantee.
+- `OcrModule` now binds and exports `IPaddleOcrHealthPort` and `ILmStudioHealthPort` tokens. `TtsModule` now binds and exports `ISupertonePort`, `IKokoroPort`, `IQwenTtsPort` tokens and provides `SynthesizeSpeechUseCase`.
+- `health-check.use-case.spec.ts` updated: mock types changed to port abstract classes.
+
+**Test result:** 252 tests pass, 40 suites, zero failures.
+
+**Documentation:**
+- `CLAUDE.md` — full rewrite: all new domains, ports, modules, API endpoints, env vars, TTS engines.
+- `agents.md` — updated roles and architecture overview.
+- `structure.md` — all new files added.
+- `docs/agents/adr.md` — ADR-007, 008, 009 added.
+- `docs/agents/architecture.md` — full rewrite: new ports, TTS pipeline, document/vocabulary/practice pipelines, updated module map.
+- `docs/agents/context.md` — snapshot updated to 2026-03-21, confirmed facts updated, new risks noted.
+- `docs/agents/file-map.md` — all new files added.
+- `docs/agents/project-overview.md` — updated.
+- `docs/agents/runbook.md` — document/vocabulary/practice endpoints added.
+- `README.md` — Kokoro/Qwen setup added, new API endpoints documented.
+
+### 2026-03-19 - Vocabulary, Document, Practice Domains + Kokoro + Qwen TTS
+
+**Backend:**
+- New domain: `saved-document` (entity, port, use case, SQLite repo, controller, module).
+- New domain: `vocabulary` (entity with SRS fields, port, use case, SQLite repo, controller, module, LMStudio vocabulary service with exercise generation and SM-2 scheduling).
+- New domain: `practice` (session + attempt entities, ports, use case with SM-2 algorithm, SQLite repo, controller).
+- New infrastructure: `SqliteConnectionProvider` (better-sqlite3, WAL mode), `SqliteConfig`.
+- New TTS engines: `KokoroService` (port 8200), `QwenTtsService` (port 8300) with configs.
+- `HealthCheckUseCase` updated to include `kokoroReachable`, `qwenTtsReachable`, `qwenTtsDevice`.
+- `VocabularyModule`, `DocumentModule` added to `AppModule`.
+- `application/utils/sm2.ts` — SM-2 spaced repetition algorithm implementation.
+
+**Frontend:**
+- `HistoryPanel` — 3-tab panel (Session, Saved, Vocab) with health light and practice launch.
+- `VocabularyPanel`, `VocabContextMenu`, `VocabAddForm` — vocabulary management UI.
+- `PracticeView` — modal for practice sessions (fill_blank, spelling, multiple_choice).
+- `useSavedDocuments`, `useVocabulary`, `usePractice` hooks.
+- `useTts` — extended to support Kokoro and Qwen engines.
+- `useHealthStatus` — Kokoro and Qwen health signals included in lamp logic.
+
+### 2026-03-19 - Supertone TTS Integration, Edit Mode, Live Status Lamp
+
+**Supertone TTS sidecar (`services/tts/supertone-service/`)**
+- Complete Python FastAPI sidecar using `pip install supertonic` (ONNX Runtime, NOT PyTorch/transformers).
+- Model: `supertonic-2`. Voices: M1–M5, F1–F5. Languages: en/ko/es/pt/fr. Output: 44100 Hz WAV.
+- GPU via `onnxruntime-rocm 1.22.2`. GPU provider list patched **in-place** (`.clear()` + `.extend()`) — reassignment fails because `loader.py` holds a reference to the original list object.
+
+**Backend:**
+- New: `infrastructure/config/supertone.config.ts`, `infrastructure/supertone/supertone.service.ts`.
+- New: `presentation/controllers/tts.controller.ts` (POST /api/tts), `presentation/modules/tts.module.ts`.
+
+**Frontend:**
+- `ResultPanel.tsx` — inline edit mode; collapsible TTS settings panel.
+- `useSessionHistory.ts`, `HistoryPanel.tsx` — session history tracking.
+
+### 2026-03-19 - Frontend Redesign, Scripts Cleanup
+
+- Frontend fully redesigned: dark theme (`#1b1e26` base), minimalist layout.
+- `scripts/linux/ocr.sh` — unified lifecycle script: start/stop/wipe/status + live status lamp.
 
 ### 2026-03-19 - Removed Docker
 
-- Deleted `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `paddleocr-service/Dockerfile`, `paddleocr-service/.dockerignore`.
-- Rewrote all scripts (`start.sh/bat`, `stop.sh/bat`, `kill.sh/bat`) to use direct Node.js process instead of Docker containers.
-- `start.*` now builds with `npm run build` and starts `node backend/dist/main.js`.
-- `stop.*` kills the node process; `kill.*` kills it and removes build artifacts.
-- Updated `README.md`, `CLAUDE.md`, `structure.md`, and all `docs/agents/*` to remove Docker references.
-
-### 2026-03-19 - Reduced PaddleOCR Docker Base Image Size
-
-- `paddleocr-service/Dockerfile` switched from the heavier ROCm complete image to the leaner `rocm/dev-ubuntu-22.04:6.4` base image.
-- Added `ROCM_BASE_IMAGE` build arg for controlled overrides without editing the Dockerfile again.
-- Root `README.md` updated with Docker disk-usage troubleshooting and cleanup commands (`docker system df`, `docker builder prune -a`, `docker system prune -a`).
-- Goal: reduce the default PaddleOCR sidecar image footprint and make cache-related disk usage easier to diagnose.
-
-### 2026-03-19 - Docker Compose Switched To Host-Side PaddleOCR
-
-- `docker-compose.yml` no longer starts the PaddleOCR container; the app now connects to `host.docker.internal:8000`.
-- Windows and Linux start scripts now check the external PaddleOCR sidecar before starting Docker.
-- Cleanup scripts now also prune Docker build cache.
-- `README.md`, `CLAUDE.md`, `docs/agents/runbook.md`, and `docs/agents/context.md` updated to reflect the host-side PaddleOCR requirement.
-
-### 2026-03-19 - Full Architectural Review And Documentation Refresh
-
-- Complete project review: backend, frontend, agentic, sidecar, documentation.
-- **CLAUDE.md** — full update:
-  - Added `agentic/` layer to the backend architecture tree.
-  - Fixed `/api/health` response shape (was incorrect; now reflects the real `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels }`).
-  - Added `useHealthStatus.ts` and `StatusLight.tsx` to the frontend MVVM section.
-  - Added Agentic API endpoints section (`/api/agents/architecture`, `/api/agents/deploy`).
-  - Added agentic environment variables (`OPENAI_API_KEY`, `OPENAI_AGENT_*`, `AGENT_*`).
-  - Added references to `agents.md` and `structure.md`.
-- **agents.md** — refined working rules, added Frontend Architect role description with `useHealthStatus` and `StatusLight`, added reference to `docs/agent-ecosystem.md`.
-- **structure.md** — updated audit result to 2026-03-19, recorded current findings.
-- **docs/agents/context.md** — updated snapshot, system status, risks and recommendations.
-- **docs/agents/file-map.md** — added all previously missing files:
-  - `useHealthStatus.ts`, `StatusLight.tsx` (frontend)
-  - `health-check.dto.ts`, `health-check.use-case.ts` (application layer)
-  - `paddleocr-health.service.ts`, `lm-studio.client.ts` (infrastructure)
-  - All agentic files organised into a separate section.
-- **docs/agents/architecture.md** — expanded to a full description: dependency rules, domain ports, OCR pipeline, health pipeline, agentic execution flow, model allocation table, phase schemas.
-
-### 2026-03-19 - Scripts And Documentation Translated To English
-
-- All shell scripts and batch files translated from Russian to English.
-- README.md translated to English.
-- All agent/architecture documentation files translated to English.
-- `docs/README.ru.md` removed (superseded by the root `README.md`).
-- Scripts reorganised into `scripts/windows/` and `scripts/linux/` directories.
+- Deleted Docker artifacts. App runs as direct Node.js process.
 
 ## Open Questions
 
@@ -74,17 +82,7 @@ Short memory of recent significant changes, allowing quick context recovery at t
 - Are task queuing, status storage and persistence needed for agent workflows?
 - Should the LM Studio structuring system prompt be externalised to env/config?
 - Is a centralised HTTP request/response logger needed for production debugging?
-
-## Previous Updates
-
-### 2026-03-18 - Architecture Documentation Audit
-
-- Project structure and agent documentation audit performed.
-- Root `structure.md` added as the normative project tree contract.
-- `agents.md` expanded into a working document with roles and handoff protocol.
-- `docs/agents/context.md` and `docs/agents/adr.md` added for autonomous operation and decision recording.
-- `docs/agents/project-overview.md`, `docs/agents/architecture.md`, `docs/agents/file-map.md`, `docs/agents/runbook.md` updated.
-- Confirmed that build artifacts are present in the workspace but are not the source of truth.
+- Should `LMStudioConfig` + `LMStudioClient` be extracted to a shared `LmStudioModule`?
 
 ## Update Rule
 

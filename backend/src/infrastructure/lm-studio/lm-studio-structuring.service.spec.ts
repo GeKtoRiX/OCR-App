@@ -26,14 +26,14 @@ describe('LMStudioStructuringService', () => {
       messages: [
         {
           role: 'system',
-          content: expect.stringContaining('document structure reconstruction'),
+          content: expect.stringContaining('expert document formatter'),
         },
         {
           role: 'user',
           content: expect.stringContaining('Raw OCR text here'),
         },
       ],
-      temperature: 0.1,
+      temperature: 0.05,
       max_tokens: 4096,
     });
   });
@@ -44,8 +44,8 @@ describe('LMStudioStructuringService', () => {
     await service.structureAsMarkdown('text');
 
     const systemMsg = mockClient.chatCompletion.mock.calls[0][0].messages[0];
-    expect(systemMsg.content).toContain('# for chapter titles');
-    expect(systemMsg.content).toContain('Preserve all original text content');
+    expect(systemMsg.content).toContain('## Structure');
+    expect(systemMsg.content).toContain('Preserve ALL original words and numbers exactly');
   });
 
   it('should propagate client errors', async () => {

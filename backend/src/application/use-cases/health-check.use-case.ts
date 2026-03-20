@@ -1,31 +1,41 @@
 import { Injectable } from '@nestjs/common';
 import { HealthCheckOutput } from '../dto/health-check.dto';
-import { LMStudioClient } from '../../infrastructure/lm-studio/lm-studio.client';
-import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr-health.service';
+import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
+import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
+import { ISupertonePort } from '../../domain/ports/supertone.port';
+import { IKokoroPort } from '../../domain/ports/kokoro.port';
+import { IQwenTtsPort } from '../../domain/ports/qwen-tts.port';
 
 @Injectable()
 export class HealthCheckUseCase {
   constructor(
-    private readonly lmStudioClient: LMStudioClient,
-    private readonly paddleOCRHealthService: PaddleOCRHealthService,
+    private readonly lmStudioHealth: ILmStudioHealthPort,
+    private readonly paddleOcrHealth: IPaddleOcrHealthPort,
+    private readonly supertone: ISupertonePort,
+    private readonly kokoro: IKokoroPort,
+    private readonly qwenTts: IQwenTtsPort,
   ) {}
 
   async execute(): Promise<HealthCheckOutput> {
-    const [paddleOcrReachable, lmStudioReachable] = await Promise.all([
-      this.safeIsReachable(this.paddleOCRHealthService),
-      this.safeIsReachable(this.lmStudioClient),
-    ]);
+    const [paddleOcrReachable, lmStudioReachable, superToneReachable, kokoroReachable, qwenHealth] =
+      await Promise.all([
+        this.safeIsReachable(this.paddleOcrHealth),
+        this.safeIsReachable(this.lmStudioHealth),
+        this.supertone.checkHealth(),
+        this.kokoro.checkHealth(),
+        this.qwenTts.getHealth(),
+      ]);
 
     const [paddleOcrModels, lmStudioModels, paddleOcrDevice] =
       await Promise.all([
         paddleOcrReachable
-          ? this.safeListModels(this.paddleOCRHealthService)
+          ? this.safeListModels(this.paddleOcrHealth)
           : Promise.resolve([]),
         lmStudioReachable
-          ? this.safeListModels(this.lmStudioClient)
+          ? this.safeListModels(this.lmStudioHealth)
           : Promise.resolve([]),
         paddleOcrReachable
-          ? this.paddleOCRHealthService.getDevice()
+          ? this.paddleOcrHealth.getDevice()
           : Promise.resolve(null),
       ]);
 
@@ -35,6 +45,10 @@ export class HealthCheckUseCase {
       paddleOcrDevice,
       lmStudioReachable,
       lmStudioModels,
+      superToneReachable,
+      kokoroReachable,
+      qwenTtsReachable: qwenHealth.reachable,
+      qwenTtsDevice: qwenHealth.device,
     };
   }
 

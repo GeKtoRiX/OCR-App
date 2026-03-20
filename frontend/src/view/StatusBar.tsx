@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import type { OcrStatus } from '../viewmodel/useOCR';
+import './StatusBar.css';
 
 interface Props {
   status: OcrStatus;
@@ -20,7 +22,17 @@ const descriptions: Record<OcrStatus, string> = {
 };
 
 export function StatusBar({ status, error }: Props) {
-  if (status === 'idle') return null;
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    setVisible(true);
+    if (status === 'success') {
+      const id = setTimeout(() => setVisible(false), 3000);
+      return () => clearTimeout(id);
+    }
+  }, [status]);
+
+  if (status === 'idle' || !visible) return null;
 
   return (
     <div className={`status status--${status}`} role="status">

@@ -22,6 +22,10 @@ describe('HealthController', () => {
       paddleOcrDevice: 'gpu' as const,
       lmStudioReachable: true,
       lmStudioModels: ['qwen/qwen3.5-9b'],
+      superToneReachable: true,
+      kokoroReachable: true,
+      qwenTtsReachable: true,
+      qwenTtsDevice: 'gpu' as const,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
@@ -38,6 +42,10 @@ describe('HealthController', () => {
       paddleOcrDevice: null,
       lmStudioReachable: true,
       lmStudioModels: ['qwen/qwen3.5-9b'],
+      superToneReachable: false,
+      kokoroReachable: false,
+      qwenTtsReachable: false,
+      qwenTtsDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 

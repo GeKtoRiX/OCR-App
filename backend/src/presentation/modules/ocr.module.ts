@@ -10,6 +10,8 @@ import { LMStudioConfig } from '../../infrastructure/config/lm-studio.config';
 import { PaddleOCRService } from '../../infrastructure/paddleocr/paddleocr-ocr.service';
 import { PaddleOCRConfig } from '../../infrastructure/config/paddleocr.config';
 import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr-health.service';
+import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
+import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
 
 /**
  * OCR Module Configuration
@@ -21,27 +23,18 @@ import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr
 @Module({
   controllers: [OcrController],
   providers: [
-    // Configuration services
     LMStudioConfig,
     PaddleOCRConfig,
     PaddleOCRHealthService,
     LMStudioOCRService,
     LMStudioStructuringService,
     PaddleOCRService,
-
-    // Client for LM Studio communication
     LMStudioClient,
 
-    {
-      provide: IOCRService,
-      useExisting: PaddleOCRService,
-    },
-
-    // Text structuring service (LM Studio only)
-    {
-      provide: ITextStructuringService,
-      useExisting: LMStudioStructuringService,
-    },
+    { provide: IOCRService, useExisting: PaddleOCRService },
+    { provide: ITextStructuringService, useExisting: LMStudioStructuringService },
+    { provide: IPaddleOcrHealthPort, useExisting: PaddleOCRHealthService },
+    { provide: ILmStudioHealthPort, useExisting: LMStudioClient },
 
     ProcessImageUseCase,
   ],
@@ -50,6 +43,8 @@ import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr
     PaddleOCRConfig,
     LMStudioClient,
     PaddleOCRHealthService,
+    IPaddleOcrHealthPort,
+    ILmStudioHealthPort,
   ],
 })
 export class OcrModule {}

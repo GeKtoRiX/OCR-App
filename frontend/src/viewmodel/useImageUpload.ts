@@ -34,9 +34,9 @@ export function useImageUpload() {
 
   const validate = useCallback((f: File): string | null => {
     if (!ALLOWED_TYPES.has(f.type))
-      return `ÐÐµÐ¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÐ¼Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚: ${f.type}`;
+      return `Unsupported format: ${f.type}. Allowed: PNG, JPEG, WebP, BMP, TIFF`;
     if (f.size > MAX_SIZE)
-      return 'Ð¤Ð°Ð¹Ð» ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ Ð±Ð¾Ð»ÑŒÑˆÐ¾Ð¹ (Ð¼Ð°ÐºÑ. 10 ÐœÐ‘)';
+      return 'File too large (max 10 MB)';
     return null;
   }, []);
 

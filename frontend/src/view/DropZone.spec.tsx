@@ -12,9 +12,7 @@ describe('DropZone', () => {
   it('should render placeholder text when no preview', () => {
     render(<DropZone {...defaultProps} />);
 
-    expect(
-      screen.getByText(/Перетащите изображение в рабочую область/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Drop an image here')).toBeInTheDocument();
     expect(screen.getByText(/PNG, JPEG/)).toBeInTheDocument();
   });
 
@@ -28,7 +26,7 @@ describe('DropZone', () => {
       />,
     );
 
-    const img = screen.getByAltText('Предпросмотр загруженного изображения') as HTMLImageElement;
+    const img = screen.getByAltText('Uploaded image preview') as HTMLImageElement;
     expect(img).toBeInTheDocument();
     expect(img.src).toContain('blob:test-url');
     expect(screen.getByText('invoice.png')).toBeInTheDocument();

@@ -1,0 +1,92 @@
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { ISavedDocumentRepository } from '../../domain/ports/saved-document-repository.port';
+import { SavedDocument } from '../../domain/entities/saved-document.entity';
+import { SqliteConnectionProvider } from './sqlite-connection.provider';
+
+interface DocumentRow {
+  id: string;
+  markdown: string;
+  filename: string;
+  created_at: string;
+  updated_at: string;
+}
+
+@Injectable()
+export class SqliteSavedDocumentRepository
+  extends ISavedDocumentRepository
+  implements OnModuleInit
+{
+  constructor(private readonly connection: SqliteConnectionProvider) {
+    super();
+  }
+
+  onModuleInit(): void {
+    this.connection.db.exec(`
+      CREATE TABLE IF NOT EXISTS saved_documents (
+        id         TEXT PRIMARY KEY,
+        markdown   TEXT NOT NULL,
+        filename   TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  }
+
+  async create(markdown: string, filename: string): Promise<SavedDocument> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    this.connection.db
+      .prepare(
+        'INSERT INTO saved_documents (id, markdown, filename, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(id, markdown, filename, now, now);
+    return new SavedDocument(id, markdown, filename, now, now);
+  }
+
+  async findAll(): Promise<SavedDocument[]> {
+    const rows = this.connection.db
+      .prepare(
+        'SELECT id, markdown, filename, created_at, updated_at FROM saved_documents ORDER BY updated_at DESC',
+      )
+      .all() as DocumentRow[];
+    return rows.map(
+      (r) =>
+        new SavedDocument(r.id, r.markdown, r.filename, r.created_at, r.updated_at),
+    );
+  }
+
+  async findById(id: string): Promise<SavedDocument | null> {
+    const row = this.connection.db
+      .prepare(
+        'SELECT id, markdown, filename, created_at, updated_at FROM saved_documents WHERE id = ?',
+      )
+      .get(id) as DocumentRow | undefined;
+    if (!row) return null;
+    return new SavedDocument(
+      row.id,
+      row.markdown,
+      row.filename,
+      row.created_at,
+      row.updated_at,
+    );
+  }
+
+  async update(id: string, markdown: string): Promise<SavedDocument | null> {
+    const now = new Date().toISOString();
+    const result = this.connection.db
+      .prepare(
+        'UPDATE saved_documents SET markdown = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(markdown, now, id);
+    if (result.changes === 0) return null;
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = this.connection.db
+      .prepare('DELETE FROM saved_documents WHERE id = ?')
+      .run(id);
+    return result.changes > 0;
+  }
+}

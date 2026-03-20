@@ -1,10 +1,16 @@
+import { useState, useRef, useEffect } from 'react';
 import { useImageUpload } from './viewmodel/useImageUpload';
 import { useOCR } from './viewmodel/useOCR';
 import { useHealthStatus } from './viewmodel/useHealthStatus';
+import { useSessionHistory } from './viewmodel/useSessionHistory';
+import { useSavedDocuments } from './viewmodel/useSavedDocuments';
+import { useVocabulary } from './viewmodel/useVocabulary';
+import { usePractice } from './viewmodel/usePractice';
 import { DropZone } from './view/DropZone';
 import { ResultPanel } from './view/ResultPanel';
 import { StatusBar } from './view/StatusBar';
-import { StatusLight } from './view/StatusLight';
+import { HistoryPanel } from './view/HistoryPanel';
+import { PracticeView } from './view/PracticeView';
 
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) {
@@ -13,12 +19,6 @@ function formatFileSize(size: number) {
 
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const WORKFLOW_STEPS = [
-  'Upload an image by clicking, dragging and dropping, or pasting from clipboard via Ctrl+V.',
-  'PaddleOCR extracts raw text, then LM Studio structures it into clean Markdown.',
-  'Copy the Markdown or raw text with one click and use it in your document.',
-];
 
 const HEALTH_LABELS = {
   blue: 'All systems ready',
@@ -31,9 +31,18 @@ export default function App() {
   const upload = useImageUpload();
   const ocr = useOCR();
   const health = useHealthStatus();
+  const history = useSessionHistory();
+  const savedDocs = useSavedDocuments();
+  const vocab = useVocabulary();
+  const practice = usePractice();
+  const pendingFileRef = useRef<File | null>(null);
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
 
   const handleProcess = () => {
-    if (upload.file) ocr.run(upload.file);
+    if (upload.file) {
+      pendingFileRef.current = upload.file;
+      ocr.run(upload.file);
+    }
   };
 
   const handleReset = () => {
@@ -41,9 +50,63 @@ export default function App() {
     ocr.reset();
   };
 
+  useEffect(() => {
+    if (ocr.status === 'success' && ocr.result !== null && pendingFileRef.current !== null) {
+      history.addEntry(pendingFileRef.current, ocr.result);
+      pendingFileRef.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ocr.status, ocr.result]);
+
+  const handleSelectSession = (id: string) => {
+    history.selectEntry(id);
+    setActiveSavedId(null);
+  };
+
+  const handleSelectSaved = (id: string) => {
+    setActiveSavedId(id);
+  };
+
+  const handleDeleteSaved = async (id: string) => {
+    const deleted = await savedDocs.remove(id);
+    if (deleted && activeSavedId === id) {
+      setActiveSavedId(null);
+    }
+  };
+
+  const handleAddVocabulary = async (
+    word: string,
+    vocabType: Parameters<typeof vocab.addWord>[1],
+    translation: string,
+    contextSentence: string,
+  ) => {
+    await vocab.addWord(word, vocabType, translation, contextSentence);
+  };
+
+  const handleStartPractice = () => {
+    void practice.start(vocab.langPair.targetLang, vocab.langPair.nativeLang);
+  };
+
+  const handlePracticeReset = () => {
+    practice.reset();
+    void vocab.refresh();
+  };
+
   const isProcessing = ocr.status === 'loading';
-  const result = ocr.result;
-  const hasResult = result !== null;
+
+  // Determine what to display
+  const activeSavedDoc = activeSavedId
+    ? savedDocs.documents.find(d => d.id === activeSavedId) ?? null
+    : null;
+
+  const displayedResult = activeSavedDoc
+    ? { rawText: activeSavedDoc.markdown, markdown: activeSavedDoc.markdown, filename: activeSavedDoc.filename }
+    : history.activeId !== null
+      ? (history.entries.find(e => e.id === history.activeId)?.result ?? null)
+      : ocr.result;
+
+  const isSavedDocument = activeSavedDoc !== null;
+  const hasResult = displayedResult !== null;
   const fileMeta = upload.file
     ? `${formatFileSize(upload.file.size)} · ${upload.file.type || 'image'}`
     : null;
@@ -94,37 +157,26 @@ export default function App() {
         </section>
 
         <aside className="sidebar">
-          <section className="panel panel--notes">
-            <div className="panel__heading">
-              <div>
-                <span className="panel__eyebrow">Pipeline</span>
-                <h2>How it works</h2>
-              </div>
-              <StatusLight
-                color={health.color}
-                label={HEALTH_LABELS[health.color]}
-                tooltip={health.tooltip}
-              />
-            </div>
-            <ol className="workflow">
-              {WORKFLOW_STEPS.map((step, index) => (
-                <li key={step} className="workflow__item">
-                  <span className="workflow__index">0{index + 1}</span>
-                  <p>{step}</p>
-                </li>
-              ))}
-            </ol>
-          </section>
-
-          <section className="panel panel--notes">
-            <span className="panel__eyebrow">Current file</span>
-            <h2>{upload.file?.name ?? 'No file loaded'}</h2>
-            <p className="panel__text">
-              {upload.file
-                ? `Image ready for OCR: ${fileMeta}`
-                : 'Images up to 10 MB supported. Use Ctrl+V for quick paste.'}
-            </p>
-          </section>
+          <HistoryPanel
+            entries={history.entries}
+            activeId={activeSavedId ? null : history.activeId}
+            onSelect={handleSelectSession}
+            healthColor={health.color}
+            healthLabel={HEALTH_LABELS[health.color]}
+            healthTooltip={health.tooltip}
+            savedDocuments={savedDocs.documents}
+            savedLoading={savedDocs.loading}
+            activeSavedId={activeSavedId}
+            onSelectSaved={handleSelectSaved}
+            onDeleteSaved={handleDeleteSaved}
+            vocabWords={vocab.words}
+            vocabLoading={vocab.loading}
+            vocabLangPair={vocab.langPair}
+            vocabDueCount={vocab.dueCount}
+            onVocabLangPairChange={vocab.setLangPair}
+            onVocabDelete={(id) => void vocab.removeWord(id)}
+            onStartPractice={handleStartPractice}
+          />
         </aside>
 
         <section className="panel panel--result">
@@ -138,8 +190,16 @@ export default function App() {
             </span>
           </div>
 
-          {result ? (
-            <ResultPanel result={result} />
+          {displayedResult ? (
+            <ResultPanel
+              result={displayedResult}
+              onSave={(markdown) => void savedDocs.save(markdown, displayedResult.filename)}
+              saveStatus={savedDocs.saveStatus}
+              onUpdate={activeSavedId ? (markdown) => void savedDocs.update(activeSavedId, markdown) : undefined}
+              isSavedDocument={isSavedDocument}
+              existingWordsSet={vocab.existingWordsSet}
+              onAddVocabulary={handleAddVocabulary}
+            />
           ) : (
             <div className="result-empty">
               <strong>Structured output will appear here</strong>
@@ -150,6 +210,23 @@ export default function App() {
           )}
         </section>
       </main>
+
+      {practice.phase !== 'idle' && (
+        <PracticeView
+          phase={practice.phase}
+          currentExercise={practice.currentExercise}
+          currentIndex={practice.currentIndex}
+          totalExercises={practice.exercises.length}
+          lastAnswer={practice.lastAnswer}
+          isLastExercise={practice.isLastExercise}
+          analysis={practice.analysis}
+          error={practice.error}
+          onAnswer={(a) => void practice.answer(a)}
+          onNext={practice.next}
+          onComplete={() => void practice.complete()}
+          onReset={handlePracticeReset}
+        />
+      )}
     </div>
   );
 }

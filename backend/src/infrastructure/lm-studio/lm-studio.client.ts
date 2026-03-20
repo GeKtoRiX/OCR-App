@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { IHealthCheckPort } from '../../domain/ports/health-check.port';
+import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
 import { LMStudioConfig } from '../config/lm-studio.config';
 
 export interface ChatMessage {
@@ -31,7 +31,7 @@ interface ModelsResponse {
 }
 
 @Injectable()
-export class LMStudioClient extends IHealthCheckPort {
+export class LMStudioClient extends ILmStudioHealthPort {
   private readonly chatUrl: string;
   private readonly modelsUrl: string;
 

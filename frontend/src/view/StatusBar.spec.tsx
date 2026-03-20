@@ -10,12 +10,12 @@ describe('StatusBar', () => {
 
   it('should render loading indicator', () => {
     render(<StatusBar status="loading" error={null} />);
-    expect(screen.getByText('Распознавание')).toBeInTheDocument();
+    expect(screen.getByText('Processing')).toBeInTheDocument();
   });
 
   it('should render success label', () => {
     render(<StatusBar status="success" error={null} />);
-    expect(screen.getByText('Готово')).toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
   });
 
   it('should render error message', () => {

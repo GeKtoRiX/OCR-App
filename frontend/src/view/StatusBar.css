@@ -1,0 +1,71 @@
+.status {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  margin-top: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.status__indicator {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.status__body {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.status__body strong {
+  font-size: 0.92rem;
+}
+
+.status__body span {
+  opacity: 0.78;
+  font-size: 0.85rem;
+}
+
+.status--loading {
+  background: var(--accent-dim);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.status--success {
+  background: var(--green-dim);
+  border-color: rgba(52, 211, 153, 0.2);
+  color: var(--green);
+}
+
+.status--error {
+  background: var(--red-dim);
+  border-color: rgba(248, 113, 113, 0.2);
+  color: var(--red);
+}
+
+.status__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
+
+.status__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

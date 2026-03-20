@@ -109,7 +109,7 @@ describe('useOCR', () => {
     });
 
     expect(result.current.status).toBe('error');
-    expect(result.current.error).toBe('ÐÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð°Ñ Ð¾ÑˆÐ¸Ð±ÐºÐ°');
+    expect(result.current.error).toBe('Unknown error');
   });
 
   it('should reset state back to idle', async () => {
