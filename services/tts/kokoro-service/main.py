@@ -1,24 +1,27 @@
-"""Kokoro TTS sidecar — PyTorch backend (hexgrad/kokoro) with ROCm GPU support."""
+"""Kokoro TTS sidecar — kokoro-onnx backend with ROCm/CPU support."""
 
 from __future__ import annotations
 
-import os
-
-# RDNA3 GPUs (gfx1100/1101/1102, e.g. RX 7600 XT) need this before torch import
-if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
-    os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
-
 import io
 import logging
+import os
+import re
+import shutil
 import struct
+import urllib.request
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
+
+# RDNA3 GPUs (gfx1100/1101/1102, e.g. RX 7600 XT) may need this for ROCm stacks.
+if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
+    os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
 
 logger = logging.getLogger("kokoro-sidecar")
 logging.basicConfig(
@@ -27,40 +30,47 @@ logging.basicConfig(
 )
 
 SERVICE_NAME = "kokoro-sidecar"
+SERVICE_DIR = Path(__file__).resolve().parent
+MODELS_DIR = SERVICE_DIR / "models"
 MAX_TEXT_LENGTH = 5000
 SAMPLE_RATE = 24000
 
-# Language code → KPipeline lang_code
-LANG_CODES = {
-    "en-us": "a",  # American English
-    "en-gb": "b",  # British English
-    "es": "e",     # Spanish
-    "fr": "f",     # French
-    "hi": "h",     # Hindi
-    "it": "i",     # Italian
-    "ja": "j",     # Japanese
-    "pt": "p",     # Brazilian Portuguese
-    "zh": "z",     # Mandarin Chinese
-}
-
-# American English voices (af_ = female, am_ = male)
-VOICES_US = [
-    "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica",
-    "af_kore",  "af_nicole", "af_nova",  "af_river", "af_sarah", "af_sky",
-    "am_adam",  "am_echo",  "am_eric",  "am_fenrir", "am_liam",
-    "am_michael", "am_onyx", "am_puck", "am_santa",
+SUPPORTED_LANGUAGES = [
+    "en-us",
+    "en-gb",
+    "es",
+    "fr",
+    "hi",
+    "it",
+    "ja",
+    "pt",
+    "zh",
 ]
 
-# British English voices (bf_ = female, bm_ = male)
+VOICES_US = [
+    "af_heart",
+    "af_bella",
+    "af_nicole",
+    "am_fenrir",
+    "am_michael",
+]
+
 VOICES_GB = [
-    "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
-    "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+    "bf_emma",
+    "bm_fable",
 ]
 
 ALL_VOICES = set(VOICES_US + VOICES_GB)
+CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
+DEFAULT_MODEL_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/kokoro-v1.0.onnx"
+)
+DEFAULT_VOICES_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+    "model-files-v1.0/voices-v1.0.bin"
+)
 
-
-# ─── helpers ───────────────────────────────────────────────────────────────────
 
 def _wav_from_samples(samples: np.ndarray, sample_rate: int) -> bytes:
     pcm = (np.clip(samples.flatten(), -1.0, 1.0) * 32767).astype(np.int16)
@@ -71,133 +81,195 @@ def _wav_from_samples(samples: np.ndarray, sample_rate: int) -> bytes:
     buf.write(struct.pack("<I", 36 + len(data)))
     buf.write(b"WAVE")
     buf.write(b"fmt ")
-    buf.write(struct.pack(
-        "<IHHIIHH", 16, 1, channels,
-        sample_rate, sample_rate * channels * sampwidth,
-        channels * sampwidth, sampwidth * 8,
-    ))
+    buf.write(
+        struct.pack(
+            "<IHHIIHH",
+            16,
+            1,
+            channels,
+            sample_rate,
+            sample_rate * channels * sampwidth,
+            channels * sampwidth,
+            sampwidth * 8,
+        )
+    )
     buf.write(b"data")
     buf.write(struct.pack("<I", len(data)))
     buf.write(data)
     return buf.getvalue()
 
 
-# ─── AppConfig ─────────────────────────────────────────────────────────────────
+def _download_file(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = destination.with_suffix(destination.suffix + ".tmp")
+    logger.info("Kokoro ONNX: downloading %s -> %s", url, destination)
+    with urllib.request.urlopen(url) as response, tmp_path.open("wb") as target:
+        shutil.copyfileobj(response, target)
+    tmp_path.replace(destination)
+
 
 @dataclass(frozen=True)
 class AppConfig:
     host: str
     port: int
     use_gpu: bool
+    model_path: Path
+    voices_path: Path
+    model_url: str
+    voices_url: str
 
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
             host=os.getenv("KOKORO_HOST", "0.0.0.0"),
             port=int(os.getenv("KOKORO_PORT", "8200")),
-            use_gpu=os.getenv("KOKORO_USE_GPU", "true").lower() in {"1", "true", "yes", "on"},
+            use_gpu=os.getenv("KOKORO_USE_GPU", "true").lower()
+            in {"1", "true", "yes", "on"},
+            model_path=Path(
+                os.getenv(
+                    "KOKORO_ONNX_MODEL_PATH",
+                    str(MODELS_DIR / "kokoro-v1.0.onnx"),
+                )
+            ),
+            voices_path=Path(
+                os.getenv(
+                    "KOKORO_ONNX_VOICES_PATH",
+                    str(MODELS_DIR / "voices-v1.0.bin"),
+                )
+            ),
+            model_url=os.getenv("KOKORO_ONNX_MODEL_URL", DEFAULT_MODEL_URL),
+            voices_url=os.getenv("KOKORO_ONNX_VOICES_URL", DEFAULT_VOICES_URL),
         )
 
-
-# ─── Request model ─────────────────────────────────────────────────────────────
 
 class TtsRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    text:  str   = Field(min_length=1, max_length=MAX_TEXT_LENGTH)
-    voice: str   = Field(default="af_heart")
-    lang:  str   = Field(default="en-us")
+    text: str = Field(min_length=1, max_length=MAX_TEXT_LENGTH)
+    voice: str = Field(default="af_heart")
+    lang: str = Field(default="en-us")
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
-
-# ─── KokoroEngine ──────────────────────────────────────────────────────────────
 
 class KokoroEngine:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._pipelines: dict[str, Any] = {}  # lang_code → KPipeline
-        self._device = "cpu"
+        self._engine: Any = None
+        self._provider = "CPUExecutionProvider"
 
     @property
     def ready(self) -> bool:
-        return len(self._pipelines) > 0
+        return self._engine is not None
 
     @property
     def device_name(self) -> str:
-        if self._device == "cuda":
-            return "gpu (ROCm/CUDA)"
-        return "cpu"
+        return "cpu" if self._provider == "CPUExecutionProvider" else "gpu (ROCm/CUDA)"
+
+    def _ensure_assets(self) -> None:
+        if not self._config.model_path.exists():
+            _download_file(self._config.model_url, self._config.model_path)
+        if not self._config.voices_path.exists():
+            _download_file(self._config.voices_url, self._config.voices_path)
+
+    def _select_providers(self, available: list[str]) -> list[str]:
+        env_provider = os.getenv("ONNX_PROVIDER")
+        if env_provider:
+            requested = [env_provider]
+        elif self._config.use_gpu:
+            requested = [
+                "ROCMExecutionProvider",
+                "CUDAExecutionProvider",
+            ]
+        else:
+            requested = []
+
+        providers = [provider for provider in requested if provider in available]
+        if "CPUExecutionProvider" not in providers:
+            providers.append("CPUExecutionProvider")
+        return providers
 
     def start(self) -> None:
-        import torch
-        from kokoro import KPipeline
+        import onnxruntime as ort
+        from kokoro_onnx import Kokoro
 
-        # Determine device
-        if self._config.use_gpu and torch.cuda.is_available():
-            self._device = "cuda"
-            gpu_name = torch.cuda.get_device_name(0)
-            logger.info("Kokoro: GPU detected — %s", gpu_name)
-        else:
-            self._device = "cpu"
-            if self._config.use_gpu:
-                logger.warning("Kokoro: GPU requested but not available, using CPU")
+        self._ensure_assets()
+        available = ort.get_available_providers()
+        providers = self._select_providers(available)
+        logger.info("Kokoro ONNX: available providers=%s", available)
+        attempt_lists = [providers]
+        if providers != ["CPUExecutionProvider"]:
+            attempt_lists.append(["CPUExecutionProvider"])
 
-        # Pre-load American English pipeline (most common)
-        logger.info("Kokoro: loading pipeline (lang=a, device=%s)...", self._device)
-        pipeline = KPipeline(lang_code="a", device=self._device)
-        self._pipelines["a"] = pipeline
+        last_error: Exception | None = None
+        for attempt in attempt_lists:
+            try:
+                logger.info("Kokoro ONNX: selected providers=%s", attempt)
+                session = ort.InferenceSession(str(self._config.model_path), providers=attempt)
+                provider = session.get_providers()[0]
+                engine = Kokoro.from_session(
+                    session,
+                    voices_path=str(self._config.voices_path),
+                )
+                logger.info("Kokoro ONNX: running probe synthesis...")
+                engine.create("test", voice="af_heart", speed=1.0, lang="en-us")
+                self._provider = provider
+                self._engine = engine
+                logger.info(
+                    "Kokoro ready. device=%s, provider=%s, voices=%d",
+                    self.device_name,
+                    self._provider,
+                    len(VOICES_US) + len(VOICES_GB),
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Kokoro ONNX provider attempt failed for %s: %s",
+                    attempt,
+                    exc,
+                )
 
-        # Probe: run a tiny synthesis to verify everything works
-        logger.info("Kokoro: running probe synthesis...")
-        for _, _, audio in pipeline("test", voice="af_heart", speed=1.0):
-            break  # just need one chunk
-        logger.info("Kokoro ready. device=%s, voices=%d",
-                    self.device_name, len(VOICES_US) + len(VOICES_GB))
-
-    def _get_pipeline(self, lang_code: str) -> Any:
-        if lang_code in self._pipelines:
-            return self._pipelines[lang_code]
-
-        from kokoro import KPipeline
-        logger.info("Kokoro: lazy-loading pipeline for lang=%s", lang_code)
-        pipeline = KPipeline(lang_code=lang_code, device=self._device)
-        self._pipelines[lang_code] = pipeline
-        return pipeline
+        raise RuntimeError(f"Failed to initialize Kokoro ONNX: {last_error}") from last_error
 
     def synthesize(self, req: TtsRequest) -> bytes:
         if not self.ready:
             raise HTTPException(status_code=503, detail="Kokoro not loaded")
 
         voice = req.voice if req.voice in ALL_VOICES else "af_heart"
+        lang = req.lang if req.lang in SUPPORTED_LANGUAGES else "en-us"
 
-        # Determine language from voice prefix or request
-        if voice.startswith(("bf_", "bm_")):
-            lang_code = "b"  # British English
-        else:
-            lang_code = LANG_CODES.get(req.lang, "a")
+        if voice.startswith(("bf_", "bm_")) and req.lang == "en-us":
+            lang = "en-gb"
 
-        pipeline = self._get_pipeline(lang_code)
+        if lang in {"en-us", "en-gb"} and CYRILLIC_RE.search(req.text):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Kokoro in this stack supports English voices only. "
+                    "Cyrillic text should use another TTS engine."
+                ),
+            )
 
         try:
-            # Collect all audio chunks from the generator
-            audio_chunks = []
-            for _, _, audio in pipeline(req.text, voice=voice, speed=req.speed):
-                if audio is not None:
-                    audio_chunks.append(np.asarray(audio, dtype=np.float32))
-
-            if not audio_chunks:
+            audio, sample_rate = self._engine.create(
+                req.text,
+                voice=voice,
+                speed=req.speed,
+                lang=lang,
+            )
+            audio = np.asarray(audio, dtype=np.float32)
+            if audio.size == 0:
                 raise HTTPException(status_code=500, detail="Kokoro produced no audio")
-
-            full_audio = np.concatenate(audio_chunks)
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Kokoro synthesis error: {exc}") from exc
+            raise HTTPException(
+                status_code=500,
+                detail=f"Kokoro synthesis error: {exc}",
+            ) from exc
 
-        return _wav_from_samples(full_audio, SAMPLE_RATE)
+        return _wav_from_samples(audio, sample_rate or SAMPLE_RATE)
 
-
-# ─── DI helper ─────────────────────────────────────────────────────────────────
 
 def get_engine(request: Request) -> KokoroEngine:
     engine = getattr(request.app.state, "kokoro", None)
@@ -205,8 +277,6 @@ def get_engine(request: Request) -> KokoroEngine:
         raise HTTPException(status_code=503, detail="Kokoro engine not available")
     return engine
 
-
-# ─── App factory ───────────────────────────────────────────────────────────────
 
 def create_app(config: Optional[AppConfig] = None) -> FastAPI:
     config = config or AppConfig.from_env()
@@ -221,7 +291,7 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
 
     app = FastAPI(
         title="Kokoro TTS Sidecar",
-        description="Kokoro TTS (PyTorch) — ROCm/CUDA/CPU — en-US, en-GB + more",
+        description="Kokoro TTS (ONNX Runtime) — ROCm/CUDA/CPU — en-US, en-GB + more",
         version="3.0.0",
         lifespan=lifespan,
     )
@@ -232,10 +302,12 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
         return {
             "status": "healthy" if engine.ready else "loading",
             "service": SERVICE_NAME,
+            "ready": engine.ready,
             "device": engine.device_name,
+            "provider": engine._provider,
             "voices_us": VOICES_US,
             "voices_gb": VOICES_GB,
-            "languages": list(LANG_CODES.keys()),
+            "languages": SUPPORTED_LANGUAGES,
         }
 
     @app.post("/tts")
@@ -263,5 +335,6 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     runtime_config = AppConfig.from_env()
     uvicorn.run("main:app", host=runtime_config.host, port=runtime_config.port)

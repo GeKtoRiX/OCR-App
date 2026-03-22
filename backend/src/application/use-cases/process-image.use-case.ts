@@ -28,7 +28,12 @@ export class ProcessImageUseCase {
       };
     }
 
-    const markdown = await this.structuringService.structureAsMarkdown(rawText);
+    let markdown: string;
+    try {
+      markdown = await this.structuringService.structureAsMarkdown(rawText);
+    } catch {
+      markdown = rawText;
+    }
 
     return { rawText, markdown };
   }

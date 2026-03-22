@@ -1,8 +1,10 @@
 # OCR-App
 
+Alpha release baseline: `v0.1.0-alpha.1`
+
 Web application for extracting text from images. Upload a screenshot, photo of a document, or any image containing text — the app will extract the text, format it as Markdown, and optionally synthesize it as speech.
 
-**Everything runs locally.** No data is sent to the cloud.
+**Core OCR, TTS, vocabulary, and practice flows run locally.** The only cloud-dependent feature is the optional `agentic` API (`/api/agents/*`), which requires `OPENAI_API_KEY`.
 
 ---
 
@@ -11,14 +13,14 @@ Web application for extracting text from images. Upload a screenshot, photo of a
 ```
 Image → PaddleOCR (recognition) → LM Studio (Markdown formatting) → Result
                                                                          ↓
-                                          Supertone / Kokoro / Qwen TTS (optional WAV)
+                              Supertone / Piper / Kokoro / F5 TTS (optional WAV)
 ```
 
 1. **PaddleOCR** — fast OCR engine running as a separate local sidecar (Python FastAPI, port 8000). Supports GPU (AMD ROCm) and CPU.
 2. **LM Studio** — local LLM server. Used to structure raw OCR text into Markdown and to generate vocabulary exercises.
-3. **Supertone TTS** — local TTS sidecar (Python FastAPI, port 8100). ONNX Runtime-based, supports AMD ROCm GPU. Voices: M1–M5, F1–F5. Languages: en, ko, es, pt, fr.
-4. **Kokoro TTS** — local TTS sidecar (Python FastAPI, port 8200). GPU support.
-5. **Qwen TTS CustomVoice** — local TTS sidecar (Python FastAPI, port 8300). Runs `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` and requires a working GPU.
+3. **Supertone + Piper TTS** — shared local TTS sidecar (Python FastAPI, port 8100). Supertone supports AMD ROCm GPU and automatically falls back to CPU if the GPU runtime is present but inference fails. Piper voices are downloaded on demand and run through the same sidecar.
+4. **Kokoro TTS** — local TTS sidecar (Python FastAPI, port 8200). Uses `kokoro-onnx` with ONNX Runtime; tries ROCm GPU first and falls back to CPU if the provider cannot initialize or run inference.
+5. **F5 TTS** — local TTS sidecar (Python FastAPI, port 8300). Uses uploaded reference audio + reference text for voice cloning and requires a working GPU.
 
 ---
 
@@ -95,62 +97,62 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+# Optional ROCm path for ONNX Runtime:
+pip uninstall -y onnxruntime
+pip install onnxruntime-rocm==1.22.2.post1
 ```
 
-### 7. Set up the Qwen TTS sidecar
+> The Kokoro sidecar uses `kokoro-onnx` and downloads `kokoro-v1.0.onnx` plus `voices-v1.0.bin` into `services/tts/kokoro-service/models/` on first run if they are missing.
+> On this project stack the service prefers `ROCMExecutionProvider`, but falls back to `CPUExecutionProvider` automatically if ROCm cannot execute the model on the current GPU.
+
+### 7. Set up the F5 TTS sidecar
 
 ```bash
-cd services/tts/qwen-service
+cd services/tts/f5-service
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` is GPU-only in this project. If the sidecar cannot report `ready: true` and `device: gpu`, it stays unavailable by design.
-> On `RX 7600 XT / gfx1102`, this project runs Qwen with `HSA_OVERRIDE_GFX_VERSION=11.0.0` and `QWEN_TTS_ATTN_IMPLEMENTATION=eager`.
+> `F5-TTS` is GPU-only in this project. If the sidecar cannot report `ready: true` and `device: gpu`, it stays unavailable by design.
+> On AMD ROCm systems, keep `LD_LIBRARY_PATH` pointed at the PyTorch ROCm libs when launching the sidecar.
 
-### 8. Start everything
-
-```bash
-chmod +x scripts/linux/ocr.sh
-./scripts/linux/ocr.sh
-```
-
-The script auto-starts PaddleOCR, Supertone TTS, Kokoro TTS, Qwen TTS, and the NestJS backend. Press **Ctrl+C** to stop all services gracefully.
-
-**Done!** The app will be available at [http://localhost:3000](http://localhost:3000).
-
-### Alternative mode-based launcher
+### 8. Start a launcher
 
 ```bash
-chmod +x scripts/linux/ocr-menu.sh
-./scripts/linux/ocr-menu.sh
+chmod +x scripts/linux/ocr.sh scripts/linux/tts.sh scripts/linux/ocr-tts.sh
+./scripts/linux/ocr-tts.sh
 ```
 
-`ocr-menu.sh` keeps the same general launcher style, but shows a startup menu:
+Use the dedicated entry that matches your mode:
 
-- `1` — `OCR`: PaddleOCR + LM Studio + `qwen/qwen3.5-9b` + backend
-- `2` — `TTS`: PaddleOCR + Supertone + Kokoro + Qwen TTS + backend
-- `3` — `All`: OCR + TTS + LM Studio model
+- `./scripts/linux/ocr.sh` starts PaddleOCR + Kokoro + LM Studio + backend
+- `./scripts/linux/tts.sh` starts PaddleOCR + Supertone/Piper + Kokoro + F5 + backend
+- `./scripts/linux/ocr-tts.sh` starts OCR + TTS + LM Studio + backend
+- `./scripts/linux/stack.sh` opens an interactive English menu to start, stop, inspect, and switch stacks without closing the script
 
-Mode `3` checks current free VRAM before startup and refuses to run unless at least `4 GiB` is free. If the VRAM counters are unavailable or the free VRAM is below that threshold, the launcher tells you to use mode `1` or `2` instead.
+`ocr-tts.sh` is the full-stack entry. Press **Ctrl+C** to stop all project services gracefully.
 
-`Ctrl+C`, `stop`, failed startup, and `wipe` use aggressive cleanup in `ocr-menu.sh`: the launcher stops tracked sidecars, terminates known project processes, unloads/stops LM Studio when possible, and force-clears project ports `1234`, `3000`, `5173`, `8000`, `8100`, `8200`, and `8300`. This includes externally started `kokoro` and `vite` listeners.
+**Done!** The app will be available at [http://localhost:3000](http://localhost:3000) when any backend-enabled launcher is running (`ocr.sh`, `tts.sh`, or `ocr-tts.sh`).
 
 ### Manual lifecycle
 
 ```bash
-./scripts/linux/ocr.sh          # start all services (foreground, Ctrl+C to stop)
-./scripts/linux/ocr.sh stop     # stop all services
-./scripts/linux/ocr.sh wipe     # stop + remove all build artifacts
-./scripts/linux/ocr.sh status   # show env config, health and process state
+./scripts/linux/ocr.sh         # start OCR mode (foreground, Ctrl+C to stop)
+./scripts/linux/ocr.sh stop    # stop all project services
+./scripts/linux/ocr.sh wipe    # stop + remove all build artifacts
+./scripts/linux/ocr.sh status  # OCR-oriented health and process state
 
-./scripts/linux/ocr-menu.sh         # interactive OCR / TTS / All launcher
-./scripts/linux/ocr-menu.sh start   # same as above
-./scripts/linux/ocr-menu.sh stop    # aggressive stop + clear all project ports
-./scripts/linux/ocr-menu.sh wipe    # stop + clear ports + remove build artifacts
-./scripts/linux/ocr-menu.sh status  # mode-aware status, plus Vite visibility
+./scripts/linux/tts.sh         # start TTS mode
+./scripts/linux/tts.sh stop    # stop all project services
+./scripts/linux/tts.sh status  # TTS-oriented health and process state
+
+./scripts/linux/ocr-tts.sh         # start full stack
+./scripts/linux/ocr-tts.sh stop    # stop all project services
+./scripts/linux/ocr-tts.sh status  # full-stack health and process state
+
+./scripts/linux/stack.sh       # interactive stack menu (start/stop/switch/status)
 ```
 
 ---
@@ -178,14 +180,21 @@ The **Copy** button copies the active tab content to clipboard.
 
 Click **Edit** in the result panel to switch the text into an editable `<textarea>`. Click **Done** to confirm. Edits affect only what is sent to TTS — the original OCR result is preserved in session history.
 
+### Vocabulary capture and session cleanup
+
+- **Session** history entries can be deleted via the small trash icon that appears on hover.
+- **Saved** documents can also be deleted via the hover trash icon.
+- **Add to Vocabulary** is available only in the normal rendered **Markdown** view: select text and right-click.
+- In **Edit** mode, vocabulary capture is intentionally disabled.
+
 ### Text-to-Speech (TTS)
 
 Click the **TTS** toggle in the result panel to open the settings panel:
 
-- **Voice** — select M1–M5 (male) or F1–F5 (female)
-- **Language** — en / ko / es / pt / fr
-- **Speed** — 0.5× to 2.0×
-- **Quality** — total denoising steps (1–20)
+- **Supertone** — preset voices M1–M5 / F1–F5
+- **Kokoro** — local Kokoro voices
+- **Piper** — downloadable Piper voices
+- **F5** — upload a short reference audio clip and enter its transcript
 
 Click **Generate** to synthesize speech. The WAV file downloads automatically.
 
@@ -195,8 +204,8 @@ A color-coded indicator shows service health at all times:
 
 | Color | Status |
 |-------|--------|
-| 🔵 Blue | All systems fully operational (GPU + LM Studio + Qwen TTS + Supertone) |
-| 🟢 Green | PaddleOCR GPU OK, but LM Studio / Qwen TTS / Supertone missing |
+| 🔵 Blue | All systems fully operational (GPU + LM Studio + F5 TTS + Supertone) |
+| 🟢 Green | PaddleOCR GPU OK, but LM Studio / F5 TTS / Supertone missing |
 | 🟡 Yellow | PaddleOCR running on CPU |
 | 🔴 Red | PaddleOCR unreachable |
 
@@ -222,12 +231,10 @@ SUPERTONE_HOST=localhost
 SUPERTONE_PORT=8100
 SUPERTONE_TIMEOUT=120000
 
-# Qwen TTS
-QWEN_TTS_HOST=localhost
-QWEN_TTS_PORT=8300
-QWEN_TTS_TIMEOUT=180000
-QWEN_TTS_HSA_OVERRIDE_GFX_VERSION=11.0.0
-QWEN_TTS_ATTN_IMPLEMENTATION=eager
+# F5 TTS
+F5_TTS_HOST=localhost
+F5_TTS_PORT=8300
+F5_TTS_TIMEOUT=180000
 
 # Server
 PORT=3000
@@ -243,13 +250,7 @@ If your ROCm setup needs it, export the override before starting the sidecars:
 export HSA_OVERRIDE_GFX_VERSION=11.0.0
 ```
 
-For Qwen on `RX 7600 XT / gfx1102`, also keep the attention backend on `eager`:
-
-```bash
-export QWEN_TTS_ATTN_IMPLEMENTATION=eager
-```
-
-The `ocr.sh` script sets the required `LD_LIBRARY_PATH` automatically and defaults Qwen to these ROCm-safe values.
+The launcher scripts set the required `LD_LIBRARY_PATH` automatically for F5 and the other ROCm-enabled sidecars.
 
 ---
 
@@ -263,19 +264,38 @@ npm install
 npm run dev:paddleocr    # PaddleOCR sidecar (port 8000)
 npm run smoke:paddleocr  # Smoke-test PaddleOCR startup
 
-npm run dev:supertone    # Supertone TTS sidecar (port 8100, GPU enabled)
-npm run smoke:supertone  # Smoke-test Supertone startup
+npm run dev:supertone    # Supertone + Piper TTS sidecar (port 8100)
+npm run smoke:supertone  # Smoke-test Supertone + Piper startup
 
-npm run dev:kokoro       # Kokoro TTS sidecar (port 8200, GPU enabled)
+npm run dev:kokoro       # Kokoro TTS sidecar (port 8200, ONNX Runtime with ROCm->CPU fallback)
+npm run smoke:kokoro     # Smoke-test Kokoro startup
 
-npm run dev:qwen         # Qwen TTS CustomVoice sidecar (port 8300, GPU required)
-npm run smoke:qwen       # Smoke-test Qwen TTS startup
+npm run dev:f5           # F5 TTS sidecar (port 8300, GPU required)
+npm run smoke:f5         # Smoke-test F5 TTS startup
+
+npm run smoke:lmstudio   # Smoke-test LM Studio structuring from backend
+npm run smoke:all        # PaddleOCR + Supertone/Piper + Kokoro + F5 smoke suite
 
 npm run dev:backend      # NestJS backend (port 3000)
 npm run dev:frontend     # Vite dev server (port 5173, proxies /api → :3000)
 ```
 
 App is available at [http://localhost:5173](http://localhost:5173) in dev mode.
+
+### Tests and perf
+
+```bash
+npm run test:cov              # frontend + backend coverage
+npm run test:e2e:api          # backend API e2e
+npm run test:e2e:integration  # backend integration tests against live deps
+npm run test:e2e:browser      # Playwright browser e2e on production-like stack
+
+npm run perf:api              # API latency benchmark
+npm run perf:browser          # browser workflow benchmark
+npm run perf:phase4           # full Phase 4 benchmark harness
+```
+
+`test:e2e:browser` and `perf:phase4` use a temporary SQLite database under `tmp/test-db/` and set `LM_STUDIO_SMOKE_ONLY=true`, so browser/perf runs do not send real structuring or vocabulary LLM requests to LM Studio.
 
 ---
 
@@ -284,7 +304,7 @@ App is available at [http://localhost:5173](http://localhost:5173) in dev mode.
 ### App does not open / connection error
 
 1. Check that the backend started: `curl http://localhost:3000/api/health`
-2. Check the terminal where you ran `ocr.sh` for errors.
+2. Check the terminal where you ran the launcher script for errors.
 
 ### Red indicator / OCR not working
 
@@ -299,13 +319,20 @@ App is available at [http://localhost:5173](http://localhost:5173) in dev mode.
 3. Check `.logs/supertone.log` for errors.
 4. GPU (ROCm) not required — the sidecar falls back to CPU automatically.
 
-### Qwen TTS not working
+### F5 TTS not working
 
-1. Check that the Qwen sidecar responds: `curl http://localhost:8300/health`
-2. Qwen TTS is GPU-only in this project. If `/health` shows `ready: false` or `device` is not `gpu`, synthesis is intentionally disabled.
-3. On first run the `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` model downloads from Hugging Face.
-4. On `RX 7600 XT / gfx1102`, use `HSA_OVERRIDE_GFX_VERSION=11.0.0` and `QWEN_TTS_ATTN_IMPLEMENTATION=eager`.
-5. Check `.logs/qwen.log` for model load or ROCm/CUDA errors.
+1. Check that the F5 sidecar responds: `curl http://localhost:8300/health`
+2. F5 TTS is GPU-only in this project. If `/health` shows `ready: false` or `device` is not `gpu`, synthesis is intentionally disabled.
+3. On first run the model downloads from Hugging Face.
+4. F5 requires both a reference audio file and matching reference text.
+5. Check `logs/f5.log` for model load or ROCm/CUDA errors.
+
+### Kokoro TTS not working
+
+1. Check that the Kokoro sidecar responds: `curl http://localhost:8200/health`
+2. Check the `provider` field in `/health`. `ROCMExecutionProvider` means GPU ONNX is active; `CPUExecutionProvider` means the service fell back to CPU.
+3. On first run the sidecar downloads `kokoro-v1.0.onnx` and `voices-v1.0.bin` into `services/tts/kokoro-service/models/`.
+4. Check `logs/kokoro.log` for ONNX Runtime provider initialization errors.
 
 ### LM Studio unavailable
 
@@ -359,8 +386,8 @@ curl http://localhost:3000/api/health
   "lmStudioModels": ["qwen/qwen3.5-9b"],
   "superToneReachable": true,
   "kokoroReachable": true,
-  "qwenTtsReachable": true,
-  "qwenTtsDevice": "gpu"
+  "f5TtsReachable": true,
+  "f5TtsDevice": "gpu"
 }
 ```
 
@@ -368,12 +395,21 @@ curl http://localhost:3000/api/health
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","voice":"M1","lang":"en","speed":1.05,"totalSteps":5}' \
+  -F "engine=f5" \
+  -F "text=Hello world" \
+  -F "refText=This is a short reference clip." \
+  -F "refAudio=@reference.wav" \
   --output speech.wav
 ```
 
-Returns `audio/wav` binary (44100 Hz, mono).
+Returns `audio/wav` binary.
+
+Supported engines:
+
+- `supertone` — voices `M1`-`M5`, `F1`-`F5`; langs `en`, `ko`, `es`, `pt`, `fr`
+- `piper` — curated downloadable voices such as `en_US-hfc_female-medium`
+- `kokoro` — local voices such as `af_heart`, `af_bella`, `am_fenrir`, `bm_fable`
+- `f5` — reference-audio voice cloning
 
 ### `POST /api/documents`
 
@@ -395,7 +431,7 @@ curl -X POST http://localhost:3000/api/vocabulary \
   -d '{"word":"beautiful","vocabType":"word","translation":"красивый","targetLang":"en","nativeLang":"ru"}'
 
 # List: GET /api/vocabulary?targetLang=en&nativeLang=ru
-# Due:  GET /api/vocabulary/due?limit=20
+# Due:  GET /api/vocabulary/review/due?limit=20
 ```
 
 ### Practice
@@ -404,7 +440,7 @@ curl -X POST http://localhost:3000/api/vocabulary \
 # Start session
 curl -X POST http://localhost:3000/api/practice/start \
   -H "Content-Type: application/json" \
-  -d '{"targetLang":"en","nativeLang":"ru","wordCount":10}'
+  -d '{"targetLang":"en","nativeLang":"ru","wordLimit":10}'
 
 # Submit answer
 curl -X POST http://localhost:3000/api/practice/answer \
@@ -424,6 +460,7 @@ curl -X POST http://localhost:3000/api/practice/complete \
 - **Backend:** NestJS 10 (TypeScript)
 - **Frontend:** React 18 + Vite 6 (TypeScript)
 - **OCR:** PaddleOCR (Python FastAPI, AMD ROCm, port 8000)
-- **TTS:** Supertone / supertonic (Python FastAPI, ONNX Runtime, AMD ROCm, port 8100), Kokoro (port 8200), Qwen TTS (port 8300)
+- **TTS:** Supertone + Piper sidecar (Python FastAPI, port 8100), Kokoro ONNX sidecar (Python FastAPI, ONNX Runtime, port 8200), F5 TTS (port 8300)
 - **LLM:** LM Studio (local OpenAI-compatible API, port 1234)
 - **Persistence:** SQLite via better-sqlite3 (saved documents, vocabulary SRS, practice sessions)
+- **Optional agentic runtime:** OpenAI Agents SDK for `/api/agents/*`

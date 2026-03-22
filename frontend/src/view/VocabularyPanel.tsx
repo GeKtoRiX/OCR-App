@@ -29,6 +29,7 @@ export function VocabularyPanel({
             className="vocab-panel__lang-input"
             type="text"
             value={langPair.targetLang}
+            data-testid="vocab-target-lang"
             onChange={(e) =>
               onLangPairChange({ ...langPair, targetLang: e.target.value })
             }
@@ -40,6 +41,7 @@ export function VocabularyPanel({
             className="vocab-panel__lang-input"
             type="text"
             value={langPair.nativeLang}
+            data-testid="vocab-native-lang"
             onChange={(e) =>
               onLangPairChange({ ...langPair, nativeLang: e.target.value })
             }
@@ -51,6 +53,7 @@ export function VocabularyPanel({
           className="vocab-panel__practice-btn"
           onClick={onStartPractice}
           disabled={dueCount === 0}
+          data-testid="vocab-practice-button"
         >
           Practice {dueCount > 0 && <span className="vocab-panel__badge">{dueCount}</span>}
         </button>
@@ -60,7 +63,7 @@ export function VocabularyPanel({
         <div className="vocab-panel__empty">Loading...</div>
       ) : words.length === 0 ? (
         <div className="vocab-panel__empty">
-          No vocabulary words yet. Select text in edit mode and right-click to add words.
+          No vocabulary words yet. Select text in normal mode and right-click to add words.
         </div>
       ) : (
         <ul className="vocab-panel__list">

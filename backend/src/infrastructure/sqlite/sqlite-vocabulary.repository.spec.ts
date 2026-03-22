@@ -50,6 +50,36 @@ describe('SqliteVocabularyRepository', () => {
     expect(word2.nativeLang).toBe('es');
   });
 
+  it('createMany returns an empty array for empty input', async () => {
+    await expect(repo.createMany([])).resolves.toEqual([]);
+  });
+
+  it('createMany inserts multiple vocabulary records', async () => {
+    const words = await repo.createMany([
+      {
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: '',
+        sourceDocumentId: null,
+      },
+      {
+        word: 'goodbye',
+        vocabType: 'word',
+        translation: 'пока',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: '',
+        sourceDocumentId: 'doc-1',
+      },
+    ]);
+
+    expect(words).toHaveLength(2);
+    expect(await repo.findAll()).toHaveLength(2);
+  });
+
   it('findAll returns all words', async () => {
     await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
     await repo.create('goodbye', 'word', 'пока', 'en', 'ru', '', null);
@@ -67,6 +97,15 @@ describe('SqliteVocabularyRepository', () => {
 
     expect(enRu).toHaveLength(1);
     expect(enRu[0].word).toBe('hello');
+  });
+
+  it('findAll falls back to unfiltered results when only one language is provided', async () => {
+    await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
+    await repo.create('hola', 'word', 'hello', 'es', 'en', '', null);
+
+    const result = await repo.findAll('en');
+
+    expect(result).toHaveLength(2);
   });
 
   it('findById returns word when found', async () => {
@@ -108,6 +147,25 @@ describe('SqliteVocabularyRepository', () => {
     expect(due[0].word).toBe('due');
   });
 
+  it('findDueForReview filters due words by language pair when both languages are provided', async () => {
+    await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
+    await repo.create('hola', 'word', 'hello', 'es', 'en', '', null);
+
+    const due = await repo.findDueForReview(10, 'es', 'en');
+
+    expect(due).toHaveLength(1);
+    expect(due[0].word).toBe('hola');
+  });
+
+  it('findDueForReview falls back to the unfiltered query when only one language is provided', async () => {
+    await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
+    await repo.create('hola', 'word', 'hello', 'es', 'en', '', null);
+
+    const due = await repo.findDueForReview(10, 'es');
+
+    expect(due).toHaveLength(2);
+  });
+
   it('updateSrs modifies SM-2 fields', async () => {
     const created = await repo.create('test', 'word', 'тест', 'en', 'ru', '', null);
     const nextReview = '2025-01-02T00:00:00.000Z';
@@ -121,6 +179,12 @@ describe('SqliteVocabularyRepository', () => {
     expect(updated!.nextReviewAt).toBe(nextReview);
   });
 
+  it('updateSrs returns null when no row matches the id', async () => {
+    await expect(
+      repo.updateSrs('missing', 1, 2.6, 1, '2025-01-02T00:00:00.000Z'),
+    ).resolves.toBeNull();
+  });
+
   it('update modifies translation and context', async () => {
     const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
 
@@ -129,6 +193,10 @@ describe('SqliteVocabularyRepository', () => {
     expect(updated).not.toBeNull();
     expect(updated!.translation).toBe('новый перевод');
     expect(updated!.contextSentence).toBe('new context');
+  });
+
+  it('update returns null when no row matches the id', async () => {
+    await expect(repo.update('missing', 'x', 'y')).resolves.toBeNull();
   });
 
   it('delete removes word and returns true', async () => {

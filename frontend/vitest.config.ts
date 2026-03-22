@@ -8,5 +8,16 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test-setup.ts',
     include: ['src/**/*.spec.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'html'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+        'src/test-setup.ts',
+      ],
+    },
   },
 });

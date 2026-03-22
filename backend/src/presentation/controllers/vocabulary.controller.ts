@@ -10,10 +10,12 @@ import {
   HttpException,
   HttpStatus,
   BadRequestException,
+  UseInterceptors,
 } from '@nestjs/common';
 import { VocabularyUseCase } from '../../application/use-cases/vocabulary.use-case';
 import { AddVocabularyDto, UpdateVocabularyDto } from '../dto/vocabulary.dto';
 import type { VocabType } from '../../domain/entities/vocabulary-word.entity';
+import { ETagInterceptor } from '../interceptors/etag.interceptor';
 
 const VALID_VOCAB_TYPES: VocabType[] = [
   'word',
@@ -23,6 +25,7 @@ const VALID_VOCAB_TYPES: VocabType[] = [
   'expression',
 ];
 
+@UseInterceptors(ETagInterceptor)
 @Controller('api/vocabulary')
 export class VocabularyController {
   constructor(private readonly vocabularyUseCase: VocabularyUseCase) {}
@@ -63,6 +66,38 @@ export class VocabularyController {
       contextSentence: body.contextSentence ?? '',
       sourceDocumentId: body.sourceDocumentId,
     });
+  }
+
+  @Post('batch')
+  async createBatch(@Body() body: AddVocabularyDto[]) {
+    if (!Array.isArray(body) || body.length === 0) {
+      throw new BadRequestException('Request body must be a non-empty array');
+    }
+    if (body.length > 500) {
+      throw new BadRequestException('Maximum 500 words per batch');
+    }
+    for (const item of body) {
+      if (!item.word?.trim()) throw new BadRequestException('word is required for all items');
+      if (!item.vocabType || !VALID_VOCAB_TYPES.includes(item.vocabType as VocabType)) {
+        throw new BadRequestException(
+          `vocabType must be one of: ${VALID_VOCAB_TYPES.join(', ')}`,
+        );
+      }
+      if (!item.targetLang || !item.nativeLang) {
+        throw new BadRequestException('targetLang and nativeLang are required for all items');
+      }
+    }
+    return this.vocabularyUseCase.addMany(
+      body.map((item) => ({
+        word: item.word.trim(),
+        vocabType: item.vocabType as VocabType,
+        translation: item.translation ?? '',
+        targetLang: item.targetLang,
+        nativeLang: item.nativeLang,
+        contextSentence: item.contextSentence ?? '',
+        sourceDocumentId: item.sourceDocumentId,
+      })),
+    );
   }
 
   @Get()

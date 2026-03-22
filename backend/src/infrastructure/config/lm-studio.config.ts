@@ -8,6 +8,8 @@ export class LMStudioConfig {
     process.env.OCR_MODEL || 'paddleocr-vl-0.9b';
   readonly structuringModel: string =
     process.env.STRUCTURING_MODEL || 'qwen/qwen3.5-9b';
+  readonly vocabularyModel: string =
+    process.env.VOCABULARY_MODEL || process.env.STRUCTURING_MODEL || 'qwen/qwen3.5-9b';
   readonly timeoutMs: number = parseInt(
     process.env.LM_STUDIO_TIMEOUT || '120000',
     10,

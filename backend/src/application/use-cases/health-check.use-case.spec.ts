@@ -3,7 +3,7 @@ import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
 import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
-import { IQwenTtsPort } from '../../domain/ports/qwen-tts.port';
+import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
 
 describe('HealthCheckUseCase', () => {
   let useCase: HealthCheckUseCase;
@@ -11,7 +11,7 @@ describe('HealthCheckUseCase', () => {
   let mockPaddleOcrHealth: jest.Mocked<IPaddleOcrHealthPort>;
   let mockSupertone: jest.Mocked<ISupertonePort>;
   let mockKokoro: jest.Mocked<IKokoroPort>;
-  let mockQwenTts: jest.Mocked<IQwenTtsPort>;
+  let mockF5Tts: jest.Mocked<IF5TtsPort>;
 
   beforeEach(() => {
     mockLmStudioHealth = {
@@ -31,18 +31,22 @@ describe('HealthCheckUseCase', () => {
       checkHealth: jest.fn().mockResolvedValue(false),
       synthesize: jest.fn(),
     } as unknown as jest.Mocked<IKokoroPort>;
-    mockQwenTts = {
+    mockF5Tts = {
       getHealth: jest.fn().mockResolvedValue({ reachable: false, device: null }),
       synthesize: jest.fn(),
-    } as unknown as jest.Mocked<IQwenTtsPort>;
+    } as unknown as jest.Mocked<IF5TtsPort>;
 
     useCase = new HealthCheckUseCase(
       mockLmStudioHealth,
       mockPaddleOcrHealth,
       mockSupertone,
       mockKokoro,
-      mockQwenTts,
+      mockF5Tts,
     );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('should return both services as reachable with models when both are up', async () => {
@@ -53,7 +57,7 @@ describe('HealthCheckUseCase', () => {
     mockLmStudioHealth.listModels.mockResolvedValue(['qwen/qwen3.5-9b']);
     mockSupertone.checkHealth.mockResolvedValue(true);
     mockKokoro.checkHealth.mockResolvedValue(true);
-    mockQwenTts.getHealth.mockResolvedValue({
+    mockF5Tts.getHealth.mockResolvedValue({
       reachable: true,
       device: 'gpu',
     });
@@ -67,8 +71,8 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioModels).toEqual(['qwen/qwen3.5-9b']);
     expect(result.superToneReachable).toBe(true);
     expect(result.kokoroReachable).toBe(true);
-    expect(result.qwenTtsReachable).toBe(true);
-    expect(result.qwenTtsDevice).toBe('gpu');
+    expect(result.f5TtsReachable).toBe(true);
+    expect(result.f5TtsDevice).toBe('gpu');
   });
 
   it('should return empty model lists for services that are not reachable', async () => {
@@ -83,7 +87,7 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioReachable).toBe(true);
     expect(result.lmStudioModels).toEqual(['qwen/qwen3.5-9b']);
     expect(result.kokoroReachable).toBe(false);
-    expect(result.qwenTtsReachable).toBe(false);
+    expect(result.f5TtsReachable).toBe(false);
     expect(mockPaddleOcrHealth.listModels).not.toHaveBeenCalled();
   });
 
@@ -100,8 +104,8 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioReachable).toBe(false);
     expect(result.lmStudioModels).toEqual([]);
     expect(result.kokoroReachable).toBe(false);
-    expect(result.qwenTtsReachable).toBe(false);
-    expect(result.qwenTtsDevice).toBeNull();
+    expect(result.f5TtsReachable).toBe(false);
+    expect(result.f5TtsDevice).toBeNull();
   });
 
   it('should keep reachability true even when listModels throws', async () => {
@@ -118,6 +122,27 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioReachable).toBe(true);
     expect(result.lmStudioModels).toEqual([]);
     expect(result.kokoroReachable).toBe(false);
-    expect(result.qwenTtsReachable).toBe(false);
+    expect(result.f5TtsReachable).toBe(false);
+  });
+
+  it('returns the cached result while the TTL is still valid', async () => {
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValueOnce(1_000)
+      .mockReturnValueOnce(5_000);
+
+    mockPaddleOcrHealth.isReachable.mockResolvedValue(true);
+    mockPaddleOcrHealth.listModels.mockResolvedValue(['det']);
+    mockPaddleOcrHealth.getDevice.mockResolvedValue('gpu');
+    mockLmStudioHealth.isReachable.mockResolvedValue(true);
+    mockLmStudioHealth.listModels.mockResolvedValue(['qwen/qwen3.5-9b']);
+
+    const first = await useCase.execute();
+    const second = await useCase.execute();
+
+    expect(second).toEqual(first);
+    expect(mockPaddleOcrHealth.isReachable).toHaveBeenCalledTimes(1);
+    expect(mockLmStudioHealth.isReachable).toHaveBeenCalledTimes(1);
+    expect(mockF5Tts.getHealth).toHaveBeenCalledTimes(1);
   });
 });

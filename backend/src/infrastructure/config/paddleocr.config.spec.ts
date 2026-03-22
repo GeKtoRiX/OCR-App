@@ -42,6 +42,22 @@ describe('PaddleOCRConfig', () => {
     expect(config.timeoutMs).toBe(15000);
   });
 
+  it('should fall back to numeric defaults when env values are invalid', () => {
+    process.env.PADDLEOCR_HOST = 'ocr.internal';
+    process.env.PADDLEOCR_PORT = 'invalid-port';
+    process.env.PADDLEOCR_TIMEOUT = 'invalid-timeout';
+
+    const config = new PaddleOCRConfig();
+
+    expect(config.host).toBe('ocr.internal');
+    expect(config.port).toBe(8000);
+    expect(config.baseUrl).toBe('http://ocr.internal:8000');
+    expect(config.uploadExtractEndpoint).toBe(
+      'http://ocr.internal:8000/api/extract/upload',
+    );
+    expect(config.timeoutMs).toBe(30000);
+  });
+
   it('should list all allowed MIME types', () => {
     const config = new PaddleOCRConfig();
 

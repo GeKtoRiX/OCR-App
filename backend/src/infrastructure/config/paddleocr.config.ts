@@ -18,6 +18,7 @@ export class PaddleOCRConfig {
   // API endpoint configuration
   readonly baseUrl: string = `http://${this.host}:${this.port}`;
   readonly base64ExtractEndpoint: string = `${this.baseUrl}/api/extract/base64`;
+  readonly uploadExtractEndpoint: string = `${this.baseUrl}/api/extract/upload`;
   readonly healthEndpoint: string = `${this.baseUrl}/health`;
   readonly modelsEndpoint: string = `${this.baseUrl}/models`;
 

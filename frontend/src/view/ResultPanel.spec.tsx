@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ResultPanel } from './ResultPanel';
 
@@ -12,8 +12,10 @@ vi.mock('../model/api', () => ({
 }));
 
 import { copyToClipboard } from '../model/clipboard';
+import { generateSpeech } from '../model/api';
 
 const mockCopy = vi.mocked(copyToClipboard);
+const mockGenerateSpeech = vi.mocked(generateSpeech);
 
 describe('ResultPanel', () => {
   const result = {
@@ -24,6 +26,7 @@ describe('ResultPanel', () => {
 
   beforeEach(() => {
     mockCopy.mockClear();
+    mockGenerateSpeech.mockReset();
     global.URL.createObjectURL = vi.fn(() => 'blob:audio-url');
     global.URL.revokeObjectURL = vi.fn();
   });
@@ -92,15 +95,18 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Generate')).toBeInTheDocument();
   });
 
-  it('should expose qwen as a TTS engine option', async () => {
+  it('should expose f5 as a TTS engine option', async () => {
     const user = userEvent.setup();
     render(<ResultPanel result={result} />);
 
     await user.click(screen.getByText('🔊 TTS'));
-    await user.click(screen.getByText('Qwen'));
+    // "F5" matches both the engine button and the supertone voice chip "F5";
+    // target the engine button specifically.
+    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
+    await user.click(engineBtn);
 
-    expect(screen.getByText('Ryan')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Optional speaking style or emotion')).toBeInTheDocument();
+    expect(screen.getByLabelText('Reference Audio')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter the transcript of the reference audio')).toBeInTheDocument();
   });
 
   it('should reset to original content when result prop changes', () => {
@@ -142,5 +148,175 @@ describe('ResultPanel', () => {
     render(<ResultPanel result={result} isSavedDocument />);
 
     expect(screen.queryByText('Raw Text')).not.toBeInTheDocument();
+  });
+
+  it('should update a saved document with edited markdown', async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    render(
+      <ResultPanel
+        result={result}
+        isSavedDocument
+        onUpdate={onUpdate}
+      />,
+    );
+
+    await user.click(screen.getByText('Edit'));
+    const editor = screen.getByRole('textbox');
+    await user.clear(editor);
+    await user.type(editor, '# Updated markdown');
+    await user.click(screen.getByTitle('Update saved document'));
+
+    expect(onUpdate).toHaveBeenCalledWith('# Updated markdown');
+  });
+
+  it('should not allow adding vocabulary in edit mode', async () => {
+    const user = userEvent.setup();
+    const onAddVocabulary = vi.fn();
+    render(
+      <ResultPanel
+        result={result}
+        existingWordsSet={new Set<string>()}
+        onAddVocabulary={onAddVocabulary}
+      />,
+    );
+
+    await user.click(screen.getByText('Edit'));
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const start = result.markdown.indexOf('Markdown');
+    const end = start + 'Markdown'.length;
+    editor.setSelectionRange(start, end);
+
+    fireEvent.contextMenu(editor, { clientX: 40, clientY: 60 });
+    expect(screen.queryByText('Word')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Translation...')).not.toBeInTheDocument();
+    expect(onAddVocabulary).not.toHaveBeenCalled();
+  });
+
+  it('should allow adding vocabulary from the rendered result without entering edit mode', async () => {
+    const user = userEvent.setup();
+    const onAddVocabulary = vi.fn();
+    render(
+      <ResultPanel
+        result={result}
+        existingWordsSet={new Set<string>()}
+        onAddVocabulary={onAddVocabulary}
+      />,
+    );
+
+    const content = screen.getByTestId('result-content');
+    const textNode = content.firstChild;
+    expect(textNode).not.toBeNull();
+
+    const start = result.markdown.indexOf('Markdown');
+    const end = start + 'Markdown'.length;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(textNode!, start);
+    range.setEnd(textNode!, end);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.mouseDown(content, { button: 2 });
+    fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    await user.click(screen.getByText('Word'));
+    await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
+    await user.click(screen.getByText('Add'));
+
+    expect(onAddVocabulary).toHaveBeenCalledWith(
+      'Markdown',
+      'word',
+      'перевод',
+      '# Markdown content',
+    );
+  });
+
+  it('should keep the selected text for right click even if the browser collapses the selection', async () => {
+    const user = userEvent.setup();
+    const onAddVocabulary = vi.fn();
+    render(
+      <ResultPanel
+        result={result}
+        existingWordsSet={new Set<string>()}
+        onAddVocabulary={onAddVocabulary}
+      />,
+    );
+
+    const content = screen.getByTestId('result-content');
+    const textNode = content.firstChild;
+    expect(textNode).not.toBeNull();
+    const start = result.markdown.indexOf('Markdown');
+    const end = start + 'Markdown'.length;
+
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(textNode!, start);
+    range.setEnd(textNode!, end);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.mouseDown(content, { button: 2 });
+    selection?.removeAllRanges();
+
+    fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    await user.click(screen.getByText('Word'));
+    await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
+    await user.click(screen.getByText('Add'));
+
+    expect(onAddVocabulary).toHaveBeenCalledWith(
+      'Markdown',
+      'word',
+      'перевод',
+      '# Markdown content',
+    );
+  });
+
+  it('should toggle all TTS engine controls and generate audio output', async () => {
+    const user = userEvent.setup();
+    mockGenerateSpeech.mockResolvedValue(new Blob(['audio'], { type: 'audio/wav' }));
+    render(<ResultPanel result={result} />);
+
+    await user.click(screen.getByText('🔊 TTS'));
+
+    await user.click(screen.getByText('ES'));
+    await user.click(screen.getByText('F2'));
+    const supertoneSliders = screen.getAllByRole('slider');
+    fireEvent.change(supertoneSliders[0], { target: { value: '1.35' } });
+    fireEvent.change(supertoneSliders[1], { target: { value: '8' } });
+
+    await user.click(screen.getByText('Piper'));
+    await user.click(screen.getByText('Amy'));
+    await user.clear(screen.getByPlaceholderText('e.g. en_US-amy-medium'));
+    await user.type(screen.getByPlaceholderText('e.g. en_US-amy-medium'), 'en_US-lessac-high');
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '1.2' } });
+
+    await user.click(screen.getByText('Kokoro'));
+    await user.click(screen.getByText('Fable'));
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '1.15' } });
+
+    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
+    await user.click(engineBtn);
+    const fileInput = screen.getByLabelText('Reference Audio');
+    const file = new File(['wav'], 'reference.wav', { type: 'audio/wav' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await user.type(screen.getByPlaceholderText('Enter the transcript of the reference audio'), 'Reference transcript');
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[0]);
+    expect(screen.getByPlaceholderText('Reference text will be detected from the uploaded audio')).toBeDisabled();
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+
+    await user.click(screen.getByText('Supertone'));
+    await user.click(screen.getByText('Generate'));
+
+    await waitFor(() => {
+      expect(mockGenerateSpeech).toHaveBeenCalled();
+    });
+    expect(await screen.findByTitle('Download WAV')).toBeInTheDocument();
+
+    await user.click(screen.getByText('1.5×'));
+
+    const rateButton = screen.getByText('1.5×');
+    expect(rateButton).toHaveClass('tts-panel__rate-btn--active');
   });
 });

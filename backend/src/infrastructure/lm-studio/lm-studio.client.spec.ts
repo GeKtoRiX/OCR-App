@@ -85,6 +85,129 @@ describe('LMStudioClient', () => {
     });
   });
 
+  describe('chatCompletionStream', () => {
+    function createReader(chunks: string[]) {
+      const releaseLock = jest.fn();
+      let index = 0;
+      return {
+        releaseLock,
+        read: jest.fn(async () => {
+          if (index >= chunks.length) {
+            return { done: true, value: undefined };
+          }
+          const value = new TextEncoder().encode(chunks[index]);
+          index++;
+          return { done: false, value };
+        }),
+      };
+    }
+
+    it('streams content, ignores malformed chunks, and releases the reader lock', async () => {
+      const reader = createReader([
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}\n' +
+          'data: {"choices":[{"delta":{"cont',
+        'ent":"lo"}}]}\n' +
+          'data: {bad json}\n' +
+          'event: ping\n' +
+          'data: [DONE]\n',
+      ]);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => reader,
+        },
+      });
+
+      const chunks: string[] = [];
+      for await (const part of client.chatCompletionStream({
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'Hello' }],
+      })) {
+        chunks.push(part);
+      }
+
+      expect(chunks).toEqual(['Hel', 'lo']);
+      expect(reader.releaseLock).toHaveBeenCalled();
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.stream).toBe(true);
+    });
+
+    it('uses explicit stream params, skips empty deltas, and exits on reader completion', async () => {
+      const reader = createReader([
+        'data: {"choices":[]}\n' +
+          'data: {"choices":[{}]}\n' +
+          'data: {"choices":[{"delta":{"content":"Hi"}}]}\n',
+      ]);
+
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => reader,
+        },
+      });
+
+      const chunks: string[] = [];
+      for await (const part of client.chatCompletionStream({
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'Hello' }],
+        temperature: 0.4,
+        max_tokens: 128,
+      })) {
+        chunks.push(part);
+      }
+
+      expect(chunks).toEqual(['Hi']);
+      expect(reader.read).toHaveBeenCalledTimes(2);
+      expect(reader.releaseLock).toHaveBeenCalled();
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.temperature).toBe(0.4);
+      expect(body.max_tokens).toBe(128);
+      expect(body.stream).toBe(true);
+    });
+
+    it('throws when the stream request returns a non-ok response', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'Service unavailable',
+      });
+
+      const consume = async () => {
+        for await (const _part of client.chatCompletionStream({
+          model: 'test-model',
+          messages: [{ role: 'user', content: 'Hello' }],
+        })) {
+          // noop
+        }
+      };
+
+      await expect(consume()).rejects.toThrow(
+        'LM Studio API error (503): Service unavailable',
+      );
+    });
+
+    it('throws when the response body is missing', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: null,
+      });
+
+      const consume = async () => {
+        for await (const _part of client.chatCompletionStream({
+          model: 'test-model',
+          messages: [{ role: 'user', content: 'Hello' }],
+        })) {
+          // noop
+        }
+      };
+
+      await expect(consume()).rejects.toThrow('No response body');
+    });
+  });
+
   describe('listModels', () => {
     it('should return model IDs', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({

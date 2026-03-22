@@ -15,6 +15,7 @@ describe('LMStudioConfig', () => {
     delete process.env.LM_STUDIO_BASE_URL;
     delete process.env.OCR_MODEL;
     delete process.env.STRUCTURING_MODEL;
+    delete process.env.VOCABULARY_MODEL;
     delete process.env.LM_STUDIO_TIMEOUT;
 
     const config = new LMStudioConfig();
@@ -22,6 +23,7 @@ describe('LMStudioConfig', () => {
     expect(config.baseUrl).toBe('http://localhost:1234/v1');
     expect(config.ocrModel).toBe('paddleocr-vl-0.9b');
     expect(config.structuringModel).toBe('qwen/qwen3.5-9b');
+    expect(config.vocabularyModel).toBe('qwen/qwen3.5-9b');
     expect(config.timeoutMs).toBe(120000);
   });
 
@@ -29,6 +31,7 @@ describe('LMStudioConfig', () => {
     process.env.LM_STUDIO_BASE_URL = 'http://custom:5555/v1';
     process.env.OCR_MODEL = 'custom-ocr';
     process.env.STRUCTURING_MODEL = 'custom-struct';
+    process.env.VOCABULARY_MODEL = 'custom-vocab';
     process.env.LM_STUDIO_TIMEOUT = '30000';
 
     const config = new LMStudioConfig();
@@ -36,6 +39,16 @@ describe('LMStudioConfig', () => {
     expect(config.baseUrl).toBe('http://custom:5555/v1');
     expect(config.ocrModel).toBe('custom-ocr');
     expect(config.structuringModel).toBe('custom-struct');
+    expect(config.vocabularyModel).toBe('custom-vocab');
     expect(config.timeoutMs).toBe(30000);
+  });
+
+  it('should fall back vocabularyModel to STRUCTURING_MODEL when VOCABULARY_MODEL is not set', () => {
+    delete process.env.VOCABULARY_MODEL;
+    process.env.STRUCTURING_MODEL = 'fallback-struct';
+
+    const config = new LMStudioConfig();
+
+    expect(config.vocabularyModel).toBe('fallback-struct');
   });
 });

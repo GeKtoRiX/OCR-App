@@ -50,7 +50,8 @@ export class LMStudioStructuringService extends ITextStructuringService {
   }
 
   async structureAsMarkdown(rawText: string): Promise<string> {
-    return this.client.chatCompletion({
+    const chunks: string[] = [];
+    for await (const chunk of this.client.chatCompletionStream({
       model: this.config.structuringModel,
       messages: [
         {
@@ -64,6 +65,9 @@ export class LMStudioStructuringService extends ITextStructuringService {
       ],
       temperature: 0.05,
       max_tokens: 4096,
-    });
+    })) {
+      chunks.push(chunk);
+    }
+    return chunks.join('');
   }
 }

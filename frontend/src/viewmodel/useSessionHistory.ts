@@ -21,5 +21,14 @@ export function useSessionHistory() {
     setActiveId(id);
   }, []);
 
-  return { entries, activeId, addEntry, selectEntry };
+  const removeEntry = useCallback((id: string) => {
+    const nextEntries = entries.filter((entry) => entry.id !== id);
+    setEntries(nextEntries);
+
+    if (activeId === id) {
+      setActiveId(nextEntries[0]?.id ?? null);
+    }
+  }, [activeId, entries]);
+
+  return { entries, activeId, addEntry, selectEntry, removeEntry };
 }

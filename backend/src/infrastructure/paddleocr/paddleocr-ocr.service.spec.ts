@@ -12,6 +12,7 @@ describe('PaddleOCRService', () => {
     config = Object.assign(new PaddleOCRConfig(), {
       baseUrl: 'http://localhost:8000',
       base64ExtractEndpoint: 'http://localhost:8000/api/extract/base64',
+      uploadExtractEndpoint: 'http://localhost:8000/api/extract/upload',
       timeoutMs: 30000,
     });
     service = new PaddleOCRService(config);
@@ -42,6 +43,26 @@ describe('PaddleOCRService', () => {
       expect(result).toBe(NO_TEXT_DETECTED);
     });
 
+    it('should reject null image input before making a request', async () => {
+      global.fetch = jest.fn();
+
+      await expect(service.extractText(null as unknown as ImageData)).rejects.toThrow(
+        'Invalid image data provided',
+      );
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should reject image input without a buffer', async () => {
+      global.fetch = jest.fn();
+
+      await expect(
+        service.extractText({ buffer: undefined } as unknown as ImageData),
+      ).rejects.toThrow('Invalid image data provided');
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('should return extracted text from API response', async () => {
       // Mock fetch to return successful OCR result
       global.fetch = jest.fn().mockResolvedValue({
@@ -57,26 +78,37 @@ describe('PaddleOCRService', () => {
       expect(result).toBe('Extracted text from image\nLine 2 of text');
     });
 
-    it('should return fallback when API returns error status', async () => {
-      // Mock fetch to return error response
+    it('should throw when API returns error status', async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: false,
         status: 503,
         text: async () => 'Service unavailable',
       });
 
-      const result = await service.extractText(mockImage);
-
-      expect(result).toBe(NO_TEXT_DETECTED);
+      await expect(service.extractText(mockImage)).rejects.toThrow(
+        'PaddleOCR API error (503)',
+      );
     });
 
-    it('should return fallback when fetch throws network error', async () => {
-      // Mock fetch to throw an error (network unreachable)
+    it('should throw when fetch throws network error', async () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
 
-      const result = await service.extractText(mockImage);
+      await expect(service.extractText(mockImage)).rejects.toThrow(
+        'Network error',
+      );
+    });
 
-      expect(result).toBe(NO_TEXT_DETECTED);
+    it('should rethrow non-Error failures from response parsing', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw 'invalid json payload';
+        },
+      });
+
+      await expect(service.extractText(mockImage)).rejects.toBe(
+        'invalid json payload',
+      );
     });
 
     it('should return fallback when API returns null text', async () => {
@@ -118,15 +150,18 @@ describe('PaddleOCRService', () => {
       expect(result).toBe(NO_TEXT_DETECTED);
     });
 
-    it('should encode buffer to base64 correctly', () => {
-      const testBuffer = Buffer.from('Hello World!');
-      const mockImage = new ImageData(testBuffer, 'image/png', 'test.png');
-      
-      // Access private method via any type assertion for testing
-      const serviceAny = service as any;
-      const base64Result = serviceAny.encodeImageToBase64(mockImage);
+    it('should send image as multipart/form-data', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ text: 'OCR result' }),
+        text: async () => '',
+      });
 
-      expect(base64Result).toBe('SGVsbG8gV29ybGQh');
+      await service.extractText(mockImage);
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
+      expect(fetchCall[0]).toBe('http://localhost:8000/api/extract/upload');
+      expect(fetchCall[1].body).toBeInstanceOf(FormData);
     });
   });
 });

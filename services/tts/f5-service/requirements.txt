@@ -1,0 +1,9 @@
+--extra-index-url https://download.pytorch.org/whl/rocm6.2
+
+fastapi>=0.115.6
+uvicorn[standard]>=0.32.1
+python-multipart>=0.0.12
+soundfile>=0.13.1
+torch==2.5.1+rocm6.2
+torchaudio==2.5.1+rocm6.2
+f5-tts>=1.1.17

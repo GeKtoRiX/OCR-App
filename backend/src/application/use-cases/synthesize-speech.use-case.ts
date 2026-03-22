@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
-import { IQwenTtsPort } from '../../domain/ports/qwen-tts.port';
+import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
 import {
   SynthesizeSpeechInput,
   SynthesizeSpeechOutput,
@@ -12,16 +12,23 @@ export class SynthesizeSpeechUseCase {
   constructor(
     private readonly supertone: ISupertonePort,
     private readonly kokoro: IKokoroPort,
-    private readonly qwenTts: IQwenTtsPort,
+    private readonly f5Tts: IF5TtsPort,
   ) {}
 
   async execute(input: SynthesizeSpeechInput): Promise<SynthesizeSpeechOutput> {
-    if (input.engine === 'qwen') {
-      const wav = await this.qwenTts.synthesize({
+    if (input.engine === 'f5') {
+      if (!input.refAudio) {
+        throw new Error('F5 TTS requires refAudio');
+      }
+      if (!input.autoTranscribe && !input.refText) {
+        throw new Error('F5 TTS requires refText unless autoTranscribe is enabled');
+      }
+      const wav = await this.f5Tts.synthesize({
         text: input.text,
-        lang: input.lang,
-        speaker: input.speaker,
-        instruct: input.instruct,
+        refText: input.refText,
+        refAudio: input.refAudio,
+        autoTranscribe: input.autoTranscribe,
+        removeSilence: input.removeSilence,
       });
       return { wav };
     }
@@ -31,6 +38,7 @@ export class SynthesizeSpeechUseCase {
         text: input.text,
         voice: input.voice,
         speed: input.speed,
+        lang: input.lang,
       });
       return { wav };
     }

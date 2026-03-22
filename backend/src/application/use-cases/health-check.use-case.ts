@@ -4,26 +4,39 @@ import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port'
 import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
-import { IQwenTtsPort } from '../../domain/ports/qwen-tts.port';
+import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
+
+const CACHE_TTL_MS = 10_000;
+const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 
 @Injectable()
 export class HealthCheckUseCase {
+  private cachedResult: HealthCheckOutput | null = null;
+  private cachedAt = 0;
+
   constructor(
     private readonly lmStudioHealth: ILmStudioHealthPort,
     private readonly paddleOcrHealth: IPaddleOcrHealthPort,
     private readonly supertone: ISupertonePort,
     private readonly kokoro: IKokoroPort,
-    private readonly qwenTts: IQwenTtsPort,
+    private readonly f5Tts: IF5TtsPort,
   ) {}
 
   async execute(): Promise<HealthCheckOutput> {
-    const [paddleOcrReachable, lmStudioReachable, superToneReachable, kokoroReachable, qwenHealth] =
+    const now = Date.now();
+    if (this.cachedResult && now - this.cachedAt < CACHE_TTL_MS) {
+      return this.cachedResult;
+    }
+
+    const [paddleOcrReachable, lmStudioReachable, superToneReachable, kokoroReachable, f5Health] =
       await Promise.all([
         this.safeIsReachable(this.paddleOcrHealth),
-        this.safeIsReachable(this.lmStudioHealth),
+        LM_STUDIO_SMOKE_ONLY
+          ? Promise.resolve(false)
+          : this.safeIsReachable(this.lmStudioHealth),
         this.supertone.checkHealth(),
         this.kokoro.checkHealth(),
-        this.qwenTts.getHealth(),
+        this.f5Tts.getHealth(),
       ]);
 
     const [paddleOcrModels, lmStudioModels, paddleOcrDevice] =
@@ -31,7 +44,7 @@ export class HealthCheckUseCase {
         paddleOcrReachable
           ? this.safeListModels(this.paddleOcrHealth)
           : Promise.resolve([]),
-        lmStudioReachable
+        !LM_STUDIO_SMOKE_ONLY && lmStudioReachable
           ? this.safeListModels(this.lmStudioHealth)
           : Promise.resolve([]),
         paddleOcrReachable
@@ -39,7 +52,7 @@ export class HealthCheckUseCase {
           : Promise.resolve(null),
       ]);
 
-    return {
+    const result: HealthCheckOutput = {
       paddleOcrReachable,
       paddleOcrModels,
       paddleOcrDevice,
@@ -47,9 +60,13 @@ export class HealthCheckUseCase {
       lmStudioModels,
       superToneReachable,
       kokoroReachable,
-      qwenTtsReachable: qwenHealth.reachable,
-      qwenTtsDevice: qwenHealth.device,
+      f5TtsReachable: f5Health.reachable,
+      f5TtsDevice: f5Health.device,
     };
+
+    this.cachedResult = result;
+    this.cachedAt = now;
+    return result;
   }
 
   private async safeIsReachable(service: {

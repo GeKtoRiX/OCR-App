@@ -10,7 +10,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PracticeUseCase } from '../../application/use-cases/practice.use-case';
-import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
 import {
   StartPracticeDto,
   SubmitAnswerDto,
@@ -29,7 +28,6 @@ const VALID_EXERCISE_TYPES: ExerciseType[] = [
 export class PracticeController {
   constructor(
     private readonly practiceUseCase: PracticeUseCase,
-    private readonly sessionRepo: IPracticeSessionRepository,
   ) {}
 
   @Post('start')
@@ -91,11 +89,11 @@ export class PracticeController {
   @Get('sessions')
   async sessions(@Query('limit') limit?: string) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
-    return this.sessionRepo.findRecentSessions(parsedLimit);
+    return this.practiceUseCase.getRecentSessions(parsedLimit);
   }
 
   @Get('stats/:vocabularyId')
   async stats(@Param('vocabularyId') vocabularyId: string) {
-    return this.sessionRepo.findAttemptsByVocabulary(vocabularyId);
+    return this.practiceUseCase.getAttemptsByVocabulary(vocabularyId);
   }
 }

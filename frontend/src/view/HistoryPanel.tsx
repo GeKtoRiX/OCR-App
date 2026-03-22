@@ -1,40 +1,54 @@
 import { useState, useEffect } from 'react';
 import type { HistoryEntry, SavedDocument, VocabularyWord, LanguagePair } from '../model/types';
-import type { LightColor } from '../viewmodel/useHealthStatus';
+import type { LightColor } from '../model/health-status';
 import { StatusLight } from './StatusLight';
 import { VocabularyPanel } from './VocabularyPanel';
 import './HistoryPanel.css';
 
 type HistoryTab = 'session' | 'saved' | 'vocab';
 
+export interface HealthProps {
+  color: LightColor;
+  label: string;
+  tooltip: string;
+}
+
+export interface SavedDocsProps {
+  documents: SavedDocument[];
+  loading: boolean;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+export interface VocabProps {
+  words: VocabularyWord[];
+  loading: boolean;
+  langPair: LanguagePair;
+  dueCount: number;
+  onLangPairChange: (lp: LanguagePair) => void;
+  onDelete: (id: string) => void;
+  onStartPractice: () => void;
+}
+
 interface Props {
   entries: HistoryEntry[];
   activeId: string | null;
   onSelect: (id: string) => void;
-  healthColor: LightColor;
-  healthLabel: string;
-  healthTooltip: string;
-  savedDocuments: SavedDocument[];
-  savedLoading: boolean;
-  activeSavedId: string | null;
-  onSelectSaved: (id: string) => void;
-  onDeleteSaved: (id: string) => void;
-  vocabWords: VocabularyWord[];
-  vocabLoading: boolean;
-  vocabLangPair: LanguagePair;
-  vocabDueCount: number;
-  onVocabLangPairChange: (lp: LanguagePair) => void;
-  onVocabDelete: (id: string) => void;
-  onStartPractice: () => void;
+  onDeleteSession: (id: string) => void;
+  health: HealthProps;
+  saved: SavedDocsProps;
+  vocab: VocabProps;
 }
 
 interface ItemProps {
   entry: HistoryEntry;
   isActive: boolean;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-function HistoryItem({ entry, isActive, onSelect }: ItemProps) {
+function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,7 +62,7 @@ function HistoryItem({ entry, isActive, onSelect }: ItemProps) {
 
   return (
     <li
-      className={`history-item ${isActive ? 'history-item--active' : ''}`}
+      className={`history-item history-item--session history-item--deletable ${isActive ? 'history-item--active' : ''}`}
       onClick={() => onSelect(entry.id)}
       role="button"
       tabIndex={0}
@@ -64,6 +78,14 @@ function HistoryItem({ entry, isActive, onSelect }: ItemProps) {
           {rawCount.toLocaleString('en-US')} raw · {mdCount.toLocaleString('en-US')} md
         </span>
       </div>
+      <button
+        className="history-item__delete"
+        onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+        title="Delete screenshot"
+        aria-label={`Delete ${entry.result.filename}`}
+      >
+        🗑
+      </button>
     </li>
   );
 }
@@ -85,7 +107,7 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
 
   return (
     <li
-      className={`history-item history-item--saved ${isActive ? 'history-item--active' : ''}`}
+      className={`history-item history-item--saved history-item--deletable ${isActive ? 'history-item--active' : ''}`}
       onClick={() => onSelect(doc.id)}
       role="button"
       tabIndex={0}
@@ -115,21 +137,10 @@ export function HistoryPanel({
   entries,
   activeId,
   onSelect,
-  healthColor,
-  healthLabel,
-  healthTooltip,
-  savedDocuments,
-  savedLoading,
-  activeSavedId,
-  onSelectSaved,
-  onDeleteSaved,
-  vocabWords,
-  vocabLoading,
-  vocabLangPair,
-  vocabDueCount,
-  onVocabLangPairChange,
-  onVocabDelete,
-  onStartPractice,
+  onDeleteSession,
+  health,
+  saved,
+  vocab,
 }: Props) {
   const [tab, setTab] = useState<HistoryTab>('session');
 
@@ -142,24 +153,27 @@ export function HistoryPanel({
             <button
               className={`history-tabs__btn ${tab === 'session' ? 'history-tabs__btn--active' : ''}`}
               onClick={() => setTab('session')}
+              data-testid="history-tab-session"
             >
               Session
             </button>
             <button
               className={`history-tabs__btn ${tab === 'saved' ? 'history-tabs__btn--active' : ''}`}
               onClick={() => setTab('saved')}
+              data-testid="history-tab-saved"
             >
-              Saved {savedDocuments.length > 0 && `(${savedDocuments.length})`}
+              Saved {saved.documents.length > 0 && `(${saved.documents.length})`}
             </button>
             <button
               className={`history-tabs__btn ${tab === 'vocab' ? 'history-tabs__btn--active' : ''}`}
               onClick={() => setTab('vocab')}
+              data-testid="history-tab-vocab"
             >
-              Vocab {vocabWords.length > 0 && `(${vocabWords.length})`}
+              Vocab {vocab.words.length > 0 && `(${vocab.words.length})`}
             </button>
           </div>
         </div>
-        <StatusLight color={healthColor} label={healthLabel} tooltip={healthTooltip} />
+        <StatusLight color={health.color} label={health.label} tooltip={health.tooltip} />
       </div>
 
       {tab === 'session' ? (
@@ -176,42 +190,43 @@ export function HistoryPanel({
                 entry={entry}
                 isActive={entry.id === activeId}
                 onSelect={onSelect}
+                onDelete={onDeleteSession}
               />
             ))}
           </ul>
         )
       ) : tab === 'saved' ? (
-        savedLoading ? (
+        saved.loading ? (
           <div className="history-empty">
             <p>Loading saved documents…</p>
           </div>
-        ) : savedDocuments.length === 0 ? (
+        ) : saved.documents.length === 0 ? (
           <div className="history-empty">
             <p>No saved documents yet.</p>
             <p>Use 💾 Save to keep OCR results.</p>
           </div>
         ) : (
           <ul className="history-list">
-            {savedDocuments.map(doc => (
+            {saved.documents.map(doc => (
               <SavedItem
                 key={doc.id}
                 doc={doc}
-                isActive={doc.id === activeSavedId}
-                onSelect={onSelectSaved}
-                onDelete={onDeleteSaved}
+                isActive={doc.id === saved.activeId}
+                onSelect={saved.onSelect}
+                onDelete={saved.onDelete}
               />
             ))}
           </ul>
         )
       ) : (
         <VocabularyPanel
-          words={vocabWords}
-          loading={vocabLoading}
-          langPair={vocabLangPair}
-          dueCount={vocabDueCount}
-          onLangPairChange={onVocabLangPairChange}
-          onDelete={onVocabDelete}
-          onStartPractice={onStartPractice}
+          words={vocab.words}
+          loading={vocab.loading}
+          langPair={vocab.langPair}
+          dueCount={vocab.dueCount}
+          onLangPairChange={vocab.onLangPairChange}
+          onDelete={vocab.onDelete}
+          onStartPractice={vocab.onStartPractice}
         />
       )}
     </section>

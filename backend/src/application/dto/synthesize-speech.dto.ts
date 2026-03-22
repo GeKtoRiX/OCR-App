@@ -1,3 +1,5 @@
+import type { UploadedFile } from '../../domain/value-objects/uploaded-file.vo';
+
 export interface SynthesizeSpeechInput {
   text: string;
   engine?: string;
@@ -5,8 +7,10 @@ export interface SynthesizeSpeechInput {
   lang?: string;
   speed?: number;
   totalSteps?: number;
-  speaker?: string;
-  instruct?: string;
+  refText?: string;
+  refAudio?: UploadedFile;
+  autoTranscribe?: boolean;
+  removeSilence?: boolean;
 }
 
 export interface SynthesizeSpeechOutput {

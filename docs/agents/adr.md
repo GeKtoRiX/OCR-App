@@ -45,21 +45,21 @@
 ## ADR-007: Split IHealthCheckPort Into Per-Service Health Ports
 
 - Status: accepted
-- Context: `HealthCheckUseCase` was directly importing five concrete infrastructure classes (`LMStudioClient`, `PaddleOCRHealthService`, `SupertoneService`, `KokoroService`, `QwenTtsService`), violating the dependency inversion principle. The generic `IHealthCheckPort` (`isReachable`, `listModels`) did not cover all health contracts — `PaddleOCRHealthService` also provides `getDevice()`, and TTS services expose `checkHealth()` / `getHealth()` which differ per engine.
-- Decision: replace the single `IHealthCheckPort` with five named ports in `domain/ports/`:
+- Context: `HealthCheckUseCase` was directly importing concrete infrastructure classes, violating the dependency inversion principle. The generic `IHealthCheckPort` (`isReachable`, `listModels`) did not cover all health contracts — `PaddleOCRHealthService` also provides `getDevice()`, and TTS services expose `checkHealth()` / `getHealth()` which differ per engine.
+- Decision: replace the single `IHealthCheckPort` with named ports in `domain/ports/`:
   - `IPaddleOcrHealthPort` — `isReachable()`, `listModels()`, `getDevice()`
   - `ILmStudioHealthPort` — `isReachable()`, `listModels()`
   - `ISupertonePort` — `synthesize()`, `checkHealth()`
   - `IKokoroPort` — `synthesize()`, `checkHealth()`
-  - `IQwenTtsPort` — `synthesize()`, `getHealth()`
+  - `IF5TtsPort` — `synthesize()`, `getHealth()`
   `HealthCheckUseCase` now depends exclusively on these ports. The old `health-check.port.ts` is deleted.
 - Consequence: each concrete infrastructure service must declare `extends <Port>`. `OcrModule` and `TtsModule` bind port tokens via `useExisting` and export the port abstract classes for `HealthModule` to resolve.
 
 ## ADR-008: Introduce SynthesizeSpeechUseCase To Remove Controller→Infrastructure Coupling
 
 - Status: accepted
-- Context: `TtsController` was directly injecting and calling three infrastructure services (`SupertoneService`, `QwenTtsService`, `KokoroService`) with engine-routing logic inside the controller. Presentation layer must contain no business logic.
-- Decision: create `SynthesizeSpeechUseCase` in `application/use-cases/` that injects `ISupertonePort`, `IKokoroPort`, `IQwenTtsPort` and encapsulates all engine routing. `TtsController` injects only `SynthesizeSpeechUseCase` and delegates synthesis; HTTP input validation (`qwenMode` guard, text length checks) stays in the controller as a presentation concern.
+- Context: `TtsController` was directly injecting and calling infrastructure services with engine-routing logic inside the controller. Presentation layer must contain no business logic.
+- Decision: create `SynthesizeSpeechUseCase` in `application/use-cases/` that injects `ISupertonePort`, `IKokoroPort`, `IF5TtsPort` and encapsulates all engine routing. `TtsController` injects only `SynthesizeSpeechUseCase` and delegates synthesis; HTTP input validation (text length checks) stays in the controller as a presentation concern.
 - Consequence: `TtsModule` must provide `SynthesizeSpeechUseCase` and all three port bindings. `tts.controller.spec.ts` mocks the use case, not the services. A new `synthesize-speech.use-case.spec.ts` covers routing logic.
 
 ## ADR-009: Introduce DatabaseModule To Own The SQLite Connection Singleton

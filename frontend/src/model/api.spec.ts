@@ -8,6 +8,14 @@ import {
   fetchDocument,
   updateDocument,
   deleteDocument,
+  addVocabularyWord,
+  fetchVocabulary,
+  fetchDueVocabulary,
+  updateVocabularyWord,
+  deleteVocabularyWord,
+  startPractice,
+  submitAnswer,
+  completePractice,
 } from './api';
 
 describe('API service', () => {
@@ -103,8 +111,8 @@ describe('API service', () => {
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,
         kokoroReachable: true,
-        qwenTtsReachable: true,
-        qwenTtsDevice: 'gpu',
+        f5TtsReachable: true,
+        f5TtsDevice: 'gpu',
       };
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -178,6 +186,22 @@ describe('API service', () => {
       await expect(generateSpeech('text', settings)).rejects.toThrow('TTS sidecar down');
     });
 
+    it('should reject kokoro requests with Cyrillic text before fetch', async () => {
+      global.fetch = vi.fn();
+
+      await expect(
+        generateSpeech('Привет мир', {
+          engine: 'kokoro',
+          voice: 'af_heart',
+          speed: 1.0,
+        }),
+      ).rejects.toThrow(
+        'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
+      );
+
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('should fall back to statusText when json parsing fails', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -187,6 +211,34 @@ describe('API service', () => {
       });
 
       await expect(generateSpeech('text', settings)).rejects.toThrow('Internal Server Error');
+    });
+
+    it('should POST FormData for f5 requests', async () => {
+      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
+
+      const result = await generateSpeech('hello world', {
+        engine: 'f5',
+        refText: 'Reference text',
+        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
+        autoTranscribe: false,
+        removeSilence: true,
+      });
+
+      expect(result).toBe(fakeBlob);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/tts',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.any(FormData),
+        }),
+      );
+      const form = (global.fetch as any).mock.calls[0][1].body as FormData;
+      expect(form.get('engine')).toBe('f5');
+      expect(form.get('refText')).toBe('Reference text');
+      expect(form.get('autoTranscribe')).toBe('false');
+      expect(form.get('removeSilence')).toBe('true');
+      expect(form.get('refAudio')).toBeInstanceOf(File);
     });
   });
 
@@ -289,6 +341,227 @@ describe('API service', () => {
       });
 
       await expect(deleteDocument('missing')).rejects.toThrow('Document not found');
+    });
+  });
+
+  describe('vocabulary API', () => {
+    it('should POST /api/vocabulary and return created word', async () => {
+      const mockWord = {
+        id: 'word-1',
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello there.',
+        sourceDocumentId: null,
+        intervalDays: 1,
+        easinessFactor: 2.5,
+        repetitions: 0,
+        nextReviewAt: '2026-03-21T00:00:00.000Z',
+        createdAt: '2026-03-21T00:00:00.000Z',
+        updatedAt: '2026-03-21T00:00:00.000Z',
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockWord });
+
+      const result = await addVocabularyWord({
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello there.',
+      });
+
+      expect(result).toEqual(mockWord);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/vocabulary',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            word: 'hello',
+            vocabType: 'word',
+            translation: 'привет',
+            targetLang: 'en',
+            nativeLang: 'ru',
+            contextSentence: 'Hello there.',
+          }),
+        }),
+      );
+    });
+
+    it('should GET /api/vocabulary with language filters', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+      await fetchVocabulary('en', 'ru');
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/vocabulary?targetLang=en&nativeLang=ru');
+    });
+
+    it('should GET /api/vocabulary without filters', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+      await fetchVocabulary();
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/vocabulary');
+    });
+
+    it('should GET /api/vocabulary/review/due with limit', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+
+      await fetchDueVocabulary(10);
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/vocabulary/review/due?limit=10');
+    });
+
+    it('should PUT /api/vocabulary/:id and return updated word', async () => {
+      const mockWord = {
+        id: 'word-1',
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'здравствуй',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello again.',
+        sourceDocumentId: null,
+        intervalDays: 2,
+        easinessFactor: 2.6,
+        repetitions: 1,
+        nextReviewAt: '2026-03-22T00:00:00.000Z',
+        createdAt: '2026-03-21T00:00:00.000Z',
+        updatedAt: '2026-03-21T01:00:00.000Z',
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockWord });
+
+      const result = await updateVocabularyWord('word-1', 'здравствуй', 'Hello again.');
+
+      expect(result).toEqual(mockWord);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/vocabulary/word-1',
+        expect.objectContaining({
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            translation: 'здравствуй',
+            contextSentence: 'Hello again.',
+          }),
+        }),
+      );
+    });
+
+    it('should DELETE /api/vocabulary/:id', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+      await deleteVocabularyWord('word-1');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/vocabulary/word-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+  });
+
+  describe('practice API', () => {
+    it('should POST /api/practice/start with payload', async () => {
+      const mockSession = {
+        sessionId: 'session-1',
+        exercises: [{
+          vocabularyId: 'word-1',
+          word: 'hello',
+          exerciseType: 'spelling',
+          prompt: 'Spell hello',
+          correctAnswer: 'hello',
+        }],
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockSession });
+
+      const result = await startPractice({ targetLang: 'en', nativeLang: 'ru', wordLimit: 5 });
+
+      expect(result).toEqual(mockSession);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/start',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetLang: 'en', nativeLang: 'ru', wordLimit: 5 }),
+        }),
+      );
+    });
+
+    it('should POST /api/practice/start with empty payload by default', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ sessionId: 'session-1', exercises: [] }),
+      });
+
+      await startPractice();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/start',
+        expect.objectContaining({
+          body: JSON.stringify({}),
+        }),
+      );
+    });
+
+    it('should POST /api/practice/answer', async () => {
+      const mockResult = {
+        isCorrect: false,
+        errorPosition: '2',
+        qualityRating: 2,
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockResult });
+
+      const result = await submitAnswer({
+        sessionId: 'session-1',
+        vocabularyId: 'word-1',
+        exerciseType: 'spelling',
+        prompt: 'Spell hello',
+        correctAnswer: 'hello',
+        userAnswer: 'helo',
+      });
+
+      expect(result).toEqual(mockResult);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/answer',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: 'session-1',
+            vocabularyId: 'word-1',
+            exerciseType: 'spelling',
+            prompt: 'Spell hello',
+            correctAnswer: 'hello',
+            userAnswer: 'helo',
+          }),
+        }),
+      );
+    });
+
+    it('should POST /api/practice/complete', async () => {
+      const mockAnalysis = {
+        sessionId: 'session-1',
+        overallScore: 80,
+        summary: 'Good work',
+        totalExercises: 5,
+        correctCount: 4,
+        wordAnalyses: [],
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockAnalysis });
+
+      const result = await completePractice('session-1');
+
+      expect(result).toEqual(mockAnalysis);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/complete',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: 'session-1' }),
+        }),
+      );
     });
   });
 });

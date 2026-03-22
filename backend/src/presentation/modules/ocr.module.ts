@@ -5,13 +5,14 @@ import { IOCRService } from '../../domain/ports/ocr-service.port';
 import { ITextStructuringService } from '../../domain/ports/text-structuring-service.port';
 import { LMStudioOCRService } from '../../infrastructure/lm-studio/lm-studio-ocr.service';
 import { LMStudioStructuringService } from '../../infrastructure/lm-studio/lm-studio-structuring.service';
-import { LMStudioClient } from '../../infrastructure/lm-studio/lm-studio.client';
-import { LMStudioConfig } from '../../infrastructure/config/lm-studio.config';
 import { PaddleOCRService } from '../../infrastructure/paddleocr/paddleocr-ocr.service';
 import { PaddleOCRConfig } from '../../infrastructure/config/paddleocr.config';
 import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr-health.service';
 import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
-import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
+import { LmStudioModule } from './lm-studio.module';
+import { PassthroughStructuringService } from '../../infrastructure/testing/passthrough-structuring.service';
+
+const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 
 /**
  * OCR Module Configuration
@@ -21,30 +22,31 @@ import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
  * into Markdown.
  */
 @Module({
+  imports: [LmStudioModule],
   controllers: [OcrController],
   providers: [
-    LMStudioConfig,
     PaddleOCRConfig,
     PaddleOCRHealthService,
     LMStudioOCRService,
     LMStudioStructuringService,
+    PassthroughStructuringService,
     PaddleOCRService,
-    LMStudioClient,
 
     { provide: IOCRService, useExisting: PaddleOCRService },
-    { provide: ITextStructuringService, useExisting: LMStudioStructuringService },
+    {
+      provide: ITextStructuringService,
+      useClass: LM_STUDIO_SMOKE_ONLY
+        ? PassthroughStructuringService
+        : LMStudioStructuringService,
+    },
     { provide: IPaddleOcrHealthPort, useExisting: PaddleOCRHealthService },
-    { provide: ILmStudioHealthPort, useExisting: LMStudioClient },
 
     ProcessImageUseCase,
   ],
   exports: [
-    LMStudioConfig,
     PaddleOCRConfig,
-    LMStudioClient,
     PaddleOCRHealthService,
     IPaddleOcrHealthPort,
-    ILmStudioHealthPort,
   ],
 })
 export class OcrModule {}

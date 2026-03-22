@@ -32,7 +32,7 @@ Used as NestJS DI tokens. Concrete implementations are registered via `useExisti
 | `ILmStudioHealthPort` | `LMStudioClient` | LM Studio reachability + model list |
 | `ISupertonePort` | `SupertoneService` | Supertone TTS synthesis + health |
 | `IKokoroPort` | `KokoroService` | Kokoro TTS synthesis + health |
-| `IQwenTtsPort` | `QwenTtsService` | Qwen TTS synthesis + health with device |
+| `IF5TtsPort` | `F5TtsService` | F5 TTS synthesis + health with device |
 | `ISavedDocumentRepository` | `SqliteSavedDocumentRepository` | Document CRUD |
 | `IVocabularyRepository` | `SqliteVocabularyRepository` | Vocabulary CRUD + SRS queries |
 | `IPracticeSessionRepository` | `SqlitePracticeSessionRepository` | Practice session + attempt CRUD |
@@ -45,7 +45,7 @@ AppModule
 ├── DatabaseModule          ← SqliteConfig + SqliteConnectionProvider (singleton)
 ├── OcrModule               ← ProcessImageUseCase; exports IPaddleOcrHealthPort, ILmStudioHealthPort
 ├── HealthModule            ← HealthCheckUseCase; imports OcrModule + TtsModule
-├── TtsModule               ← SynthesizeSpeechUseCase; exports ISupertonePort, IKokoroPort, IQwenTtsPort
+├── TtsModule               ← SynthesizeSpeechUseCase; exports ISupertonePort, IKokoroPort, IF5TtsPort
 ├── DocumentModule          ← SavedDocumentUseCase; imports DatabaseModule
 ├── VocabularyModule        ← VocabularyUseCase + PracticeUseCase; imports DatabaseModule
 └── AgentEcosystemModule    ← isolated agentic bounded context
@@ -79,32 +79,32 @@ HealthController (GET /api/health)
       → GET Supertone sidecar /health → superToneReachable
     → IKokoroPort.checkHealth()
       → GET Kokoro sidecar /health → kokoroReachable
-    → IQwenTtsPort.getHealth()
-      → GET Qwen sidecar /health → qwenTtsReachable, qwenTtsDevice
+    → IF5TtsPort.getHealth()
+      → GET F5 sidecar /health → f5TtsReachable, f5TtsDevice
   ← { paddleOcrReachable, paddleOcrModels, paddleOcrDevice,
        lmStudioReachable, lmStudioModels,
        superToneReachable, kokoroReachable,
-       qwenTtsReachable, qwenTtsDevice }
+       f5TtsReachable, f5TtsDevice }
 ```
 
 Status lamp logic (frontend `useHealthStatus`):
 - 🔴 `paddleOcrReachable = false` → PaddleOCR unreachable
 - 🟡 `paddleOcrDevice = 'cpu'` → PaddleOCR on CPU
-- 🔵 GPU + `lmStudioReachable` + qwen loaded + all TTS reachable → all systems OK
+- 🔵 GPU + `lmStudioReachable` + all TTS reachable → all systems OK
 - 🟢 GPU OK but LM Studio / some TTS service not fully available
 
 ## TTS Pipeline
 
 ```
-TtsController (POST /api/tts)
+TtsController (POST /api/tts, multipart kept in memory)
   → SynthesizeSpeechUseCase
-    engine='qwen'     → IQwenTtsPort.synthesize({ text, lang, speaker, instruct })
+    engine='f5'       → IF5TtsPort.synthesize({ text, refText, refAudio, ... })
     engine='kokoro'   → IKokoroPort.synthesize({ text, voice, speed })
     default           → ISupertonePort.synthesize({ text, engine, voice, lang, speed, totalSteps })
   ← audio/wav binary (44100 Hz, mono)
 ```
 
-HTTP input validation (`qwenMode`, text length, empty text) stays in `TtsController` as a presentation concern.
+HTTP input validation (text length, empty text) stays in `TtsController` as a presentation concern. Temp-file lifecycle is intentionally absent from presentation.
 
 ## Document Pipeline
 
@@ -208,9 +208,9 @@ AgentEcosystemService.deploy({ request, workspaceName })
 
 - Clean/hexagonal backend structure enforced; no layer violations remain.
 - `HealthCheckUseCase` depends exclusively on domain ports (ADR-007).
-- `TtsController` delegates to `SynthesizeSpeechUseCase`; no infrastructure imports in presentation (ADR-008).
+- `TtsController` delegates to `SynthesizeSpeechUseCase`; multipart upload stays in memory and there are no temp-file infrastructure imports in presentation (ADR-008).
 - `DatabaseModule` owns the SQLite connection singleton; `DocumentModule` and `VocabularyModule` import it (ADR-009).
 - `agentic` bounded context correctly isolated and does not overlap with OCR layers.
-- Frontend MVVM maintained: hooks hold logic, components handle rendering only.
+- Frontend MVVM is preserved at the feature boundary: orchestration for the result surface now lives in `useResultPanel`, while `ResultPanel.tsx` remains rendering-focused.
 - Documentation aligned with actual code — updated 2026-03-21.
-- Open risk: graceful degradation of the agentic runtime when the OpenAI API key is absent is not yet implemented.
+- Open risk: graceful degradation of the agentic runtime when the OpenAI API key is absent is not yet implemented; `/api/agents/*` currently returns 5xx while the rest of the app remains available.

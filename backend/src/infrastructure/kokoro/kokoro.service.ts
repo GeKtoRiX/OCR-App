@@ -23,6 +23,7 @@ export class KokoroService extends IKokoroPort {
         text: req.text,
         voice: req.voice ?? 'af_heart',
         speed: req.speed ?? 1.0,
+        lang: req.lang ?? 'en-us',
       }),
       signal: AbortSignal.timeout(this.config.timeoutMs),
     });

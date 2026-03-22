@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as crypto from 'crypto';
+import type Database from 'better-sqlite3';
 import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
 import { PracticeSession } from '../../domain/entities/practice-session.entity';
 import {
@@ -40,6 +41,17 @@ export class SqlitePracticeSessionRepository
   extends IPracticeSessionRepository
   implements OnModuleInit
 {
+  private stmts!: {
+    insertSession: Database.Statement;
+    completeSession: Database.Statement;
+    selectSessionById: Database.Statement;
+    selectRecentSessions: Database.Statement;
+    insertAttempt: Database.Statement;
+    selectAttemptsBySession: Database.Statement;
+    selectAttemptsByVocab: Database.Statement;
+    updateMnemonic: Database.Statement;
+  };
+
   constructor(private readonly connection: SqliteConnectionProvider) {
     super();
   }
@@ -76,6 +88,36 @@ export class SqlitePracticeSessionRepository
       CREATE INDEX IF NOT EXISTS idx_exercise_attempts_vocab ON exercise_attempts(vocabulary_id);
     `);
     this.connection.db.pragma('foreign_keys = ON');
+
+    const db = this.connection.db;
+    this.stmts = {
+      insertSession: db.prepare(
+        'INSERT INTO practice_sessions (id, started_at, target_lang, native_lang) VALUES (?, ?, ?, ?)',
+      ),
+      completeSession: db.prepare(
+        'UPDATE practice_sessions SET completed_at = ?, total_exercises = ?, correct_count = ?, llm_analysis = ? WHERE id = ?',
+      ),
+      selectSessionById: db.prepare(
+        'SELECT * FROM practice_sessions WHERE id = ?',
+      ),
+      selectRecentSessions: db.prepare(
+        'SELECT * FROM practice_sessions ORDER BY started_at DESC LIMIT ?',
+      ),
+      insertAttempt: db.prepare(
+        `INSERT INTO exercise_attempts
+          (id, session_id, vocabulary_id, exercise_type, prompt, correct_answer, user_answer, is_correct, error_position, quality_rating, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ),
+      selectAttemptsBySession: db.prepare(
+        'SELECT * FROM exercise_attempts WHERE session_id = ? ORDER BY created_at ASC',
+      ),
+      selectAttemptsByVocab: db.prepare(
+        'SELECT * FROM exercise_attempts WHERE vocabulary_id = ? ORDER BY created_at ASC',
+      ),
+      updateMnemonic: db.prepare(
+        'UPDATE exercise_attempts SET mnemonic_sentence = ? WHERE id = ?',
+      ),
+    };
   }
 
   private toSession(r: SessionRow): PracticeSession {
@@ -105,11 +147,7 @@ export class SqlitePracticeSessionRepository
   ): Promise<PracticeSession> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    this.connection.db
-      .prepare(
-        'INSERT INTO practice_sessions (id, started_at, target_lang, native_lang) VALUES (?, ?, ?, ?)',
-      )
-      .run(id, now, targetLang, nativeLang);
+    this.stmts.insertSession.run(id, now, targetLang, nativeLang);
     return new PracticeSession(id, now, null, targetLang, nativeLang, 0, 0, '{}');
   }
 
@@ -120,28 +158,20 @@ export class SqlitePracticeSessionRepository
     llmAnalysis: string,
   ): Promise<PracticeSession | null> {
     const now = new Date().toISOString();
-    const result = this.connection.db
-      .prepare(
-        'UPDATE practice_sessions SET completed_at = ?, total_exercises = ?, correct_count = ?, llm_analysis = ? WHERE id = ?',
-      )
-      .run(now, totalExercises, correctCount, llmAnalysis, id);
+    const result = this.stmts.completeSession.run(
+      now, totalExercises, correctCount, llmAnalysis, id,
+    );
     if (result.changes === 0) return null;
     return this.findSessionById(id);
   }
 
   async findSessionById(id: string): Promise<PracticeSession | null> {
-    const row = this.connection.db
-      .prepare('SELECT * FROM practice_sessions WHERE id = ?')
-      .get(id) as SessionRow | undefined;
+    const row = this.stmts.selectSessionById.get(id) as SessionRow | undefined;
     return row ? this.toSession(row) : null;
   }
 
   async findRecentSessions(limit: number): Promise<PracticeSession[]> {
-    const rows = this.connection.db
-      .prepare(
-        'SELECT * FROM practice_sessions ORDER BY started_at DESC LIMIT ?',
-      )
-      .all(limit) as SessionRow[];
+    const rows = this.stmts.selectRecentSessions.all(limit) as SessionRow[];
     return rows.map((r) => this.toSession(r));
   }
 
@@ -158,17 +188,11 @@ export class SqlitePracticeSessionRepository
   ): Promise<ExerciseAttempt> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    this.connection.db
-      .prepare(
-        `INSERT INTO exercise_attempts
-          (id, session_id, vocabulary_id, exercise_type, prompt, correct_answer, user_answer, is_correct, error_position, quality_rating, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id, sessionId, vocabularyId, exerciseType,
-        prompt, correctAnswer, userAnswer,
-        isCorrect ? 1 : 0, errorPosition, qualityRating, now,
-      );
+    this.stmts.insertAttempt.run(
+      id, sessionId, vocabularyId, exerciseType,
+      prompt, correctAnswer, userAnswer,
+      isCorrect ? 1 : 0, errorPosition, qualityRating, now,
+    );
     return new ExerciseAttempt(
       id, sessionId, vocabularyId, exerciseType,
       prompt, correctAnswer, userAnswer,
@@ -177,18 +201,14 @@ export class SqlitePracticeSessionRepository
   }
 
   async findAttemptsBySession(sessionId: string): Promise<ExerciseAttempt[]> {
-    const rows = this.connection.db
-      .prepare('SELECT * FROM exercise_attempts WHERE session_id = ? ORDER BY created_at ASC')
-      .all(sessionId) as AttemptRow[];
+    const rows = this.stmts.selectAttemptsBySession.all(sessionId) as AttemptRow[];
     return rows.map((r) => this.toAttempt(r));
   }
 
   async findAttemptsByVocabulary(
     vocabularyId: string,
   ): Promise<ExerciseAttempt[]> {
-    const rows = this.connection.db
-      .prepare('SELECT * FROM exercise_attempts WHERE vocabulary_id = ? ORDER BY created_at ASC')
-      .all(vocabularyId) as AttemptRow[];
+    const rows = this.stmts.selectAttemptsByVocab.all(vocabularyId) as AttemptRow[];
     return rows.map((r) => this.toAttempt(r));
   }
 
@@ -196,8 +216,6 @@ export class SqlitePracticeSessionRepository
     attemptId: string,
     mnemonicSentence: string,
   ): Promise<void> {
-    this.connection.db
-      .prepare('UPDATE exercise_attempts SET mnemonic_sentence = ? WHERE id = ?')
-      .run(mnemonicSentence, attemptId);
+    this.stmts.updateMnemonic.run(mnemonicSentence, attemptId);
   }
 }

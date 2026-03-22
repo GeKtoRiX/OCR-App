@@ -1,0 +1,14 @@
+import { Module } from '@nestjs/common';
+import { LMStudioConfig } from '../../infrastructure/config/lm-studio.config';
+import { LMStudioClient } from '../../infrastructure/lm-studio/lm-studio.client';
+import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
+
+@Module({
+  providers: [
+    LMStudioConfig,
+    LMStudioClient,
+    { provide: ILmStudioHealthPort, useExisting: LMStudioClient },
+  ],
+  exports: [LMStudioConfig, LMStudioClient, ILmStudioHealthPort],
+})
+export class LmStudioModule {}

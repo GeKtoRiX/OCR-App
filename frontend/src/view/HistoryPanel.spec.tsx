@@ -15,21 +15,28 @@ const baseProps = {
   entries: [] as HistoryEntry[],
   activeId: null,
   onSelect: vi.fn(),
-  healthColor: 'blue' as const,
-  healthLabel: 'All systems ready',
-  healthTooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
-  savedDocuments: [],
-  savedLoading: false,
-  activeSavedId: null,
-  onSelectSaved: vi.fn(),
-  onDeleteSaved: vi.fn(),
-  vocabWords: [],
-  vocabLoading: false,
-  vocabLangPair: { targetLang: 'en', nativeLang: 'ru' },
-  vocabDueCount: 0,
-  onVocabLangPairChange: vi.fn(),
-  onVocabDelete: vi.fn(),
-  onStartPractice: vi.fn(),
+  onDeleteSession: vi.fn(),
+  health: {
+    color: 'blue' as const,
+    label: 'All systems ready',
+    tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
+  },
+  saved: {
+    documents: [],
+    loading: false,
+    activeId: null,
+    onSelect: vi.fn(),
+    onDelete: vi.fn(),
+  },
+  vocab: {
+    words: [],
+    loading: false,
+    langPair: { targetLang: 'en', nativeLang: 'ru' },
+    dueCount: 0,
+    onLangPairChange: vi.fn(),
+    onDelete: vi.fn(),
+    onStartPractice: vi.fn(),
+  },
 };
 
 describe('HistoryPanel', () => {
@@ -83,6 +90,22 @@ describe('HistoryPanel', () => {
     expect(onSelect).toHaveBeenCalledWith('entry-1');
   });
 
+  it('should call onDeleteSession when session delete button is clicked', async () => {
+    const user = userEvent.setup();
+    const onDeleteSession = vi.fn();
+    render(
+      <HistoryPanel
+        {...baseProps}
+        entries={[makeEntry('entry-1')]}
+        onDeleteSession={onDeleteSession}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Delete entry-1.png'));
+
+    expect(onDeleteSession).toHaveBeenCalledWith('entry-1');
+  });
+
   it('should call onSelect on Enter key press', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -115,8 +138,7 @@ describe('HistoryPanel', () => {
     const { container } = render(
       <HistoryPanel
         {...baseProps}
-        healthColor="red"
-        healthTooltip="PaddleOCR unreachable"
+        health={{ color: 'red', label: 'Service issue', tooltip: 'PaddleOCR unreachable' }}
       />,
     );
 
@@ -138,7 +160,12 @@ describe('HistoryPanel', () => {
     const savedDocuments = [
       { id: 's1', markdown: '# Saved', filename: 'saved.png', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
     ];
-    render(<HistoryPanel {...baseProps} savedDocuments={savedDocuments} />);
+    render(
+      <HistoryPanel
+        {...baseProps}
+        saved={{ ...baseProps.saved, documents: savedDocuments }}
+      />,
+    );
 
     await user.click(screen.getByText('Saved (1)'));
 
@@ -154,19 +181,22 @@ describe('HistoryPanel', () => {
     expect(screen.getByText('No saved documents yet.')).toBeInTheDocument();
   });
 
-  it('should call onDeleteSaved when delete button is clicked', async () => {
+  it('should call onDelete when delete button is clicked', async () => {
     const user = userEvent.setup();
-    const onDeleteSaved = vi.fn();
+    const onDelete = vi.fn();
     const savedDocuments = [
       { id: 's1', markdown: '# Saved', filename: 'saved.png', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
     ];
     render(
-      <HistoryPanel {...baseProps} savedDocuments={savedDocuments} onDeleteSaved={onDeleteSaved} />,
+      <HistoryPanel
+        {...baseProps}
+        saved={{ ...baseProps.saved, documents: savedDocuments, onDelete }}
+      />,
     );
 
     await user.click(screen.getByText('Saved (1)'));
     await user.click(screen.getByLabelText('Delete saved.png'));
 
-    expect(onDeleteSaved).toHaveBeenCalledWith('s1');
+    expect(onDelete).toHaveBeenCalledWith('s1');
   });
 });

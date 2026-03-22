@@ -3,9 +3,10 @@ import { HealthController } from '../controllers/health.controller';
 import { HealthCheckUseCase } from '../../application/use-cases/health-check.use-case';
 import { OcrModule } from './ocr.module';
 import { TtsModule } from './tts.module';
+import { LmStudioModule } from './lm-studio.module';
 
 @Module({
-  imports: [OcrModule, TtsModule],
+  imports: [OcrModule, TtsModule, LmStudioModule],
   controllers: [HealthController],
   providers: [HealthCheckUseCase],
 })

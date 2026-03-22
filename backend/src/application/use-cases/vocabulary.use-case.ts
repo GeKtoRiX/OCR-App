@@ -43,6 +43,21 @@ export class VocabularyUseCase {
     return this.toOutput(word);
   }
 
+  async addMany(inputs: AddVocabularyInput[]): Promise<VocabularyOutput[]> {
+    const words = await this.repository.createMany(
+      inputs.map((i) => ({
+        word: i.word,
+        vocabType: i.vocabType,
+        translation: i.translation,
+        targetLang: i.targetLang,
+        nativeLang: i.nativeLang,
+        contextSentence: i.contextSentence,
+        sourceDocumentId: i.sourceDocumentId ?? null,
+      })),
+    );
+    return words.map((w) => this.toOutput(w));
+  }
+
   async findAll(
     targetLang?: string,
     nativeLang?: string,

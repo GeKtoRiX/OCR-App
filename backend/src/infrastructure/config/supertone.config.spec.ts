@@ -40,4 +40,17 @@ describe('SupertoneConfig', () => {
     expect(config.healthEndpoint).toBe('http://192.168.1.5:8200/health');
     expect(config.timeoutMs).toBe(60000);
   });
+
+  it('should fall back to numeric defaults when env values are invalid', () => {
+    process.env.SUPERTONE_HOST = 'supertone.internal';
+    process.env.SUPERTONE_PORT = 'oops';
+    process.env.SUPERTONE_TIMEOUT = 'timeout?';
+
+    const config = new SupertoneConfig();
+
+    expect(config.host).toBe('supertone.internal');
+    expect(config.port).toBe(8100);
+    expect(config.baseUrl).toBe('http://supertone.internal:8100');
+    expect(config.timeoutMs).toBe(120000);
+  });
 });

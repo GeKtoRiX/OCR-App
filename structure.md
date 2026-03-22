@@ -10,9 +10,9 @@ Permitted root directories and files:
 - `frontend/`: React/Vite frontend.
 - `services/`: Python sidecar services.
   - `ocr/paddleocr-service/`: Python OCR sidecar (PaddleOCR, port 8000).
-  - `tts/supertone-service/`: Python TTS sidecar (Supertone / supertonic, port 8100).
+  - `tts/supertone-service/`: Python TTS sidecar (Supertone + Piper, port 8100).
   - `tts/kokoro-service/`: Python TTS sidecar (Kokoro, port 8200).
-  - `tts/qwen-tts-service/`: Python TTS sidecar (Qwen TTS, port 8300).
+  - `tts/f5-service/`: Python TTS sidecar (F5, port 8300).
 - `logs/`: runtime log files (gitignored).
 - `docs/`: project documentation.
 - `scripts/`: platform-specific start/stop/kill scripts.
@@ -41,7 +41,8 @@ Backend source code lives exclusively in `backend/src/`.
   - `paddleocr/*.service.ts`
   - `supertone/*.service.ts`
   - `kokoro/*.service.ts`
-  - `qwen/*.service.ts`
+  - `f5/*.service.ts`
+  - `testing/*.service.ts`
   - `sqlite/*.repository.ts`, `*.provider.ts`
 - `backend/src/presentation/`
   - `controllers/*.controller.ts`
@@ -111,16 +112,24 @@ Files are named by responsibility:
 ### Kokoro (`kokoro-service/`)
 
 - `main.py`: FastAPI TTS service entry point (Kokoro).
+- `smoke_test.py`: smoke test for startup, `/health`, and synthesis.
 - `requirements.txt`: Python deps.
 
-### Qwen TTS (`qwen-tts-service/`)
+### F5 (`f5-service/`)
 
-- `main.py`: FastAPI TTS service entry point (Qwen TTS).
+- `main.py`: FastAPI TTS service entry point (F5 TTS).
+- `smoke_test.py`: smoke test for startup, `/health`, and synthesis.
 - `requirements.txt`: Python deps.
 
 ## Scripts
 
-- `scripts/linux/ocr.sh`: unified Linux/macOS lifecycle script. Interactive mode selector starts PaddleOCR, TTS sidecars, and the NestJS backend; Ctrl+C stops all gracefully. Sub-commands: `stop`, `wipe`, `status`.
+- `scripts/linux/ocr-common.sh`: shared Linux launcher logic used by the dedicated entry scripts.
+- `scripts/linux/ocr.sh`: OCR launcher entry (PaddleOCR + Kokoro + LM Studio + backend).
+- `scripts/linux/tts.sh`: TTS launcher entry (PaddleOCR + Supertone/Piper + Kokoro + F5 + backend).
+- `scripts/linux/ocr-tts.sh`: full-stack launcher entry (OCR + TTS + LM Studio + backend).
+- `scripts/e2e/prepare-browser-env.sh`: rebuilds frontend/backend and resets the temp browser-e2e SQLite database.
+- `scripts/e2e/stop-browser-env.sh`: kills the production-like browser e2e stack on ports 3000/8000/8100/8200/8300.
+- `scripts/perf/`: Phase 4 benchmark harness (`api-benchmark.mjs`, `browser-benchmark.mjs`, `run-phase4.sh`, `shared.mjs`).
 
 ## Documentation
 
@@ -144,15 +153,15 @@ They must not be used as the basis for architectural decisions and should not ap
 - No hierarchy violations found in source files.
 - All backend and frontend files follow naming rules.
 - `agentic/` bounded context is correctly isolated inside `backend/src/` and does not overlap with OCR layers.
-- Architecture violations resolved: `HealthCheckUseCase` and `TtsController` now depend exclusively on domain ports (ADR-007, 008).
+- Architecture violations resolved: `HealthCheckUseCase` and `TtsController` now depend exclusively on domain ports (ADR-007, 008). `TtsController` accepts multipart into memory and does not manage temp files in presentation.
 - `DatabaseModule` owns the SQLite connection singleton; `DocumentModule` and `VocabularyModule` import it (ADR-009).
 - New domain entities: `SavedDocument`, `VocabularyWord`, `PracticeSession`, `ExerciseAttempt`.
-- New domain ports: `IPaddleOcrHealthPort`, `ILmStudioHealthPort`, `ISupertonePort`, `IKokoroPort`, `IQwenTtsPort`, `ISavedDocumentRepository`, `IVocabularyRepository`, `IPracticeSessionRepository`, `IVocabularyLlmService`.
+- New domain ports: `IPaddleOcrHealthPort`, `ILmStudioHealthPort`, `ISupertonePort`, `IKokoroPort`, `IF5TtsPort`, `ISavedDocumentRepository`, `IVocabularyRepository`, `IPracticeSessionRepository`, `IVocabularyLlmService`.
 - New application use cases: `SynthesizeSpeechUseCase`, `SavedDocumentUseCase`, `VocabularyUseCase`, `PracticeUseCase`.
 - New application utils: `sm2.ts` (SM-2 spaced repetition algorithm).
-- New infrastructure: `SqliteConnectionProvider`, `SqliteSavedDocumentRepository`, `SqliteVocabularyRepository`, `SqlitePracticeSessionRepository`, `KokoroService`, `QwenTtsService`, `LMStudioVocabularyService`, configs for SQLite/Kokoro/Qwen TTS.
+- New infrastructure: `SqliteConnectionProvider`, `SqliteSavedDocumentRepository`, `SqliteVocabularyRepository`, `SqlitePracticeSessionRepository`, `KokoroService`, `F5TtsService`, `LMStudioVocabularyService`, configs for SQLite/Kokoro/F5 TTS.
 - New presentation modules: `DatabaseModule`, `DocumentModule`, `VocabularyModule` + controllers and DTOs.
-- New frontend hooks: `useTts`, `useSavedDocuments`, `useVocabulary`, `usePractice`.
+- New frontend hooks: `useTts`, `useResultPanel`, `useSavedDocuments`, `useVocabulary`, `usePractice`.
 - New frontend views: `VocabularyPanel`, `VocabContextMenu`, `VocabAddForm`, `PracticeView`.
 - CSS moved to `frontend/src/styles/` (`base.css`, `layout.css`) plus colocated component CSS files.
 - Exception: `backend/src/integration.spec.ts` and `backend/src/app.e2e.spec.ts` reside at the root of `src/` as integration/e2e tests — permitted by design.

@@ -1,19 +1,15 @@
-import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { HealthCheckUseCase } from '../../application/use-cases/health-check.use-case';
+import { HealthCheckOutput } from '../../application/dto/health-check.dto';
 
 @Controller('api')
 export class HealthController {
   constructor(private readonly healthCheck: HealthCheckUseCase) {}
 
   @Get('health')
-  async getHealth(@Res() res: Response): Promise<void> {
-    const result = await this.healthCheck.execute();
-
-    const statusCode = result.paddleOcrReachable && result.lmStudioReachable
-      ? HttpStatus.OK
-      : HttpStatus.SERVICE_UNAVAILABLE;
-
-    res.status(statusCode).json(result);
+  @SkipThrottle()
+  async getHealth(): Promise<HealthCheckOutput> {
+    return this.healthCheck.execute();
   }
 }

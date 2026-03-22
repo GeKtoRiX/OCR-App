@@ -3,6 +3,11 @@ dist/
 .env
 .venv/
 logs/
+.tools/
+coverage/
+playwright-report/
+test-results/
+.pytest_cache/
 *.js.map
 *.d.ts
 !vite.config.ts
@@ -14,4 +19,10 @@ __pycache__/
 .*.pid
 .pids/
 data/
+tmp/
+tmp/test-db/
+tmp/perf/
+services/ocr/paddleocr-service/models/
+services/tts/supertone-service/models/
 services/tts/kokoro-service/models/
+services/tts/f5-service/models/

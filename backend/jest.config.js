@@ -2,12 +2,10 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
-  e2eTestRegex: '.*\\.e2e\\.ts$',
   transform: {
     '^.+\\.(ts|tsx)$': [
       'ts-jest',
       {
-        isolatedModules: true,
         tsconfig: {
           esModuleInterop: true,
           allowSyntheticDefaultImports: true,

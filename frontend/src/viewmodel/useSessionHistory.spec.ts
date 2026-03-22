@@ -104,4 +104,40 @@ describe('useSessionHistory', () => {
 
     expect(result.current.entries[0].processedAt).toBeInstanceOf(Date);
   });
+
+  it('should remove an entry by id', () => {
+    const { result } = renderHook(() => useSessionHistory());
+
+    act(() => {
+      result.current.addEntry(makeFile('a.png'), makeResult('a.png'));
+      result.current.addEntry(makeFile('b.png'), makeResult('b.png'));
+    });
+
+    const removedId = result.current.entries[1].id;
+
+    act(() => {
+      result.current.removeEntry(removedId);
+    });
+
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0].result.filename).toBe('b.png');
+  });
+
+  it('should select the next available entry when removing the active one', () => {
+    const { result } = renderHook(() => useSessionHistory());
+
+    act(() => {
+      result.current.addEntry(makeFile('a.png'), makeResult('a.png'));
+      result.current.addEntry(makeFile('b.png'), makeResult('b.png'));
+    });
+
+    const activeId = result.current.activeId as string;
+    const expectedNextId = result.current.entries[1].id;
+
+    act(() => {
+      result.current.removeEntry(activeId);
+    });
+
+    expect(result.current.activeId).toBe(expectedNextId);
+  });
 });

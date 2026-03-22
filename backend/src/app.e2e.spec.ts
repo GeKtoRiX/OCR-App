@@ -19,8 +19,13 @@ const mockHealthCheckService = {
   execute: jest.fn().mockResolvedValue({
     paddleOcrReachable: true,
     paddleOcrModels: ['det', 'rec'],
+    paddleOcrDevice: 'gpu',
     lmStudioReachable: true,
     lmStudioModels: ['qwen/qwen3.5-9b'],
+    superToneReachable: true,
+    kokoroReachable: true,
+    f5TtsReachable: true,
+    f5TtsDevice: 'gpu',
   }),
 };
 
@@ -220,8 +225,13 @@ describe('App E2E (Image Processing)', () => {
     mockHealthCheckService.execute.mockResolvedValue({
       paddleOcrReachable: true,
       paddleOcrModels: ['det', 'rec'],
+      paddleOcrDevice: 'gpu',
       lmStudioReachable: true,
       lmStudioModels: ['qwen/qwen3.5-9b'],
+      superToneReachable: true,
+      kokoroReachable: true,
+      f5TtsReachable: true,
+      f5TtsDevice: 'gpu',
     });
     mockAgentEcosystemService.execute.mockResolvedValue({
       request: 'Design a multi-agent system',
@@ -448,9 +458,22 @@ describe('App E2E (Image Processing)', () => {
       expect(response.body).toEqual({
         paddleOcrReachable: true,
         paddleOcrModels: ['det', 'rec'],
+        paddleOcrDevice: 'gpu',
         lmStudioReachable: true,
         lmStudioModels: ['qwen/qwen3.5-9b'],
+        superToneReachable: true,
+        kokoroReachable: true,
+        f5TtsReachable: true,
+        f5TtsDevice: 'gpu',
       });
+    });
+
+    it('should not be throttled under repeated polling', async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const response = await request(app.getHttpServer()).get('/api/health');
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('paddleOcrReachable');
+      }
     });
   });
 

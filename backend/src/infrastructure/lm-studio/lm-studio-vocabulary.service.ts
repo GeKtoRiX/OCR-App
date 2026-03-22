@@ -112,7 +112,7 @@ ${wordsTable}
 Generate ${count} exercises total, mixing all four exercise types. Each word must appear at least once.`;
 
     const response = await this.client.chatCompletion({
-      model: this.config.structuringModel,
+      model: this.config.vocabularyModel,
       messages: [
         { role: 'system', content: EXERCISE_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
@@ -157,7 +157,7 @@ ${attemptsTable}
 Provide your analysis.`;
 
     const response = await this.client.chatCompletion({
-      model: this.config.structuringModel,
+      model: this.config.vocabularyModel,
       messages: [
         { role: 'system', content: SESSION_ANALYSIS_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },

@@ -1,4 +1,5 @@
 import { BadRequestException, HttpException } from '@nestjs/common';
+import * as fs from 'fs';
 import { OcrController } from './ocr.controller';
 import { ProcessImageUseCase } from '../../application/use-cases/process-image.use-case';
 
@@ -52,6 +53,38 @@ describe('OcrController', () => {
     );
   });
 
+  it('cleans up oversized files from disk before rejecting them', async () => {
+    const unlinkSpy = jest
+      .spyOn(fs.promises, 'unlink')
+      .mockResolvedValue(undefined);
+    const file = {
+      ...validFile,
+      size: 11 * 1024 * 1024,
+      path: '/tmp/oversized.png',
+    };
+
+    await expect(controller.processOcr(file as any)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(unlinkSpy).toHaveBeenCalledWith('/tmp/oversized.png');
+  });
+
+  it('cleans up unsupported files from disk before rejecting them', async () => {
+    const unlinkSpy = jest
+      .spyOn(fs.promises, 'unlink')
+      .mockResolvedValue(undefined);
+    const file = {
+      ...validFile,
+      mimetype: 'application/pdf',
+      path: '/tmp/invalid.pdf',
+    };
+
+    await expect(controller.processOcr(file as any)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(unlinkSpy).toHaveBeenCalledWith('/tmp/invalid.pdf');
+  });
+
   it('should accept all allowed MIME types', async () => {
     mockProcessImage.execute.mockResolvedValue({ rawText: 't', markdown: 'm' });
 
@@ -88,5 +121,61 @@ describe('OcrController', () => {
       expect(e).toBeInstanceOf(HttpException);
       expect((e as HttpException).getStatus()).toBe(502);
     }
+  });
+
+  it('should convert non-Error processing failures into an unknown processing error', async () => {
+    mockProcessImage.execute.mockRejectedValue('bad response');
+
+    await expect(controller.processOcr(validFile)).rejects.toMatchObject({
+      status: 502,
+      response: {
+        statusCode: 502,
+        message: 'OCR processing error: Unknown processing error',
+      },
+    });
+  });
+
+  it('should reject requests when the OCR queue backpressure limit is exceeded', async () => {
+    const unlinkSpy = jest
+      .spyOn(fs.promises, 'unlink')
+      .mockResolvedValue(undefined);
+    let releaseBlocked!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      releaseBlocked = resolve;
+    });
+    mockProcessImage.execute.mockImplementation(() =>
+      blocked.then(() => ({
+        rawText: 'Hello',
+        markdown: '# Hello',
+      })),
+    );
+
+    const inflight = Array.from({ length: 9 }, (_, index) =>
+      controller.processOcr({
+        ...validFile,
+        originalname: `test-${index}.png`,
+      } as any),
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(
+      controller.processOcr({
+        ...validFile,
+        originalname: 'overflow.png',
+        path: '/tmp/overflow.png',
+      } as any),
+    ).rejects.toMatchObject({
+      status: 429,
+      response: {
+        statusCode: 429,
+        message: 'Too many OCR requests in progress, try again later',
+      },
+    });
+
+    expect(unlinkSpy).toHaveBeenCalledWith('/tmp/overflow.png');
+
+    releaseBlocked();
+    await Promise.allSettled(inflight);
   });
 });

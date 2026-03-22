@@ -6,11 +6,18 @@ import io
 import logging
 import os
 import struct
+import threading
 import wave
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+
+# Redirect model caches to project-local models/ directory.
+# These must be set before supertonic/piper/huggingface_hub are imported (all lazy).
+_SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.environ.setdefault("SUPERTONIC_CACHE_DIR", os.path.join(_SERVICE_DIR, "models", "supertonic2"))
+os.environ.setdefault("PIPER_CACHE_DIR", os.path.join(_SERVICE_DIR, "models", "piper-voices"))
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
@@ -25,6 +32,14 @@ logging.basicConfig(
 
 SERVICE_NAME = "supertone-sidecar"
 MAX_TEXT_LENGTH = 5000
+GPU_RUNTIME_ERROR_PATTERNS = (
+    "hiperrorinvaliddevicefunction",
+    "invalid device function",
+    "onnxruntimeerror",
+    "rocmexecutionprovider",
+    "cudaexecutionprovider",
+    "non-zero status code returned while running",
+)
 
 SUPERTONE_VOICES = ["M1", "F1", "M2", "F2", "M3", "F3", "M4", "F4", "M5", "F5"]
 SUPERTONE_LANGS  = ["en", "ko", "es", "pt", "fr"]
@@ -38,7 +53,7 @@ PIPER_VOICE_IDS = [
     "en_US-amy-medium",
 ]
 
-PIPER_CACHE_DIR = Path(os.getenv("PIPER_CACHE_DIR", Path.home() / ".cache" / "piper-voices"))
+PIPER_CACHE_DIR = Path(os.environ["PIPER_CACHE_DIR"])  # set at module top via setdefault
 
 
 # ─── helpers ───────────────────────────────────────────────────────────────────
@@ -120,7 +135,9 @@ class SupertoneEngine:
         self._config = config
         self._tts: Optional[Any] = None
         self._voice_names: list[str] = []
+        self._lock = threading.Lock()
         self._actual_provider = "CPUExecutionProvider"
+        self._gpu_provider: Optional[str] = None
 
     @property
     def ready(self) -> bool:
@@ -134,33 +151,39 @@ class SupertoneEngine:
             return "gpu (CUDA)"
         return "cpu"
 
-    def start(self) -> None:
-        if self._config.use_gpu:
-            try:
-                import onnxruntime as ort
-                import supertonic.config as _cfg
+    def _configure_providers(self, provider: Optional[str]) -> None:
+        import supertonic.config as _cfg
 
-                available = ort.get_available_providers()
-                logger.info("Supertone: available ONNX providers: %s", available)
+        providers = [provider, "CPUExecutionProvider"] if provider else ["CPUExecutionProvider"]
+        _cfg.DEFAULT_ONNX_PROVIDERS.clear()
+        _cfg.DEFAULT_ONNX_PROVIDERS.extend(providers)
+        self._actual_provider = provider or "CPUExecutionProvider"
+        if provider:
+            logger.info("Supertone: GPU mode requested: %s", provider)
+        else:
+            logger.info("Supertone: CPU mode requested")
 
-                gpu_provider: Optional[str] = None
-                if "CUDAExecutionProvider" in available:
-                    gpu_provider = "CUDAExecutionProvider"
-                elif "ROCMExecutionProvider" in available:
-                    gpu_provider = "ROCMExecutionProvider"
+    def _resolve_gpu_provider(self) -> Optional[str]:
+        if not self._config.use_gpu:
+            return None
 
-                if gpu_provider:
-                    _cfg.DEFAULT_ONNX_PROVIDERS.clear()
-                    _cfg.DEFAULT_ONNX_PROVIDERS.extend([gpu_provider, "CPUExecutionProvider"])
-                    logger.info("Supertone: GPU mode: %s", gpu_provider)
-                    self._actual_provider = gpu_provider
-                else:
-                    logger.warning("Supertone: no GPU ONNX provider found — using CPU")
-            except Exception as e:
-                logger.warning("Supertone: could not configure GPU providers: %s", e)
+        try:
+            import onnxruntime as ort
 
+            available = ort.get_available_providers()
+            logger.info("Supertone: available ONNX providers: %s", available)
+            if "CUDAExecutionProvider" in available:
+                return "CUDAExecutionProvider"
+            if "ROCMExecutionProvider" in available:
+                return "ROCMExecutionProvider"
+        except Exception as exc:
+            logger.warning("Supertone: could not inspect ONNX providers: %s", exc)
+
+        logger.warning("Supertone: no GPU ONNX provider found — using CPU")
+        return None
+
+    def _load_tts(self) -> None:
         from supertonic import TTS
-
         logger.info("Supertone: loading model '%s'...", self._config.model_name)
         self._tts = TTS(model=self._config.model_name, auto_download=True)
         self._voice_names = self._tts.voice_style_names
@@ -178,24 +201,92 @@ class SupertoneEngine:
             self._tts.sample_rate, self.device_name, self._voice_names,
         )
 
-    def synthesize(self, req: TtsRequest) -> bytes:
+    def _synthesis_inputs(self, req: TtsRequest) -> tuple[str, Any]:
         if not self.ready or self._tts is None:
             raise HTTPException(status_code=503, detail="Supertone model not loaded")
 
         voice_name = req.voice if req.voice in self._voice_names else self._voice_names[0]
         lang = req.lang if req.lang in SUPERTONE_LANGS else "en"
+        return lang, self._tts.get_voice_style(voice_name)
 
-        try:
-            style = self._tts.get_voice_style(voice_name)
-            wav, _ = self._tts.synthesize(
-                text=req.text,
-                voice_style=style,
-                speed=req.speed,
-                total_steps=req.total_steps,
-                lang=lang,
+    def _run_synthesis(self, req: TtsRequest) -> Any:
+        lang, style = self._synthesis_inputs(req)
+        if self._tts is None:
+            raise HTTPException(status_code=503, detail="Supertone model not loaded")
+        return self._tts.synthesize(
+            text=req.text,
+            voice_style=style,
+            speed=req.speed,
+            total_steps=req.total_steps,
+            lang=lang,
+        )
+
+    def _is_gpu_runtime_error(self, exc: Exception) -> bool:
+        text = str(exc).lower()
+        return any(pattern in text for pattern in GPU_RUNTIME_ERROR_PATTERNS)
+
+    def _fallback_to_cpu(self, *, reason: Exception) -> None:
+        with self._lock:
+            if self._actual_provider == "CPUExecutionProvider":
+                return
+
+            logger.warning(
+                "Supertone: GPU inference failed with '%s'. Falling back to CPU.",
+                reason,
             )
+            self._tts = None
+            self._voice_names = []
+            self._gpu_provider = None
+            self._configure_providers(None)
+            self._load_tts()
+
+    def _probe_gpu_runtime(self) -> None:
+        if self._actual_provider == "CPUExecutionProvider":
+            return
+
+        probe_req = TtsRequest(
+            text="GPU probe.",
+            engine="supertone",
+            voice=self._voice_names[0] if self._voice_names else "M1",
+            lang="en",
+            speed=1.0,
+            total_steps=1,
+        )
+        try:
+            self._run_synthesis(probe_req)
+        except ValueError as exc:
+            logger.warning("Supertone: startup probe validation failed: %s", exc)
+        except Exception as exc:
+            if self._is_gpu_runtime_error(exc):
+                self._fallback_to_cpu(reason=exc)
+                return
+            raise
+
+    def start(self) -> None:
+        self._gpu_provider = self._resolve_gpu_provider()
+        self._configure_providers(self._gpu_provider)
+        self._load_tts()
+        self._probe_gpu_runtime()
+
+    def synthesize(self, req: TtsRequest) -> bytes:
+        try:
+            wav, _ = self._run_synthesis(req)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            if self._actual_provider != "CPUExecutionProvider" and self._is_gpu_runtime_error(exc):
+                self._fallback_to_cpu(reason=exc)
+                try:
+                    wav, _ = self._run_synthesis(req)
+                except ValueError as retry_exc:
+                    raise HTTPException(status_code=400, detail=str(retry_exc)) from retry_exc
+                except Exception as retry_exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"TTS error after CPU fallback: {retry_exc}",
+                    ) from retry_exc
+            else:
+                raise
 
         waveform = wav.squeeze()
         pcm = (np.clip(waveform, -1.0, 1.0) * 32767).astype(np.int16)
@@ -341,6 +432,8 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
         return {
             "status": "healthy" if st.ready else "loading",
             "service": SERVICE_NAME,
+            "ready": st.ready,
+            "device": st.device_name,
             "supertone": {
                 "ready": st.ready,
                 "model": config.model_name,

@@ -18,8 +18,8 @@ const allGood = () => ({
   lmStudioModels: ['qwen/qwen3.5-9b'],
   superToneReachable: true,
   kokoroReachable: true,
-  qwenTtsReachable: true,
-  qwenTtsDevice: 'gpu' as const,
+  f5TtsReachable: true,
+  f5TtsDevice: 'gpu' as const,
 });
 
 describe('useHealthStatus', () => {
@@ -46,7 +46,7 @@ describe('useHealthStatus', () => {
     const { result } = renderHook(() => useHealthStatus());
 
     await waitFor(() => expect(result.current.color).toBe('blue'));
-    expect(result.current.tooltip).toContain('Qwen TTS');
+    expect(result.current.tooltip).toContain('F5 TTS');
     expect(result.current.tooltip).toContain('Supertone');
   });
 
@@ -81,29 +81,29 @@ describe('useHealthStatus', () => {
     expect(result.current.tooltip).toContain('LM Studio ✗');
   });
 
-  it('should go green when GPU OK but Qwen TTS is down', async () => {
+  it('should go green when GPU OK but F5 TTS is down', async () => {
     mockCheckHealth.mockResolvedValue({
       ...allGood(),
-      qwenTtsReachable: false,
-      qwenTtsDevice: null,
+      f5TtsReachable: false,
+      f5TtsDevice: null,
     });
 
     const { result } = renderHook(() => useHealthStatus());
 
     await waitFor(() => expect(result.current.color).toBe('green'));
-    expect(result.current.tooltip).toContain('Qwen TTS ✗');
+    expect(result.current.tooltip).toContain('F5 TTS ✗');
   });
 
-  it('should go green when Qwen TTS is reachable but not on GPU', async () => {
+  it('should go green when F5 TTS is reachable but not on GPU', async () => {
     mockCheckHealth.mockResolvedValue({
       ...allGood(),
-      qwenTtsDevice: 'cpu',
+      f5TtsDevice: 'cpu',
     });
 
     const { result } = renderHook(() => useHealthStatus());
 
     await waitFor(() => expect(result.current.color).toBe('green'));
-    expect(result.current.tooltip).toContain('Qwen TTS CPU');
+    expect(result.current.tooltip).toContain('F5 TTS CPU');
   });
 
   it('should go green when GPU OK but Kokoro is down', async () => {
@@ -115,7 +115,7 @@ describe('useHealthStatus', () => {
     expect(result.current.tooltip).toContain('Kokoro ✗');
   });
 
-  it('should go green when GPU+Qwen TTS OK but Supertone is down', async () => {
+  it('should go green when GPU+F5 TTS OK but Supertone is down', async () => {
     mockCheckHealth.mockResolvedValue({ ...allGood(), superToneReachable: false });
 
     const { result } = renderHook(() => useHealthStatus());

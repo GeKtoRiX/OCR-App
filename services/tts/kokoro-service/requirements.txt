@@ -1,6 +1,5 @@
-# Official Kokoro TTS (hexgrad/kokoro) — PyTorch backend
-# Auto-downloads model from HuggingFace on first use (~350 MB)
-kokoro>=0.9.4
+# Kokoro ONNX runtime backend
+kokoro-onnx>=0.5.0
 soundfile>=0.12.1
 
 # Web framework
@@ -10,7 +9,8 @@ uvicorn[standard]>=0.27.0
 # Numerics
 numpy>=1.24.0
 
-# GPU (ROCm/CUDA): use the system PyTorch — create venv with:
+# GPU (ROCm/CUDA): install the ROCm build of ONNX Runtime into the venv.
+# The plain kokoro-onnx dependency pulls in CPU onnxruntime, so replace it with ROCm:
 #   python3 -m venv .venv --system-site-packages
-# This inherits the system torch+rocm installation.
-# System torch 2.5.1+rocm6.2 is used; torch.cuda.is_available() returns True on ROCm.
+#   .venv/bin/python -m pip uninstall -y onnxruntime
+#   .venv/bin/python -m pip install onnxruntime-rocm==1.22.2.post1

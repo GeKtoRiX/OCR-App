@@ -26,7 +26,7 @@ describe('LMStudioVocabularyService', () => {
       chatCompletion: jest.fn(),
     } as unknown as jest.Mocked<LMStudioClient>;
     const config = {
-      structuringModel: 'qwen/qwen3.5-9b',
+      vocabularyModel: 'qwen/qwen3.5-9b',
     } as LMStudioConfig;
     service = new LMStudioVocabularyService(client, config);
   });
@@ -61,6 +61,16 @@ describe('LMStudioVocabularyService', () => {
 
       expect(result).toEqual(exercises);
     });
+
+    it('falls back to default language hints when the vocabulary list is empty', async () => {
+      client.chatCompletion.mockResolvedValue('[]');
+
+      await service.generateExercises([], 1);
+
+      const callArgs = client.chatCompletion.mock.calls[0][0];
+      expect(callArgs.messages[1].content).toContain('target language: en');
+      expect(callArgs.messages[1].content).toContain('native language: ru');
+    });
   });
 
   describe('analyzeSession', () => {
@@ -87,6 +97,35 @@ describe('LMStudioVocabularyService', () => {
       expect(result.overallScore).toBe(50);
       expect(result.wordAnalyses).toHaveLength(1);
     });
+
+    it('renders correct attempts with Yes and N/A in the analysis prompt', async () => {
+      const correctAttempt = new ExerciseAttempt(
+        'att-2',
+        'sess-1',
+        'v1',
+        'spelling',
+        'Translate: красивый',
+        'beautiful',
+        'beautiful',
+        true,
+        null,
+        5,
+        null,
+        '2024-01-01T00:00:00.000Z',
+      );
+      client.chatCompletion.mockResolvedValue(
+        JSON.stringify({
+          overallScore: 100,
+          summary: 'Perfect!',
+          wordAnalyses: [],
+        }),
+      );
+
+      await service.analyzeSession([mockWord], [correctAttempt]);
+
+      const callArgs = client.chatCompletion.mock.calls[0][0];
+      expect(callArgs.messages[1].content).toContain('| Yes | N/A |');
+    });
   });
 });
 
@@ -105,6 +144,18 @@ describe('parseJsonResponse', () => {
 
   it('extracts JSON from surrounding text', () => {
     expect(parseJsonResponse('Here is the result:\n{"x": 2}\nDone.')).toEqual({ x: 2 });
+  });
+
+  it('falls back from invalid fenced JSON to the first valid JSON object', () => {
+    expect(
+      parseJsonResponse('```json\nnot valid json\n```\nResult: {"x": 2}'),
+    ).toEqual({ x: 2 });
+  });
+
+  it('throws when a detected JSON fragment is malformed', () => {
+    expect(() => parseJsonResponse('before {not-json} after')).toThrow(
+      /Failed to parse LLM response/,
+    );
   });
 
   it('throws on unparseable response', () => {

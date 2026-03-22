@@ -13,9 +13,42 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { AppModule } from './presentation/app.module';
 import { SqliteConfig } from './infrastructure/config/sqlite.config';
+import { IVocabularyLlmService } from './domain/ports/vocabulary-llm-service.port';
 
 let app: INestApplication;
 let baseUrl: string;
+
+const mockVocabularyLlmService = {
+  generateExercises: jest.fn(async (words: any[], limit: number) =>
+    words.slice(0, limit).map((word) => ({
+      vocabularyId: word.id,
+      word: word.word,
+      exerciseType: 'spelling',
+      prompt: `Type the word "${word.word}"`,
+      correctAnswer: word.word,
+      options: undefined,
+    })),
+  ),
+  analyzeSession: jest.fn(async (words: any[], attempts: any[]) => ({
+    overallScore:
+      attempts.length === 0
+        ? 0
+        : Math.round(
+            (attempts.filter((attempt) => attempt.isCorrect).length /
+              attempts.length) *
+              100,
+          ),
+    summary: 'Practice session complete',
+    wordAnalyses: words.map((word) => ({
+      vocabularyId: word.id,
+      word: word.word,
+      errorPattern: 'Spelling mismatch',
+      mnemonicSentence: `Remember ${word.word} in context.`,
+      difficultyAssessment: 'medium',
+      suggestedFocus: 'Review spelling',
+    })),
+  })),
+};
 
 beforeAll(async () => {
   const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -23,6 +56,8 @@ beforeAll(async () => {
   })
     .overrideProvider(SqliteConfig)
     .useValue({ dbPath: ':memory:' })
+    .overrideProvider(IVocabularyLlmService)
+    .useValue(mockVocabularyLlmService)
     .compile();
 
   app = moduleFixture.createNestApplication();
@@ -48,8 +83,11 @@ async function post(path: string, body: unknown): Promise<Response> {
   });
 }
 
-async function get(path: string): Promise<Response> {
-  return fetch(`${baseUrl}${path}`);
+async function get(
+  path: string,
+  headers?: Record<string, string>,
+): Promise<Response> {
+  return fetch(`${baseUrl}${path}`, { headers });
 }
 
 async function put(path: string, body: unknown): Promise<Response> {
@@ -123,6 +161,20 @@ describe('E2E: Document persistence (/api/documents)', () => {
     expect(body.markdown).toBe('# Updated\n\nEdited content.');
   });
 
+  it('GET /api/documents/:id — returns 304 when If-None-Match matches', async () => {
+    const first = await get(`/api/documents/${createdId}`);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+
+    expect(etag).toBeTruthy();
+
+    const cached = await get(`/api/documents/${createdId}`, {
+      'If-None-Match': etag!,
+    });
+    expect(cached.status).toBe(304);
+    expect(await cached.text()).toBe('');
+  });
+
   it('DELETE /api/documents/:id — removes the document', async () => {
     const res = await del(`/api/documents/${createdId}`);
     expect(res.status).toBe(200);
@@ -161,6 +213,7 @@ describe('E2E: Document persistence (/api/documents)', () => {
 describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
   let wordId: string;
   let docId: string;
+  let batchIds: string[] = [];
 
   beforeAll(async () => {
     // Create a document so we can test sourceDocumentId linkage
@@ -248,6 +301,32 @@ describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
     expect(res.status).toBe(201);
   });
 
+  it('POST /api/vocabulary/batch — creates multiple vocabulary items', async () => {
+    const res = await post('/api/vocabulary/batch', [
+      {
+        word: 'turn on',
+        vocabType: 'phrasal_verb',
+        translation: 'включать',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Turn on the light.',
+      },
+      {
+        word: 'piece of cake',
+        vocabType: 'idiom',
+        translation: 'проще простого',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'The exam was a piece of cake.',
+      },
+    ]);
+
+    expect(res.status).toBe(201);
+    const body: any[] = await res.json();
+    expect(body).toHaveLength(2);
+    batchIds = body.map((item) => item.id);
+  });
+
   it('GET /api/vocabulary — lists all words', async () => {
     const res = await get('/api/vocabulary');
     expect(res.status).toBe(200);
@@ -275,6 +354,20 @@ describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
     expect(body.word).toBe('cat');
   });
 
+  it('GET /api/vocabulary/:id — returns 304 when If-None-Match matches', async () => {
+    const first = await get(`/api/vocabulary/${wordId}`);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+
+    expect(etag).toBeTruthy();
+
+    const cached = await get(`/api/vocabulary/${wordId}`, {
+      'If-None-Match': etag!,
+    });
+    expect(cached.status).toBe(304);
+    expect(await cached.text()).toBe('');
+  });
+
   it('PUT /api/vocabulary/:id — updates translation and context', async () => {
     const res = await put(`/api/vocabulary/${wordId}`, {
       translation: 'кот / кошка',
@@ -293,6 +386,13 @@ describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
     expect(Array.isArray(body)).toBe(true);
     // All new words have nextReviewAt = now, so at least 1 should be due
     expect(body.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/vocabulary/review/due?limit=1 — respects the limit parameter', async () => {
+    const res = await get('/api/vocabulary/review/due?limit=1');
+    expect(res.status).toBe(200);
+    const body: any[] = await res.json();
+    expect(body).toHaveLength(1);
   });
 
   it('DELETE /api/vocabulary/:id — removes the word', async () => {
@@ -341,5 +441,127 @@ describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
   it('DELETE /api/vocabulary/:id — returns 404 for non-existent id', async () => {
     const res = await del('/api/vocabulary/non-existent-id');
     expect(res.status).toBe(404);
+  });
+
+  afterAll(async () => {
+    for (const id of batchIds) {
+      await del(`/api/vocabulary/${id}`);
+    }
+  });
+});
+
+describe('E2E: Practice workflow (/api/practice)', () => {
+  const practiceWords = ['lantern', 'harbor'];
+  let wordIds: string[] = [];
+  let sessionId = '';
+  let exercises: any[] = [];
+  let answeredVocabularyId = '';
+
+  beforeAll(async () => {
+    const results = await Promise.all(
+      practiceWords.map((word) =>
+        post('/api/vocabulary', {
+          word,
+          vocabType: 'word',
+          translation: `ru-${word}`,
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: `Context for ${word}.`,
+        }),
+      ),
+    );
+
+    const bodies = await Promise.all(results.map((res) => res.json()));
+    wordIds = bodies.map((body: any) => body.id);
+  });
+
+  afterAll(async () => {
+    for (const id of wordIds) {
+      await del(`/api/vocabulary/${id}`);
+    }
+  });
+
+  it('POST /api/practice/start — creates a session with generated exercises', async () => {
+    const res = await post('/api/practice/start', {
+      targetLang: 'en',
+      nativeLang: 'ru',
+      wordLimit: 2,
+    });
+
+    expect(res.status).toBe(201);
+    const body: any = await res.json();
+    expect(body.sessionId).toBeTruthy();
+    expect(body.exercises).toHaveLength(2);
+    expect(mockVocabularyLlmService.generateExercises).toHaveBeenCalled();
+
+    sessionId = body.sessionId;
+    exercises = body.exercises;
+  });
+
+  it('POST /api/practice/answer — records a correct answer', async () => {
+    const first = exercises[0];
+    answeredVocabularyId = first.vocabularyId;
+    const res = await post('/api/practice/answer', {
+      sessionId,
+      vocabularyId: first.vocabularyId,
+      exerciseType: first.exerciseType,
+      prompt: first.prompt,
+      correctAnswer: first.correctAnswer,
+      userAnswer: first.correctAnswer,
+    });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({
+      isCorrect: true,
+      errorPosition: null,
+      qualityRating: 5,
+    });
+  });
+
+  it('POST /api/practice/answer — records an incorrect answer', async () => {
+    const second = exercises[1];
+    const res = await post('/api/practice/answer', {
+      sessionId,
+      vocabularyId: second.vocabularyId,
+      exerciseType: second.exerciseType,
+      prompt: second.prompt,
+      correctAnswer: second.correctAnswer,
+      userAnswer: 'wrong-answer',
+    });
+
+    expect(res.status).toBe(201);
+    const body: any = await res.json();
+    expect(body.isCorrect).toBe(false);
+    expect(body.errorPosition).toBeTruthy();
+    expect(body.qualityRating).toBe(1);
+  });
+
+  it('GET /api/practice/sessions — returns completed and in-progress sessions', async () => {
+    const res = await get('/api/practice/sessions?limit=1');
+    expect(res.status).toBe(200);
+    const body: any[] = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe(sessionId);
+  });
+
+  it('GET /api/practice/stats/:vocabularyId — returns attempts for a vocabulary item', async () => {
+    const res = await get(`/api/practice/stats/${answeredVocabularyId}`);
+    expect(res.status).toBe(200);
+    const body: any[] = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].vocabularyId).toBe(answeredVocabularyId);
+  });
+
+  it('POST /api/practice/complete — finalizes the session and returns analysis', async () => {
+    const res = await post('/api/practice/complete', { sessionId });
+
+    expect(res.status).toBe(201);
+    const body: any = await res.json();
+    expect(body.sessionId).toBe(sessionId);
+    expect(body.totalExercises).toBe(2);
+    expect(body.correctCount).toBe(1);
+    expect(body.overallScore).toBe(50);
+    expect(body.wordAnalyses).toHaveLength(2);
+    expect(mockVocabularyLlmService.analyzeSession).toHaveBeenCalled();
   });
 });

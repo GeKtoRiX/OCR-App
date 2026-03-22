@@ -33,6 +33,10 @@
   grid-template-columns: 2rem 1fr auto;
 }
 
+.history-item--session {
+  grid-template-columns: 3rem 1fr auto;
+}
+
 .history-item__icon {
   font-size: 1.3rem;
   display: grid;
@@ -49,7 +53,7 @@
   transition: opacity 0.12s ease;
 }
 
-.history-item--saved:hover .history-item__delete {
+.history-item--deletable:hover .history-item__delete {
   opacity: 0.6;
 }
 

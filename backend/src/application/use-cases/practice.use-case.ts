@@ -29,17 +29,18 @@ export class PracticeUseCase {
     input: StartPracticeInput,
   ): Promise<{ sessionId: string; exercises: ExerciseOutput[] }> {
     const limit = input.wordLimit ?? 10;
-    const words = await this.vocabRepo.findDueForReview(limit);
+    const words = await this.vocabRepo.findDueForReview(limit, input.targetLang, input.nativeLang);
     if (words.length === 0) {
       throw new Error('No words due for review');
     }
+
+    const generated = await this.llmService.generateExercises(words, limit);
 
     const session = await this.sessionRepo.createSession(
       input.targetLang ?? 'en',
       input.nativeLang ?? 'ru',
     );
 
-    const generated = await this.llmService.generateExercises(words, limit);
     const exercises: ExerciseOutput[] = generated.map((e) => ({
       vocabularyId: e.vocabularyId,
       word: e.word,
@@ -77,6 +78,14 @@ export class PracticeUseCase {
     );
 
     return { isCorrect, errorPosition, qualityRating };
+  }
+
+  async getRecentSessions(limit: number) {
+    return this.sessionRepo.findRecentSessions(limit);
+  }
+
+  async getAttemptsByVocabulary(vocabularyId: string) {
+    return this.sessionRepo.findAttemptsByVocabulary(vocabularyId);
   }
 
   async completeSession(

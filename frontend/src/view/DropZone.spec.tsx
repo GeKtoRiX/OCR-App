@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { DropZone } from './DropZone';
 
 describe('DropZone', () => {
@@ -36,5 +36,33 @@ describe('DropZone', () => {
     const { container } = render(<DropZone {...defaultProps} disabled />);
 
     expect(container.firstChild).toHaveClass('dropzone--disabled');
+  });
+
+  it('should forward file input changes', () => {
+    const onFileChange = vi.fn();
+    const { container } = render(<DropZone {...defaultProps} onFileChange={onFileChange} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(onFileChange).toHaveBeenCalled();
+  });
+
+  it('should handle drag over, leave and drop events', () => {
+    const onDrop = vi.fn();
+    const { container } = render(<DropZone {...defaultProps} onDrop={onDrop} />);
+    const dropzone = container.firstChild as HTMLElement;
+    const file = new File(['img'], 'test.png', { type: 'image/png' });
+
+    fireEvent.dragOver(dropzone);
+    expect(dropzone).toHaveClass('dropzone--active');
+
+    fireEvent.dragLeave(dropzone);
+    expect(dropzone).not.toHaveClass('dropzone--active');
+
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    expect(onDrop).toHaveBeenCalled();
   });
 });

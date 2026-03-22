@@ -3,17 +3,8 @@ import { NO_TEXT_DETECTED } from '../../domain/constants';
 import { ImageData } from '../../domain/entities/image-data.entity';
 import { IOCRService } from '../../domain/ports/ocr-service.port';
 import { PaddleOCRConfig } from '../config/paddleocr.config';
+import { validatePaddleOcrExtractResponse } from '../validation/sidecar-response.validator';
 
-interface PaddleOCRExtractResponse {
-  text?: string | null;
-}
-
-/**
- * PaddleOCR Service Implementation
- *
- * Communicates with the PaddleOCR sidecar service via HTTP API
- * to extract text from images. Implements the IOCRService port.
- */
 @Injectable()
 export class PaddleOCRService extends IOCRService {
   private readonly logger = new Logger(PaddleOCRService.name);
@@ -22,33 +13,25 @@ export class PaddleOCRService extends IOCRService {
     super();
   }
 
-  /**
-   * Extract text from an image using the PaddleOCR sidecar.
-   *
-   * @param imageData - The image data to process
-   * @returns Extracted text as a string
-   */
   async extractText(image: ImageData): Promise<string> {
-    // Validate image
     if (!image || !image.buffer) {
       throw new Error('Invalid image data provided');
     }
 
     try {
-      // Encode image as base64 using Node.js Buffer
-      const base64Data = this.encodeImageToBase64(image);
+      this.logger.debug('Sending OCR request to PaddleOCR sidecar (multipart)...');
 
-      this.logger.debug('Sending OCR request to PaddleOCR sidecar...');
+      // Send as multipart/form-data — avoids +33% base64 overhead
+      const form = new FormData();
+      form.append(
+        'image',
+        new Blob([image.buffer], { type: image.mimeType }),
+        image.originalName,
+      );
 
-      // Call the PaddleOCR API with base64-encoded image
-      const response = await fetch(this.config.base64ExtractEndpoint, {
+      const response = await fetch(this.config.uploadExtractEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image_b64: base64Data,
-        }),
+        body: form,
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
 
@@ -59,11 +42,10 @@ export class PaddleOCRService extends IOCRService {
         );
       }
 
-      const result = (await response.json()) as PaddleOCRExtractResponse;
+      const result = validatePaddleOcrExtractResponse(await response.json());
 
       this.logger.debug('OCR completed successfully');
 
-      // Return extracted text, or fallback if empty
       if (!result.text || result.text.trim().length === 0) {
         return NO_TEXT_DETECTED;
       }
@@ -75,16 +57,7 @@ export class PaddleOCRService extends IOCRService {
         error instanceof Error && error.stack ? error.stack : undefined,
       );
 
-      // Return fallback text on failure
-      return NO_TEXT_DETECTED;
+      throw error;
     }
-  }
-
-  /**
-   * Encode an ImageData object to base64 string.
-   */
-  private encodeImageToBase64(image: ImageData): string {
-    // Buffer.toString('base64') is the standard Node.js way
-    return image.buffer.toString('base64');
   }
 }

@@ -75,12 +75,15 @@ describe('ProcessImageUseCase', () => {
     await expect(useCase.execute(input)).rejects.toThrow('OCR failed');
   });
 
-  it('should propagate structuring service errors', async () => {
+  it('should fall back to rawText when structuring service fails', async () => {
     mockOcrService.extractText.mockResolvedValue('text');
     mockStructuringService.structureAsMarkdown.mockRejectedValue(
       new Error('Structuring failed'),
     );
 
-    await expect(useCase.execute(input)).rejects.toThrow('Structuring failed');
+    const result = await useCase.execute(input);
+
+    expect(result.rawText).toBe('text');
+    expect(result.markdown).toBe('text');
   });
 });

@@ -4,18 +4,13 @@ import { HealthCheckUseCase } from '../../application/use-cases/health-check.use
 describe('HealthController', () => {
   let controller: HealthController;
   let mockHealthCheck: jest.Mocked<HealthCheckUseCase>;
-  let mockRes: any;
 
   beforeEach(() => {
     mockHealthCheck = { execute: jest.fn() } as any;
     controller = new HealthController(mockHealthCheck);
-    mockRes = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-    };
   });
 
-  it('should return 200 when both PaddleOCR and LM Studio are reachable', async () => {
+  it('should return health data when all services are reachable', async () => {
     const result = {
       paddleOcrReachable: true,
       paddleOcrModels: ['det'],
@@ -24,34 +19,32 @@ describe('HealthController', () => {
       lmStudioModels: ['qwen/qwen3.5-9b'],
       superToneReachable: true,
       kokoroReachable: true,
-      qwenTtsReachable: true,
-      qwenTtsDevice: 'gpu' as const,
+      f5TtsReachable: true,
+      f5TtsDevice: 'gpu' as const,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
-    await controller.getHealth(mockRes);
+    const response = await controller.getHealth();
 
-    expect(mockRes.status).toHaveBeenCalledWith(200);
-    expect(mockRes.json).toHaveBeenCalledWith(result);
+    expect(response).toEqual(result);
   });
 
-  it('should return 503 when a required dependency is not reachable', async () => {
+  it('should return health data with unreachable services (always 200)', async () => {
     const result = {
       paddleOcrReachable: false,
       paddleOcrModels: [],
       paddleOcrDevice: null,
-      lmStudioReachable: true,
-      lmStudioModels: ['qwen/qwen3.5-9b'],
+      lmStudioReachable: false,
+      lmStudioModels: [],
       superToneReachable: false,
       kokoroReachable: false,
-      qwenTtsReachable: false,
-      qwenTtsDevice: null,
+      f5TtsReachable: false,
+      f5TtsDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
-    await controller.getHealth(mockRes);
+    const response = await controller.getHealth();
 
-    expect(mockRes.status).toHaveBeenCalledWith(503);
-    expect(mockRes.json).toHaveBeenCalledWith(result);
+    expect(response).toEqual(result);
   });
 });

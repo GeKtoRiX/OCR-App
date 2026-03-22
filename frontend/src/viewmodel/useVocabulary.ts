@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { VocabularyWord, VocabType, LanguagePair } from '../model/types';
 import {
   fetchVocabulary,
@@ -94,7 +94,7 @@ export function useVocabulary() {
     [],
   );
 
-  const existingWordsSet = new Set(words.map((w) => w.word.toLowerCase()));
+  const existingWordsSet = useMemo(() => new Set(words.map((w) => w.word.toLowerCase())), [words]);
 
   return {
     words,

@@ -14,7 +14,7 @@ Full-stack monorepo OCR web application. Accepts image uploads, extracts raw tex
 - **Backend:** NestJS 10 (TypeScript, CommonJS)
 - **Frontend:** React 18 + Vite 6 (TypeScript, ESM)
 - **OCR Engine:** PaddleOCR sidecar service (Python FastAPI, ROCm GPU support, port 8000)
-- **TTS Engines:** `services/tts/` — Supertone (`supertonic`, port 8100), Kokoro (port 8200), Qwen TTS (port 8300); Python FastAPI, GPU support
+- **TTS Engines:** `services/tts/` — Supertone + Piper (shared sidecar, port 8100), Kokoro (port 8200), F5 TTS (port 8300); Python FastAPI, GPU support
 - **LLM:** LM Studio (local, OpenAI-compatible API — text structuring + vocabulary exercise generation)
 - **Persistence:** SQLite via `better-sqlite3` — saved documents, vocabulary words (SRS), practice sessions
 - **Agentic:** OpenAI Agents SDK (`@openai/agents`) — architecture planning & deployment
@@ -42,7 +42,7 @@ backend/src/
 │   └── utils/        # sm2.ts (SM-2 spaced repetition algorithm)
 ├── infrastructure/   # External integrations (implements ports)
 │   ├── config/       # LMStudioConfig, PaddleOCRConfig, SupertoneConfig,
-│   │                 # KokoroConfig, QwenTtsConfig, SqliteConfig (env vars)
+│   │                 # KokoroConfig, F5TtsConfig, SqliteConfig (env vars)
 │   ├── lm-studio/    # LMStudioClient (ILmStudioHealthPort),
 │   │                 # LMStudioOCRService (fallback), LMStudioStructuringService,
 │   │                 # LMStudioVocabularyService (IVocabularyLlmService)
@@ -50,7 +50,7 @@ backend/src/
 │   │                 # PaddleOCRHealthService (IPaddleOcrHealthPort)
 │   ├── supertone/    # SupertoneService (ISupertonePort)
 │   ├── kokoro/       # KokoroService (IKokoroPort)
-│   ├── qwen/         # QwenTtsService (IQwenTtsPort)
+│   ├── f5/           # F5TtsService (IF5TtsPort)
 │   └── sqlite/       # SqliteConnectionProvider, SqliteSavedDocumentRepository,
 │                     # SqliteVocabularyRepository, SqlitePracticeSessionRepository
 ├── presentation/     # NestJS layer (controllers, modules, DTOs)
@@ -85,7 +85,7 @@ backend/src/
 | `ILmStudioHealthPort` | `isReachable()`, `listModels()` | OcrModule |
 | `ISupertonePort` | `synthesize(input)`, `checkHealth()` | TtsModule |
 | `IKokoroPort` | `synthesize(input)`, `checkHealth()` | TtsModule |
-| `IQwenTtsPort` | `synthesize(input)`, `getHealth()` | TtsModule |
+| `IF5TtsPort` | `synthesize(input)`, `getHealth()` | TtsModule |
 | `ISavedDocumentRepository` | `create`, `findAll`, `findById`, `update`, `delete` | DocumentModule |
 | `IVocabularyRepository` | `create`, `findAll`, `findByWord`, `findDueForReview`, `updateSrs`, `update`, `delete` | VocabularyModule |
 | `IPracticeSessionRepository` | sessions + attempts CRUD | VocabularyModule |
@@ -96,17 +96,18 @@ backend/src/
 ```
 AppModule
 ├── DatabaseModule          # SqliteConfig + SqliteConnectionProvider (singleton)
-├── OcrModule               # provides/exports IPaddleOcrHealthPort, ILmStudioHealthPort,
+├── LmStudioModule          # LMStudioConfig + LMStudioClient + ILmStudioHealthPort (shared)
+├── OcrModule               # imports LmStudioModule; provides/exports IPaddleOcrHealthPort,
 │                           #   IOCRService, ITextStructuringService
-├── HealthModule            # imports OcrModule + TtsModule for port tokens
-├── TtsModule               # provides/exports ISupertonePort, IKokoroPort, IQwenTtsPort;
+├── HealthModule            # imports OcrModule + TtsModule + LmStudioModule for port tokens
+├── TtsModule               # provides/exports ISupertonePort, IKokoroPort, IF5TtsPort;
 │                           #   provides SynthesizeSpeechUseCase
 ├── DocumentModule          # imports DatabaseModule; provides ISavedDocumentRepository,
 │                           #   SavedDocumentUseCase
-├── VocabularyModule        # imports DatabaseModule; provides IVocabularyRepository,
+├── VocabularyModule        # imports DatabaseModule + LmStudioModule; provides IVocabularyRepository,
 │                           #   IPracticeSessionRepository, IVocabularyLlmService,
 │                           #   VocabularyUseCase, PracticeUseCase
-└── AgentEcosystemModule    # agentic bounded context (optional, graceful no-op without API key)
+└── AgentEcosystemModule    # agentic bounded context (optional; without API key the endpoints return 5xx)
 ```
 
 ### Sidecar Architecture
@@ -126,7 +127,7 @@ AppModule
                                    │   │                       │  port 8200          │
                                    │   │                       └─────────────────────┘
                                    │   │                       ┌─────────────────────┐
-                                   │   └──────────────────────►│  Qwen TTS Sidecar   │
+                                   │   └──────────────────────►│  F5 TTS Sidecar     │
                                    │                           │  port 8300          │
                               ┌────▼─────┐                     └─────────────────────┘
                               │ LM Studio │
@@ -155,14 +156,14 @@ AppModule
 
 1. Frontend sends `POST /api/tts` with `{ text, engine?, voice?, lang?, speed?, ... }`
 2. `TtsController` validates text (non-empty, ≤ 5000 chars), passes to `SynthesizeSpeechUseCase`
-3. `SynthesizeSpeechUseCase` routes by `engine`: `supertone` → `ISupertonePort`, `kokoro` → `IKokoroPort`, `qwen` → `IQwenTtsPort` (default: supertone)
+3. `SynthesizeSpeechUseCase` routes by `engine`: `supertone`/`piper` → `ISupertonePort`, `kokoro` → `IKokoroPort`, `f5` → `IF5TtsPort` (default: supertone)
 4. Sidecar returns `Buffer`; controller responds with `audio/wav`
 
 #### Health Pipeline
 
 1. `GET /api/health` → `HealthController` → `HealthCheckUseCase`
 2. Use case calls all 5 health ports concurrently, aggregates into `HealthCheckOutput`
-3. Returns `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, qwenTtsReachable, qwenTtsDevice }`
+3. Returns `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, f5TtsReachable, f5TtsDevice }`
 
 #### Document Pipeline
 
@@ -173,7 +174,7 @@ AppModule
 #### Vocabulary + Practice Pipeline
 
 1. Text selection → `POST /api/vocabulary` → `VocabularyUseCase` → `IVocabularyRepository`
-2. `GET /api/vocabulary/due` returns words due for review (SM-2 `nextReviewAt` index)
+2. `GET /api/vocabulary/review/due` returns words due for review (SM-2 `nextReviewAt` index)
 3. `POST /api/practice/start` → `PracticeUseCase` picks due words, calls `IVocabularyLlmService.generateExercises`
 4. `POST /api/practice/answer` → SM-2 update on `IVocabularyRepository.updateSrs`
 5. `POST /api/practice/complete` → `IVocabularyLlmService.analyzeSession` → `IPracticeSessionRepository`
@@ -195,12 +196,13 @@ frontend/src/
 │   ├── useHealthStatus.ts  # Polls /api/health every 30s; 4-color lamp (🔵🟢🟡🔴)
 │   ├── useSessionHistory.ts # In-session OCR result history (HistoryEntry list)
 │   ├── useTts.ts           # TTS state and audio generation for 4 engines
+│   ├── useResultPanel.ts   # Result-panel orchestration (copy/edit/tabs/TTS/vocab menu)
 │   ├── useSavedDocuments.ts # CRUD state for saved documents
 │   ├── useVocabulary.ts    # Vocabulary word list + language pair + due count
 │   └── usePractice.ts      # Practice session state machine (idle → practicing → reviewing → complete)
 ├── view/             # React components (UI only, no business logic)
 │   ├── DropZone.tsx        # Drag-drop file input with preview
-│   ├── ResultPanel.tsx     # Tabs (Markdown/Raw) + copy + inline edit + collapsible TTS panel
+│   ├── ResultPanel.tsx     # Rendering for tabs/edit/save/TTS panel; delegates orchestration to useResultPanel
 │   ├── StatusBar.tsx       # Loading spinner, success/error messages
 │   ├── StatusLight.tsx     # Color-coded service health indicator (blue/green/yellow/red)
 │   ├── HistoryPanel.tsx    # 3-tab panel (Session, Saved, Vocab) with practice launch
@@ -220,12 +222,12 @@ frontend/src/
 | Method | Path | Description | Body | Response |
 |--------|------|-------------|------|----------|
 | POST | `/api/ocr` | Process image → OCR + Markdown | `multipart/form-data` field `image` | `{ rawText, markdown, filename }` |
-| GET | `/api/health` | Backend + sidecar health check | — | `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, qwenTtsReachable, qwenTtsDevice }` |
-| POST | `/api/tts` | Synthesize text → WAV audio | `{ text, engine?, voice?, lang?, speed?, totalSteps?, speaker?, instruct? }` | `audio/wav` binary (44100 Hz) |
+| GET | `/api/health` | Backend + sidecar health check | — | `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, f5TtsReachable, f5TtsDevice }` |
+| POST | `/api/tts` | Synthesize text → WAV audio | JSON for `supertone`/`piper`/`kokoro`, multipart for `f5` (`text`, `refText`, `refAudio`, `removeSilence`) | `audio/wav` binary |
 
 **Validation:** PNG/JPEG/WebP/BMP/TIFF only, max 10 MB. Unsupported MIME → 400. Service failure → 502. TTS text empty or > 5000 chars → 400.
 
-**TTS engines:** `supertone` (default) — voice M1–M5/F1–F5, lang en/ko/es/pt/fr; `kokoro` — voice am_adam etc.; `qwen` — speaker Ryan etc.
+**TTS engines:** `supertone` (default) — voice M1–M5/F1–F5, lang en/ko/es/pt/fr; `piper` — curated downloadable voices via the same sidecar; `kokoro` — voices such as `af_heart`, `af_bella`, `am_fenrir`, `bm_fable`; `f5` — upload reference audio + transcript.
 
 ### Documents
 
@@ -243,7 +245,7 @@ frontend/src/
 |--------|------|-------------|
 | POST | `/api/vocabulary` | Add vocabulary word |
 | GET | `/api/vocabulary` | List words (filter: `?targetLang=en&nativeLang=ru`) |
-| GET | `/api/vocabulary/due` | Words due for review (`?limit=20`) |
+| GET | `/api/vocabulary/review/due` | Words due for review (`?limit=20`) |
 | PUT | `/api/vocabulary/:id` | Update translation/context |
 | DELETE | `/api/vocabulary/:id` | Delete word |
 
@@ -272,7 +274,7 @@ frontend/src/
 | POST | `/api/agents/architecture` | Run 3-phase planning (analyze/scaffold/init) | `{ request: string }` |
 | POST | `/api/agents/deploy` | Plan + materialize agent ecosystem on disk | `{ request: string, workspaceName?: string }` |
 
-Agentic endpoints require `OPENAI_API_KEY` and `@openai/agents` runtime. They are isolated from the OCR path and must not affect it.
+Agentic endpoints require `OPENAI_API_KEY` and `@openai/agents` runtime. Without the key, these endpoints currently return a server error but do not break the OCR/TTS runtime.
 
 ## Key Paths & Aliases
 
@@ -291,16 +293,23 @@ npm run dev:backend          # NestJS watch mode (port 3000)
 npm run dev:frontend         # Vite dev server (port 5173, proxies /api → :3000)
 npm run dev:paddleocr        # Start PaddleOCR sidecar locally (port 8000)
 npm run smoke:paddleocr      # Smoke test sidecar startup
-npm run dev:supertone        # Start Supertone TTS sidecar locally (port 8100)
-npm run smoke:supertone      # Smoke test Supertone sidecar (must be running)
+npm run dev:supertone        # Start Supertone + Piper sidecar locally (port 8100)
+npm run smoke:supertone      # Smoke test Supertone + Piper sidecar (must be running)
 npm run dev:kokoro           # Start Kokoro TTS sidecar locally (port 8200)
-npm run dev:qwen             # Start Qwen TTS sidecar locally (port 8300)
+npm run smoke:kokoro         # Smoke test Kokoro sidecar
+npm run dev:f5               # Start F5 TTS sidecar locally (port 8300)
+npm run smoke:f5             # Smoke test F5 sidecar
+npm run smoke:lmstudio       # Backend LM Studio structuring smoke
+npm run smoke:all            # All sidecar smokes
 
-# One-command launcher (start all + live lamp monitor)
-bash scripts/linux/ocr.sh         # start everything, Ctrl+C to stop all
-bash scripts/linux/ocr.sh stop    # stop all services
-bash scripts/linux/ocr.sh status  # show lamp + health
-bash scripts/linux/ocr.sh wipe    # stop + remove build artifacts
+# Dedicated launchers
+bash scripts/linux/ocr.sh         # start OCR mode, Ctrl+C to stop all project services
+bash scripts/linux/tts.sh         # start TTS mode
+bash scripts/linux/ocr-tts.sh     # start full stack
+bash scripts/linux/stack.sh       # interactive stack menu
+bash scripts/linux/ocr-tts.sh stop    # stop all services
+bash scripts/linux/ocr-tts.sh status  # show lamp + health
+bash scripts/linux/ocr-tts.sh wipe    # stop + remove build artifacts
 
 # Build
 npm run build                # Build frontend then backend
@@ -308,10 +317,21 @@ npm run start:prod           # Run production build
 
 # Testing
 npm test --workspace=backend               # Jest (backend unit + integration)
-npm run test:e2e --workspace=backend       # E2E (full NestJS app with mocked providers)
 npm run test:cov --workspace=backend       # Jest with coverage
 npm test --workspace=frontend              # Vitest (frontend unit)
+npm run test:cov --workspace=frontend      # Frontend coverage
+npm run test:cov                           # Both frontend + backend coverage
+npm run test:e2e:api                       # Backend API e2e
+npm run test:e2e:integration               # Backend integration tests against live deps
+npm run test:e2e:browser                   # Playwright browser e2e on production-like stack
+
+# Performance
+npm run perf:api                           # API latency benchmark
+npm run perf:browser                       # Browser workflow benchmark
+npm run perf:phase4                        # Full Phase 4 benchmark harness
 ```
+
+`test:e2e:browser` and `perf:phase4` rebuild the app, use `tmp/test-db/browser-e2e.sqlite`, and set `LM_STUDIO_SMOKE_ONLY=true` so those harnesses do not make real LM Studio content-generation calls.
 
 ## Environment Variables
 
@@ -322,6 +342,7 @@ npm test --workspace=frontend              # Vitest (frontend unit)
 | `PORT` | `3000` | Backend server port |
 | `LM_STUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio API base URL |
 | `STRUCTURING_MODEL` | `qwen/qwen3.5-9b` | Text structuring model (Markdown output) |
+| `VOCABULARY_MODEL` | falls back to `STRUCTURING_MODEL` | Model for vocabulary exercises and session analysis |
 | `LM_STUDIO_TIMEOUT` | `120000` | LM Studio request timeout (ms) |
 | `PADDLEOCR_HOST` | `localhost` | PaddleOCR sidecar host |
 | `PADDLEOCR_PORT` | `8000` | PaddleOCR sidecar port |
@@ -343,14 +364,18 @@ npm test --workspace=frontend              # Vitest (frontend unit)
 | `KOKORO_HOST` | `localhost` | Kokoro TTS sidecar host |
 | `KOKORO_PORT` | `8200` | Kokoro TTS sidecar port |
 | `KOKORO_TIMEOUT` | `120000` | Kokoro request timeout (ms) |
+| `KOKORO_ONNX_MODEL_PATH` | `services/tts/kokoro-service/models/kokoro-v1.0.onnx` | Local ONNX model path |
+| `KOKORO_ONNX_VOICES_PATH` | `services/tts/kokoro-service/models/voices-v1.0.bin` | Local ONNX voices blob path |
+| `KOKORO_ONNX_MODEL_URL` | upstream release URL | Download source for `kokoro-v1.0.onnx` if missing |
+| `KOKORO_ONNX_VOICES_URL` | upstream release URL | Download source for `voices-v1.0.bin` if missing |
 
-### Qwen TTS
+### F5 TTS
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QWEN_TTS_HOST` | `localhost` | Qwen TTS sidecar host |
-| `QWEN_TTS_PORT` | `8300` | Qwen TTS sidecar port |
-| `QWEN_TTS_TIMEOUT` | `180000` | Qwen TTS request timeout (ms) |
+| `F5_TTS_HOST` | `localhost` | F5 TTS sidecar host |
+| `F5_TTS_PORT` | `8300` | F5 TTS sidecar port |
+| `F5_TTS_TIMEOUT` | `180000` | F5 TTS request timeout (ms) |
 
 ### SQLite
 
@@ -386,9 +411,10 @@ npm test --workspace=frontend              # Vitest (frontend unit)
 - **Static serving:** Backend serves built frontend via `@nestjs/serve-static` from `frontend/dist/`.
 - **Sidecar Pattern:** All Python sidecars live under `services/` and communicate with the NestJS backend via HTTP API.
 - **Text Structuring:** LM Studio is used (1) after OCR to convert raw text into Markdown, and (2) to generate vocabulary exercises and analyze practice sessions.
+- **LmStudioModule singleton:** `LMStudioConfig`, `LMStudioClient`, and `ILmStudioHealthPort` are owned by `LmStudioModule`; `OcrModule`, `VocabularyModule`, and `HealthModule` import it. Never provide these outside `LmStudioModule`.
 - **DatabaseModule singleton:** `SqliteConnectionProvider` is owned by `DatabaseModule`; `DocumentModule` and `VocabularyModule` import it. Never provide `SqliteConnectionProvider` outside `DatabaseModule`.
 - **SM-2 Algorithm:** `application/utils/sm2.ts` implements `calculateSm2`, `computeErrorPosition`, `computeQualityRating`. Used by `PracticeUseCase` on answer submission.
-- **Agentic Isolation:** `agentic` bounded context must not break local OCR runtime. It fails gracefully if OpenAI key is absent.
+- **Agentic Isolation:** `agentic` bounded context must not break local OCR runtime. Without `OPENAI_API_KEY`, `/api/agents/*` currently returns 5xx while the rest of the app stays available.
 - **Schema-driven Handoffs:** Agentic phase payloads are validated by Zod schemas and output guardrails. Change schema + docs together.
 
 ## Supertone TTS Sidecar
@@ -415,19 +441,23 @@ SUPERTONE_USE_GPU=true python -m uvicorn main:app --host 0.0.0.0 --port 8100
 ```bash
 cd services/tts/kokoro-service
 source .venv/bin/activate
+pip uninstall -y onnxruntime
+pip install onnxruntime-rocm==1.22.2.post1
 python -m uvicorn main:app --host 0.0.0.0 --port 8200
 # - Kokoro TTS Sidecar: http://localhost:8200/health
 ```
 
-## Qwen TTS Sidecar
+**Runtime:** The sidecar uses `kokoro-onnx` + ONNX Runtime. It downloads `kokoro-v1.0.onnx` and `voices-v1.0.bin` into `services/tts/kokoro-service/models/` if they are missing, tries `ROCMExecutionProvider` first, and falls back to `CPUExecutionProvider` if ROCm init or probe inference fails.
+
+## F5 TTS Sidecar
 
 ```bash
-cd services/tts/qwen-tts-service
+cd services/tts/f5-service
 source .venv/bin/activate
-HSA_OVERRIDE_GFX_VERSION=11.0.0 QWEN_TTS_ATTN_IMPLEMENTATION=eager \
-  python -m uvicorn main:app --host 0.0.0.0 --port 8300
-# - Qwen TTS Sidecar: http://localhost:8300/health
+python -m uvicorn main:app --host 0.0.0.0 --port 8300
+# - F5 TTS Sidecar: http://localhost:8300/health
 # GPU-only by design. Sidecar stays unavailable if device != gpu.
+# Requests must include text + refText + refAudio.
 ```
 
 ## PaddleOCR Sidecar

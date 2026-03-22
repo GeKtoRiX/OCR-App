@@ -154,16 +154,17 @@ describe('useTts', () => {
       expect(result.current.ttsSettings.voice).toBe(result.current.kokoroVoice);
     });
 
-    it('should switch to qwen with CustomVoice defaults', () => {
+    it('should switch to f5 with reference voice defaults', () => {
       const { result } = renderHook(() => useTts('text', 'file.png'));
 
-      act(() => { result.current.setEngine('qwen'); });
+      act(() => { result.current.setEngine('f5'); });
 
       expect(result.current.ttsSettings).toEqual({
-        engine: 'qwen',
-        lang: 'English',
-        speaker: 'Ryan',
-        instruct: '',
+        engine: 'f5',
+        refText: '',
+        refAudioFile: null,
+        autoTranscribe: false,
+        removeSilence: false,
       });
     });
   });
@@ -195,7 +196,7 @@ describe('useTts', () => {
 
     act(() => {
       result.current.setEngine('kokoro');
-      result.current.setKokoroVoice('bm_daniel');
+      result.current.setKokoroVoice('bm_fable');
     });
 
     await act(async () => {
@@ -204,22 +205,24 @@ describe('useTts', () => {
 
     expect(mockGenerateSpeech).toHaveBeenCalledWith(
       'text',
-      expect.objectContaining({ engine: 'kokoro', voice: 'bm_daniel' }),
+      expect.objectContaining({ engine: 'kokoro', voice: 'bm_fable' }),
     );
   });
 
-  it('should send qwen CustomVoice settings to the API call', async () => {
+  it('should send f5 settings to the API call', async () => {
     mockGenerateSpeech.mockResolvedValue(new Blob());
+    const refAudioFile = new File(['wav'], 'reference.wav', { type: 'audio/wav' });
 
     const { result } = renderHook(() => useTts('text', 'file.png'));
 
     act(() => {
-      result.current.setEngine('qwen');
+      result.current.setEngine('f5');
       result.current.setTtsSettings({
-        engine: 'qwen',
-        lang: 'Japanese',
-        speaker: 'Ono_Anna',
-        instruct: 'Soft and calm',
+        engine: 'f5',
+        refText: 'Reference text',
+        refAudioFile,
+        autoTranscribe: false,
+        removeSilence: true,
       });
     });
 
@@ -230,12 +233,49 @@ describe('useTts', () => {
     expect(mockGenerateSpeech).toHaveBeenCalledWith(
       'text',
       expect.objectContaining({
-        engine: 'qwen',
-        lang: 'Japanese',
-        speaker: 'Ono_Anna',
-        instruct: 'Soft and calm',
+        engine: 'f5',
+        refText: 'Reference text',
+        refAudioFile,
+        autoTranscribe: false,
+        removeSilence: true,
       }),
     );
+  });
+
+  it('should disable f5 generation until required fields are provided', () => {
+    const { result } = renderHook(() => useTts('text', 'file.png'));
+
+    act(() => { result.current.setEngine('f5'); });
+    expect(result.current.canGenerate).toBe(false);
+
+    act(() => {
+      result.current.setTtsSettings({
+        engine: 'f5',
+        refText: 'Reference text',
+        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
+        autoTranscribe: false,
+        removeSilence: false,
+      });
+    });
+
+    expect(result.current.canGenerate).toBe(true);
+  });
+
+  it('should allow f5 generation with autoTranscribe and no refText', () => {
+    const { result } = renderHook(() => useTts('text', 'file.png'));
+
+    act(() => {
+      result.current.setEngine('f5');
+      result.current.setTtsSettings({
+        engine: 'f5',
+        refText: '',
+        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
+        autoTranscribe: true,
+        removeSilence: false,
+      });
+    });
+
+    expect(result.current.canGenerate).toBe(true);
   });
 
   it('should revoke blob URL on unmount', async () => {

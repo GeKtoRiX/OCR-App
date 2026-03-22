@@ -6,6 +6,6 @@ export interface HealthCheckOutput {
   lmStudioModels: string[];
   superToneReachable: boolean;
   kokoroReachable: boolean;
-  qwenTtsReachable: boolean;
-  qwenTtsDevice: 'gpu' | 'cpu' | null;
+  f5TtsReachable: boolean;
+  f5TtsDevice: 'gpu' | 'cpu' | null;
 }

@@ -11,6 +11,7 @@ import type {
 } from './types';
 
 const BASE = '/api';
+const CYRILLIC_RE = /[\u0400-\u04FF]/;
 
 async function getErrorMessage(response: Response): Promise<string> {
   const body = await response
@@ -54,12 +55,38 @@ export async function generateSpeech(
   settings: TtsSettings,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  const res = await fetch(`${BASE}/tts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, ...settings }),
-    signal,
-  });
+  if (settings.engine === 'kokoro' && CYRILLIC_RE.test(text)) {
+    throw new Error(
+      'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
+    );
+  }
+
+  const request =
+    settings.engine === 'f5'
+      ? (() => {
+          const body = new FormData();
+          body.set('text', text);
+          body.set('engine', settings.engine);
+          body.set('refText', settings.refText);
+          body.set('autoTranscribe', String(settings.autoTranscribe));
+          body.set('removeSilence', String(settings.removeSilence));
+          if (settings.refAudioFile) {
+            body.set('refAudio', settings.refAudioFile);
+          }
+          return {
+            method: 'POST',
+            body,
+            signal,
+          };
+        })()
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, ...settings }),
+          signal,
+        };
+
+  const res = await fetch(`${BASE}/tts`, request);
 
   if (!res.ok) {
     throw new Error(await getErrorMessage(res));

@@ -2,13 +2,13 @@ import { Module } from '@nestjs/common';
 import { TtsController } from '../controllers/tts.controller';
 import { SupertoneService } from '../../infrastructure/supertone/supertone.service';
 import { SupertoneConfig } from '../../infrastructure/config/supertone.config';
-import { QwenTtsConfig } from '../../infrastructure/config/qwen-tts.config';
-import { QwenTtsService } from '../../infrastructure/qwen/qwen-tts.service';
+import { F5TtsConfig } from '../../infrastructure/config/f5-tts.config';
+import { F5TtsService } from '../../infrastructure/f5/f5-tts.service';
 import { KokoroConfig } from '../../infrastructure/config/kokoro.config';
 import { KokoroService } from '../../infrastructure/kokoro/kokoro.service';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
-import { IQwenTtsPort } from '../../domain/ports/qwen-tts.port';
+import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
 import { SynthesizeSpeechUseCase } from '../../application/use-cases/synthesize-speech.use-case';
 
 @Module({
@@ -18,9 +18,9 @@ import { SynthesizeSpeechUseCase } from '../../application/use-cases/synthesize-
     SupertoneService,
     { provide: ISupertonePort, useExisting: SupertoneService },
 
-    QwenTtsConfig,
-    QwenTtsService,
-    { provide: IQwenTtsPort, useExisting: QwenTtsService },
+    F5TtsConfig,
+    F5TtsService,
+    { provide: IF5TtsPort, useExisting: F5TtsService },
 
     KokoroConfig,
     KokoroService,
@@ -28,6 +28,6 @@ import { SynthesizeSpeechUseCase } from '../../application/use-cases/synthesize-
 
     SynthesizeSpeechUseCase,
   ],
-  exports: [ISupertonePort, IKokoroPort, IQwenTtsPort],
+  exports: [ISupertonePort, IKokoroPort, IF5TtsPort],
 })
 export class TtsModule {}

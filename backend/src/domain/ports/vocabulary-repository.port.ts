@@ -1,5 +1,15 @@
 import { VocabularyWord, VocabType } from '../entities/vocabulary-word.entity';
 
+export interface CreateVocabularyInput {
+  word: string;
+  vocabType: VocabType;
+  translation: string;
+  targetLang: string;
+  nativeLang: string;
+  contextSentence: string;
+  sourceDocumentId: string | null;
+}
+
 export abstract class IVocabularyRepository {
   abstract create(
     word: string,
@@ -10,6 +20,7 @@ export abstract class IVocabularyRepository {
     contextSentence: string,
     sourceDocumentId: string | null,
   ): Promise<VocabularyWord>;
+  abstract createMany(inputs: CreateVocabularyInput[]): Promise<VocabularyWord[]>;
   abstract findAll(
     targetLang?: string,
     nativeLang?: string,
@@ -20,7 +31,7 @@ export abstract class IVocabularyRepository {
     targetLang: string,
     nativeLang: string,
   ): Promise<VocabularyWord | null>;
-  abstract findDueForReview(limit: number): Promise<VocabularyWord[]>;
+  abstract findDueForReview(limit: number, targetLang?: string, nativeLang?: string): Promise<VocabularyWord[]>;
   abstract updateSrs(
     id: string,
     intervalDays: number,

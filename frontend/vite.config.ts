@@ -12,4 +12,14 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    target: 'es2022',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+        },
+      },
+    },
+  },
 });

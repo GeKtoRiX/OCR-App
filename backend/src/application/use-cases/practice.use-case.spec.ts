@@ -79,11 +79,18 @@ describe('PracticeUseCase', () => {
     it('fetches due words and generates exercises', async () => {
       const result = await useCase.startPractice({});
 
-      expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(10);
+      expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(10, undefined, undefined);
       expect(llmService.generateExercises).toHaveBeenCalledWith([mockWord], 10);
       expect(result.sessionId).toBe('sess-1');
       expect(result.exercises).toHaveLength(1);
       expect(result.exercises[0].exerciseType).toBe('spelling');
+    });
+
+    it('does not create session when LLM fails', async () => {
+      llmService.generateExercises.mockRejectedValue(new Error('LLM unavailable'));
+
+      await expect(useCase.startPractice({})).rejects.toThrow('LLM unavailable');
+      expect(sessionRepo.createSession).not.toHaveBeenCalled();
     });
 
     it('throws when no words are due', async () => {
@@ -97,7 +104,13 @@ describe('PracticeUseCase', () => {
     it('uses custom word limit', async () => {
       await useCase.startPractice({ wordLimit: 5 });
 
-      expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(5);
+      expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(5, undefined, undefined);
+    });
+
+    it('filters by language pair', async () => {
+      await useCase.startPractice({ targetLang: 'es', nativeLang: 'en', wordLimit: 3 });
+
+      expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(3, 'es', 'en');
     });
   });
 
@@ -131,6 +144,33 @@ describe('PracticeUseCase', () => {
       expect(result.isCorrect).toBe(false);
       expect(result.errorPosition).toBe('middle');
       expect(result.qualityRating).toBe(1);
+    });
+  });
+
+  describe('getRecentSessions', () => {
+    it('delegates to session repository', async () => {
+      sessionRepo.findRecentSessions = jest.fn().mockResolvedValue([mockSession]);
+
+      const result = await useCase.getRecentSessions(20);
+
+      expect(sessionRepo.findRecentSessions).toHaveBeenCalledWith(20);
+      expect(result).toEqual([mockSession]);
+    });
+  });
+
+  describe('getAttemptsByVocabulary', () => {
+    it('delegates to session repository', async () => {
+      const mockAttempt = new ExerciseAttempt(
+        'att-1', 'sess-1', 'v1', 'spelling',
+        'Translate: красивый', 'beautiful', 'beautiful',
+        true, null, 5, null, '2024-01-01T00:00:00.000Z',
+      );
+      sessionRepo.findAttemptsByVocabulary = jest.fn().mockResolvedValue([mockAttempt]);
+
+      const result = await useCase.getAttemptsByVocabulary('v1');
+
+      expect(sessionRepo.findAttemptsByVocabulary).toHaveBeenCalledWith('v1');
+      expect(result).toEqual([mockAttempt]);
     });
   });
 

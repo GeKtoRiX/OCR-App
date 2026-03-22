@@ -22,7 +22,7 @@ This file defines the entry rules for both humans and agent systems. Read it fir
 - Frontend: React 18 + Vite 6, MVVM pattern.
 - OCR: PaddleOCR Python sidecar (primary); LM Studio — only for structuring raw text after OCR.
 - Persistence: SQLite via better-sqlite3 for saved documents, vocabulary words (SRS), and practice sessions.
-- TTS: Supertone (port 8100), Kokoro (port 8200), Qwen TTS (port 8300) — all Python FastAPI sidecars.
+- TTS: Supertone + Piper (shared sidecar, port 8100), Kokoro (port 8200), F5 TTS (port 8300) — all Python FastAPI sidecars.
 - Agentic: `backend/src/agentic` — isolated bounded context for autonomous architecture planning and deployment via OpenAI Agents SDK.
 
 ## Working Rules
@@ -58,13 +58,13 @@ This file defines the entry rules for both humans and agent systems. Read it fir
 - Owns `backend/src/agentic/*`.
 - Designs agent roles (Analyze/Scaffold/Initialization/Deployment coordinators), handoff flows, guardrails, tool contracts and the deployment workflow.
 - New agent roles, schemas and endpoints must be reflected in `docs/agents/architecture.md`.
-- Ensures graceful degradation when the OpenAI API key is absent.
+- Owns graceful-degradation behavior when the OpenAI API key is absent; current runtime still returns 5xx and needs an explicit degraded response path.
 
 ### Frontend Architect
 
 - Owns `frontend/src/*`.
 - Preserves the current MVVM organisation: `model/` (API + types), `viewmodel/` (hooks), `view/` (components).
-- Hooks (`useOCR`, `useImageUpload`, `useHealthStatus`, `useSessionHistory`, `useTts`, `useSavedDocuments`, `useVocabulary`, `usePractice`) hold all logic; components are UI only.
+- Hooks (`useOCR`, `useImageUpload`, `useHealthStatus`, `useSessionHistory`, `useTts`, `useSavedDocuments`, `useVocabulary`, `usePractice`, `useResultPanel`) hold view and orchestration logic; view components should stay rendering-focused.
 - Health lamp uses 4 colors: 🔵 blue (all OK), 🟢 green (GPU OK, partial), 🟡 yellow (CPU), 🔴 red (PaddleOCR down).
 
 ### OCR Integration Owner
@@ -74,9 +74,11 @@ This file defines the entry rules for both humans and agent systems. Read it fir
 
 ### TTS Integration Owner
 
-- Owns `services/tts/` sidecars and backend integrations (`ISupertonePort`, `IKokoroPort`, `IQwenTtsPort`, `SynthesizeSpeechUseCase`, `TtsController`, `TtsModule`).
+- Owns `services/tts/` sidecars and backend integrations (`ISupertonePort`, `IKokoroPort`, `IF5TtsPort`, `SynthesizeSpeechUseCase`, `TtsController`, `TtsModule`).
 - Any change to TTS sidecar contracts (request shape, response format, health endpoint) must be accompanied by updates to `docs/agents/runbook.md`, `docs/agents/context.md`, and the REST API documentation.
-- Responsible for GPU (ROCm ONNX Runtime) runtime setup and `LD_LIBRARY_PATH` correctness in `ocr.sh` and `package.json` scripts.
+- Responsible for GPU (ROCm ONNX Runtime) runtime setup and `LD_LIBRARY_PATH` correctness in the Linux launcher scripts and `package.json` scripts.
+- `piper` is served through the Supertone sidecar and routed by `SynthesizeSpeechUseCase`.
+- Preserve the current controller boundary: `TtsController` accepts multipart in memory and passes typed payloads into `SynthesizeSpeechUseCase`; temp-file handling does not belong in presentation.
 
 ### Documentation Steward
 
@@ -103,7 +105,7 @@ Before executing an agent-related task, the assignee must explicitly verify:
 - whether public REST endpoints (`/api/ocr`, `/api/health`, `/api/tts`, `/api/documents`, `/api/vocabulary`, `/api/practice`, `/api/agents/*`) are changing;
 - whether Zod schemas / DTOs / guardrails in `agentic/core/` are changing;
 - whether `docs/agents/context.md` or `docs/agents/adr.md` needs updating;
-- whether health response fields (paddleOcrReachable, superToneReachable, kokoroReachable, qwenTtsReachable, etc.) are being added/removed.
+- whether health response fields (paddleOcrReachable, superToneReachable, kokoroReachable, f5TtsReachable, etc.) are being added/removed.
 
 ## Primary Entry Points
 

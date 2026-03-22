@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import { DatabaseModule } from './modules/database.module';
 import { OcrModule } from './modules/ocr.module';
@@ -11,6 +13,10 @@ import { AgentEcosystemModule } from '../agentic/presentation/modules/agent-ecos
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{
+      ttl: 60_000,
+      limit: 30,
+    }]),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', '..', '..', 'frontend', 'dist'),
       exclude: ['/api/(.*)'],
@@ -22,6 +28,12 @@ import { AgentEcosystemModule } from '../agentic/presentation/modules/agent-ecos
     DocumentModule,
     VocabularyModule,
     AgentEcosystemModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

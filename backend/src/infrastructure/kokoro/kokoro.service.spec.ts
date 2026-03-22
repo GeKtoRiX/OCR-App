@@ -40,21 +40,23 @@ describe('KokoroService', () => {
       expect(body.text).toBe('Test');
       expect(body.voice).toBe('af_heart');
       expect(body.speed).toBe(1.0);
+      expect(body.lang).toBe('en-us');
     });
 
-    it('should forward explicit voice and speed to the sidecar', async () => {
+    it('should forward explicit voice, speed, and lang to the sidecar', async () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         arrayBuffer: async () => new ArrayBuffer(4),
       });
 
-      await service.synthesize({ text: 'Hi', voice: 'am_adam', speed: 1.5 });
+      await service.synthesize({ text: 'Hi', voice: 'am_michael', speed: 1.5, lang: 'en-gb' });
 
       const body = JSON.parse(
         (global.fetch as jest.Mock).mock.calls[0][1].body,
       );
-      expect(body.voice).toBe('am_adam');
+      expect(body.voice).toBe('am_michael');
       expect(body.speed).toBe(1.5);
+      expect(body.lang).toBe('en-gb');
     });
 
     it('should throw when sidecar returns non-OK status', async () => {

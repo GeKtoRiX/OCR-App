@@ -9,6 +9,7 @@ import {
   HttpException,
   HttpStatus,
   BadRequestException,
+  UseInterceptors,
 } from '@nestjs/common';
 import { SavedDocumentUseCase } from '../../application/use-cases/saved-document.use-case';
 import {
@@ -16,7 +17,9 @@ import {
   UpdateDocumentDto,
   SavedDocumentResponseDto,
 } from '../dto/document.dto';
+import { ETagInterceptor } from '../interceptors/etag.interceptor';
 
+@UseInterceptors(ETagInterceptor)
 @Controller('api/documents')
 export class DocumentController {
   constructor(private readonly savedDocumentUseCase: SavedDocumentUseCase) {}

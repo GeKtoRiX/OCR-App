@@ -53,6 +53,12 @@ describe('DocumentController', () => {
         controller.create({ markdown: '# Hi', filename: '' }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('throws BadRequest when filename is missing', async () => {
+      await expect(
+        controller.create({ markdown: '# Hi', filename: undefined as any }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('findAll', () => {
@@ -98,6 +104,12 @@ describe('DocumentController', () => {
     it('throws BadRequest when markdown is empty', async () => {
       await expect(
         controller.update('id-1', { markdown: '' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequest when markdown is missing', async () => {
+      await expect(
+        controller.update('id-1', { markdown: undefined as any }),
       ).rejects.toThrow(BadRequestException);
     });
 

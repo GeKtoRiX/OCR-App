@@ -9,12 +9,14 @@ import { IVocabularyLlmService } from '../../domain/ports/vocabulary-llm-service
 import { SqliteVocabularyRepository } from '../../infrastructure/sqlite/sqlite-vocabulary.repository';
 import { SqlitePracticeSessionRepository } from '../../infrastructure/sqlite/sqlite-practice-session.repository';
 import { LMStudioVocabularyService } from '../../infrastructure/lm-studio/lm-studio-vocabulary.service';
-import { LMStudioConfig } from '../../infrastructure/config/lm-studio.config';
-import { LMStudioClient } from '../../infrastructure/lm-studio/lm-studio.client';
 import { DatabaseModule } from './database.module';
+import { LmStudioModule } from './lm-studio.module';
+import { StubVocabularyLlmService } from '../../infrastructure/testing/stub-vocabulary-llm.service';
+
+const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, LmStudioModule],
   controllers: [VocabularyController, PracticeController],
   providers: [
     SqliteVocabularyRepository,
@@ -27,12 +29,13 @@ import { DatabaseModule } from './database.module';
       provide: IPracticeSessionRepository,
       useExisting: SqlitePracticeSessionRepository,
     },
-    LMStudioConfig,
-    LMStudioClient,
     LMStudioVocabularyService,
+    StubVocabularyLlmService,
     {
       provide: IVocabularyLlmService,
-      useExisting: LMStudioVocabularyService,
+      useClass: LM_STUDIO_SMOKE_ONLY
+        ? StubVocabularyLlmService
+        : LMStudioVocabularyService,
     },
     VocabularyUseCase,
     PracticeUseCase,

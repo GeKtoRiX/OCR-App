@@ -11,7 +11,16 @@
 
 ## Scripts
 
-- `scripts/linux/ocr.sh`: unified lifecycle script for Linux/macOS. Interactive mode selector starts PaddleOCR, TTS sidecars, and backend; Ctrl+C stops all gracefully. Sub-commands: `stop`, `wipe`, `status`. Logs written to `.logs/`; PID files in `.pids/`.
+- `scripts/linux/ocr-common.sh`: shared lifecycle logic for the dedicated Linux launchers. Logs written to `logs/`; PID files in `.pids/`.
+- `scripts/linux/ocr.sh`: OCR launcher entry (PaddleOCR + LM Studio checks).
+- `scripts/linux/tts.sh`: TTS launcher entry (PaddleOCR + Supertone/Piper + Kokoro + F5).
+- `scripts/linux/ocr-tts.sh`: full-stack launcher entry (OCR + TTS + backend).
+- `scripts/e2e/prepare-browser-env.sh`: rebuilds frontend/backend and resets the browser-e2e SQLite database under `tmp/test-db/`.
+- `scripts/e2e/stop-browser-env.sh`: kills the browser/perf stack on ports 3000/8000/8100/8200/8300.
+- `scripts/perf/shared.mjs`: shared benchmark utilities.
+- `scripts/perf/api-benchmark.mjs`: Phase 4 API latency benchmark.
+- `scripts/perf/browser-benchmark.mjs`: Phase 4 browser workflow benchmark.
+- `scripts/perf/run-phase4.sh`: production-like benchmark harness for Phase 4.
 
 ## Backend — OCR Core
 
@@ -20,12 +29,12 @@
 - `backend/src/presentation/modules/database.module.ts`: SQLite connection singleton (provides/exports SqliteConfig + SqliteConnectionProvider).
 - `backend/src/presentation/modules/ocr.module.ts`: OCR DI wiring; binds/exports IPaddleOcrHealthPort, ILmStudioHealthPort.
 - `backend/src/presentation/modules/health.module.ts`: HealthCheckUseCase wiring (imports OcrModule + TtsModule for port tokens).
-- `backend/src/presentation/modules/tts.module.ts`: TTS DI wiring; binds/exports ISupertonePort, IKokoroPort, IQwenTtsPort; provides SynthesizeSpeechUseCase.
+- `backend/src/presentation/modules/tts.module.ts`: TTS DI wiring; binds/exports ISupertonePort, IKokoroPort, IF5TtsPort; provides SynthesizeSpeechUseCase.
 - `backend/src/presentation/modules/document.module.ts`: saved-document wiring (imports DatabaseModule).
 - `backend/src/presentation/modules/vocabulary.module.ts`: vocabulary + practice wiring (imports DatabaseModule).
 - `backend/src/presentation/controllers/ocr.controller.ts`: POST /api/ocr.
 - `backend/src/presentation/controllers/health.controller.ts`: GET /api/health.
-- `backend/src/presentation/controllers/tts.controller.ts`: POST /api/tts — validates text, delegates to SynthesizeSpeechUseCase, returns audio/wav.
+- `backend/src/presentation/controllers/tts.controller.ts`: POST /api/tts — validates text, accepts multipart in memory, delegates to SynthesizeSpeechUseCase, returns audio/wav.
 - `backend/src/presentation/controllers/document.controller.ts`: CRUD /api/documents.
 - `backend/src/presentation/controllers/vocabulary.controller.ts`: CRUD /api/vocabulary.
 - `backend/src/presentation/controllers/practice.controller.ts`: /api/practice start/answer/complete/sessions/stats.
@@ -51,7 +60,7 @@
 - `backend/src/domain/ports/lm-studio-health.port.ts`: ILmStudioHealthPort — isReachable, listModels.
 - `backend/src/domain/ports/supertone.port.ts`: ISupertonePort — synthesize(SupertoneSynthesisInput), checkHealth.
 - `backend/src/domain/ports/kokoro.port.ts`: IKokoroPort — synthesize(KokoroSynthesisInput), checkHealth.
-- `backend/src/domain/ports/qwen-tts.port.ts`: IQwenTtsPort — synthesize(QwenSynthesisInput), getHealth → QwenTtsHealthResult.
+- `backend/src/domain/ports/f5-tts.port.ts`: IF5TtsPort — synthesize(F5SynthesisInput), getHealth → F5TtsHealthResult.
 - `backend/src/domain/ports/saved-document-repository.port.ts`: ISavedDocumentRepository.
 - `backend/src/domain/ports/vocabulary-repository.port.ts`: IVocabularyRepository (CRUD + findByWord + findDueForReview + updateSrs).
 - `backend/src/domain/ports/practice-session-repository.port.ts`: IPracticeSessionRepository (sessions + attempts CRUD).
@@ -62,7 +71,7 @@
 
 - `backend/src/application/use-cases/process-image.use-case.ts`: OCR orchestration.
 - `backend/src/application/use-cases/health-check.use-case.ts`: aggregates health from 5 domain ports (no infrastructure imports).
-- `backend/src/application/use-cases/synthesize-speech.use-case.ts`: routes by engine to ISupertonePort / IKokoroPort / IQwenTtsPort.
+- `backend/src/application/use-cases/synthesize-speech.use-case.ts`: routes by engine to ISupertonePort / IKokoroPort / IF5TtsPort.
 - `backend/src/application/use-cases/saved-document.use-case.ts`: document CRUD orchestration.
 - `backend/src/application/use-cases/vocabulary.use-case.ts`: vocabulary CRUD + SRS queries.
 - `backend/src/application/use-cases/practice.use-case.ts`: practice session orchestration (exercise generation, SM-2 updates, session analysis).
@@ -86,7 +95,7 @@
 - `backend/src/infrastructure/config/paddleocr.config.ts`: PaddleOCR env vars + endpoint helpers.
 - `backend/src/infrastructure/config/supertone.config.ts`: Supertone env vars + endpoint helpers.
 - `backend/src/infrastructure/config/kokoro.config.ts`: Kokoro env vars + endpoint helpers.
-- `backend/src/infrastructure/config/qwen-tts.config.ts`: Qwen TTS env vars + endpoint helpers.
+- `backend/src/infrastructure/config/f5-tts.config.ts`: F5 TTS env vars + endpoint helpers.
 - `backend/src/infrastructure/config/sqlite.config.ts`: SQLite database path from env.
 
 ### Infrastructure — LM Studio
@@ -95,6 +104,8 @@
 - `backend/src/infrastructure/lm-studio/lm-studio-ocr.service.ts`: LMStudioOCRService (fallback IOCRService, not used in primary path).
 - `backend/src/infrastructure/lm-studio/lm-studio-structuring.service.ts`: LMStudioStructuringService (primary ITextStructuringService).
 - `backend/src/infrastructure/lm-studio/lm-studio-vocabulary.service.ts`: LMStudioVocabularyService (IVocabularyLlmService); generates exercises, analyzes sessions.
+- `backend/src/infrastructure/testing/passthrough-structuring.service.ts`: browser-e2e/perf structuring stub used when `LM_STUDIO_SMOKE_ONLY=true`.
+- `backend/src/infrastructure/testing/stub-vocabulary-llm.service.ts`: browser-e2e/perf vocabulary/practice LLM stub used when `LM_STUDIO_SMOKE_ONLY=true`.
 
 ### Infrastructure — PaddleOCR
 
@@ -105,7 +116,7 @@
 
 - `backend/src/infrastructure/supertone/supertone.service.ts`: SupertoneService (extends ISupertonePort); synthesize, checkHealth.
 - `backend/src/infrastructure/kokoro/kokoro.service.ts`: KokoroService (extends IKokoroPort); synthesize, checkHealth.
-- `backend/src/infrastructure/qwen/qwen-tts.service.ts`: QwenTtsService (extends IQwenTtsPort); synthesize, getHealth.
+- `backend/src/infrastructure/f5/f5-tts.service.ts`: F5TtsService (extends IF5TtsPort); synthesize, getHealth.
 
 ### Infrastructure — SQLite
 
@@ -151,11 +162,12 @@
 - `frontend/src/viewmodel/useHealthStatus.ts`: polls /api/health every 30s; 4-color lamp (blue/green/yellow/red).
 - `frontend/src/viewmodel/useSessionHistory.ts`: in-session OCR result history.
 - `frontend/src/viewmodel/useTts.ts`: TTS state and audio generation for 4 engines.
+- `frontend/src/viewmodel/useResultPanel.ts`: copy/edit/tab/TTS/vocabulary-menu orchestration for the result panel.
 - `frontend/src/viewmodel/useSavedDocuments.ts`: CRUD state for saved documents.
 - `frontend/src/viewmodel/useVocabulary.ts`: vocabulary word list state with language pair tracking and due count.
 - `frontend/src/viewmodel/usePractice.ts`: practice session state machine (idle → practicing → reviewing → complete).
 - `frontend/src/view/DropZone.tsx`: drag-drop file input with preview.
-- `frontend/src/view/ResultPanel.tsx`: tabbed view (Markdown/Raw) + copy + inline edit mode + save + collapsible TTS panel.
+- `frontend/src/view/ResultPanel.tsx`: result rendering surface; delegates orchestration to `useResultPanel`.
 - `frontend/src/view/StatusBar.tsx`: loading spinner, success/error messages.
 - `frontend/src/view/StatusLight.tsx`: color-coded service health indicator (blue/green/yellow/red).
 - `frontend/src/view/HistoryPanel.tsx`: 3-tab panel (Session, Saved, Vocab) with practice launch.
@@ -166,9 +178,9 @@
 
 ## TTS Sidecars
 
-- `services/tts/supertone-service/`: Supertone FastAPI sidecar (port 8100, ONNX Runtime, GPU via ROCm).
-- `services/tts/kokoro-service/`: Kokoro FastAPI sidecar (port 8200, GPU support).
-- `services/tts/qwen-tts-service/`: Qwen TTS FastAPI sidecar (port 8300, GPU support).
+- `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar (port 8100, ONNX Runtime, GPU via ROCm with CPU fallback).
+- `services/tts/kokoro-service/`: Kokoro FastAPI sidecar (port 8200, ONNX Runtime backend, tries ROCm and falls back to CPU).
+- `services/tts/f5-service/`: F5 TTS FastAPI sidecar (port 8300, GPU support).
 
 ## OCR Sidecar
 

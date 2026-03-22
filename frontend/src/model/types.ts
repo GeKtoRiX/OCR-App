@@ -12,8 +12,8 @@ export interface HealthResponse {
   lmStudioModels: string[];
   superToneReachable: boolean;
   kokoroReachable: boolean;
-  qwenTtsReachable: boolean;
-  qwenTtsDevice: 'gpu' | 'cpu' | null;
+  f5TtsReachable: boolean;
+  f5TtsDevice: 'gpu' | 'cpu' | null;
 }
 
 export interface ApiError {
@@ -21,7 +21,7 @@ export interface ApiError {
   message: string;
 }
 
-export type TtsEngine = 'supertone' | 'piper' | 'kokoro' | 'qwen';
+export type TtsEngine = 'supertone' | 'piper' | 'kokoro' | 'f5';
 
 export interface SupertoneTtsSettings {
   engine: 'supertone';
@@ -43,18 +43,19 @@ export interface KokoroTtsSettings {
   speed: number;
 }
 
-export interface QwenTtsSettings {
-  engine: 'qwen';
-  lang: string;
-  speaker: string;
-  instruct: string;
+export interface F5TtsSettings {
+  engine: 'f5';
+  refText: string;
+  refAudioFile: File | null;
+  autoTranscribe: boolean;
+  removeSilence: boolean;
 }
 
 export type TtsSettings =
   | SupertoneTtsSettings
   | PiperTtsSettings
   | KokoroTtsSettings
-  | QwenTtsSettings;
+  | F5TtsSettings;
 
 // Supertone voices
 export const TTS_VOICES = ['M1', 'M2', 'M3', 'M4', 'M5', 'F1', 'F2', 'F3', 'F4', 'F5'] as const;
@@ -74,64 +75,13 @@ export const PIPER_VOICES = [
 
 // Kokoro voices — hexgrad/kokoro (local sidecar, port 8200)
 export const KOKORO_VOICES = [
-  // American English — Female
   { id: 'af_heart',    label: 'Heart',    lang: 'en-US', gender: 'F' },
-  { id: 'af_alloy',    label: 'Alloy',    lang: 'en-US', gender: 'F' },
-  { id: 'af_aoede',    label: 'Aoede',    lang: 'en-US', gender: 'F' },
   { id: 'af_bella',    label: 'Bella',    lang: 'en-US', gender: 'F' },
-  { id: 'af_jessica',  label: 'Jessica',  lang: 'en-US', gender: 'F' },
-  { id: 'af_kore',     label: 'Kore',     lang: 'en-US', gender: 'F' },
   { id: 'af_nicole',   label: 'Nicole',   lang: 'en-US', gender: 'F' },
-  { id: 'af_nova',     label: 'Nova',     lang: 'en-US', gender: 'F' },
-  { id: 'af_river',    label: 'River',    lang: 'en-US', gender: 'F' },
-  { id: 'af_sarah',    label: 'Sarah',    lang: 'en-US', gender: 'F' },
-  { id: 'af_sky',      label: 'Sky',      lang: 'en-US', gender: 'F' },
-  // American English — Male
-  { id: 'am_adam',     label: 'Adam',     lang: 'en-US', gender: 'M' },
-  { id: 'am_echo',     label: 'Echo',     lang: 'en-US', gender: 'M' },
-  { id: 'am_eric',     label: 'Eric',     lang: 'en-US', gender: 'M' },
   { id: 'am_fenrir',   label: 'Fenrir',   lang: 'en-US', gender: 'M' },
-  { id: 'am_liam',     label: 'Liam',     lang: 'en-US', gender: 'M' },
   { id: 'am_michael',  label: 'Michael',  lang: 'en-US', gender: 'M' },
-  { id: 'am_onyx',     label: 'Onyx',     lang: 'en-US', gender: 'M' },
-  { id: 'am_puck',     label: 'Puck',     lang: 'en-US', gender: 'M' },
-  { id: 'am_santa',    label: 'Santa',    lang: 'en-US', gender: 'M' },
-  // British English — Female
-  { id: 'bf_alice',    label: 'Alice',    lang: 'en-GB', gender: 'F' },
   { id: 'bf_emma',     label: 'Emma',     lang: 'en-GB', gender: 'F' },
-  { id: 'bf_isabella', label: 'Isabella', lang: 'en-GB', gender: 'F' },
-  { id: 'bf_lily',     label: 'Lily',     lang: 'en-GB', gender: 'F' },
-  // British English — Male
-  { id: 'bm_daniel',   label: 'Daniel',   lang: 'en-GB', gender: 'M' },
   { id: 'bm_fable',    label: 'Fable',    lang: 'en-GB', gender: 'M' },
-  { id: 'bm_george',   label: 'George',   lang: 'en-GB', gender: 'M' },
-  { id: 'bm_lewis',    label: 'Lewis',    lang: 'en-GB', gender: 'M' },
-] as const;
-
-export const QWEN_TTS_LANGS = [
-  'Auto',
-  'Chinese',
-  'English',
-  'Japanese',
-  'Korean',
-  'German',
-  'French',
-  'Russian',
-  'Portuguese',
-  'Spanish',
-  'Italian',
-] as const;
-
-export const QWEN_TTS_SPEAKERS = [
-  { id: 'Vivian', label: 'Vivian', lang: 'Chinese' },
-  { id: 'Serena', label: 'Serena', lang: 'Chinese' },
-  { id: 'Uncle_Fu', label: 'Uncle Fu', lang: 'Chinese' },
-  { id: 'Dylan', label: 'Dylan', lang: 'Chinese' },
-  { id: 'Eric', label: 'Eric', lang: 'Chinese' },
-  { id: 'Ryan', label: 'Ryan', lang: 'English' },
-  { id: 'Aiden', label: 'Aiden', lang: 'English' },
-  { id: 'Ono_Anna', label: 'Ono Anna', lang: 'Japanese' },
-  { id: 'Sohee', label: 'Sohee', lang: 'Korean' },
 ] as const;
 
 export interface SavedDocument {

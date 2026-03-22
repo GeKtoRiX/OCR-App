@@ -12,8 +12,6 @@ const DEFAULT_SETTINGS: TtsSettings = {
 
 const DEFAULT_PIPER_VOICE  = 'en_US-ryan-high';
 const DEFAULT_KOKORO_VOICE = 'af_heart';
-const DEFAULT_QWEN_SPEAKER  = 'Ryan';
-const DEFAULT_QWEN_LANG     = 'English';
 
 export interface TtsState {
   ttsOpen: boolean;
@@ -37,6 +35,7 @@ export interface TtsState {
 
   playbackRate: number;
   setPlaybackRate: React.Dispatch<React.SetStateAction<number>>;
+  canGenerate: boolean;
 
   handleGenerate: () => Promise<void>;
 }
@@ -79,12 +78,13 @@ export function useTts(activeContent: string, filename: string): TtsState {
       setTtsSettings({ engine: 'piper', voice: piperVoice, speed: 1.05 });
     } else if (engine === 'kokoro') {
       setTtsSettings({ engine: 'kokoro', voice: kokoroVoice, speed: 1.0 });
-    } else if (engine === 'qwen') {
+    } else if (engine === 'f5') {
       setTtsSettings({
-        engine: 'qwen',
-        lang: DEFAULT_QWEN_LANG,
-        speaker: DEFAULT_QWEN_SPEAKER,
-        instruct: '',
+        engine: 'f5',
+        refText: '',
+        refAudioFile: null,
+        autoTranscribe: false,
+        removeSilence: false,
       });
     }
   };
@@ -100,6 +100,17 @@ export function useTts(activeContent: string, filename: string): TtsState {
       settingsToUse = { ...ttsSettings, voice: piperVoice };
     } else if (ttsSettings.engine === 'kokoro') {
       settingsToUse = { ...ttsSettings, voice: kokoroVoice };
+    } else if (
+      ttsSettings.engine === 'f5' &&
+      ((!ttsSettings.autoTranscribe && !ttsSettings.refText.trim()) || !ttsSettings.refAudioFile)
+    ) {
+      setTtsError(
+        ttsSettings.autoTranscribe
+          ? 'F5 TTS requires reference audio'
+          : 'F5 TTS requires reference audio and reference text',
+      );
+      setTtsStatus('error');
+      return;
     }
 
     try {
@@ -115,6 +126,12 @@ export function useTts(activeContent: string, filename: string): TtsState {
     }
   }, [activeContent, ttsSettings, piperVoice, kokoroVoice, filename]);
 
+  const canGenerate =
+    activeContent.trim().length > 0 &&
+    (ttsSettings.engine !== 'f5' ||
+      (((ttsSettings.autoTranscribe || ttsSettings.refText.trim().length > 0)) &&
+        ttsSettings.refAudioFile !== null));
+
   return {
     ttsOpen, setTtsOpen,
     ttsSettings, setTtsSettings, setEngine,
@@ -123,6 +140,7 @@ export function useTts(activeContent: string, filename: string): TtsState {
     ttsStatus, ttsError,
     audioUrl, audioFilename, audioRef,
     playbackRate, setPlaybackRate,
+    canGenerate,
     handleGenerate,
   };
 }
