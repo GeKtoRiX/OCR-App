@@ -23,6 +23,11 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!entry.file) {
+      setThumbUrl(null);
+      return;
+    }
+
     const url = URL.createObjectURL(entry.file);
     setThumbUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -45,7 +50,13 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
       aria-pressed={isActive}
     >
       <div className="history-item__thumb">
-        {thumbUrl && <img src={thumbUrl} alt={entry.result.filename} />}
+        {thumbUrl ? (
+          <img src={thumbUrl} alt={entry.result.filename} />
+        ) : (
+          <span className="history-item__icon" aria-hidden="true">
+            📄
+          </span>
+        )}
       </div>
       <div className="history-item__body">
         <span className="history-item__name">{entry.result.filename}</span>
@@ -59,7 +70,7 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
           event.stopPropagation();
           onDelete(entry.id);
         }}
-        title="Delete screenshot"
+        title="Delete session result"
         aria-label={`Delete ${entry.result.filename}`}
       >
         🗑
@@ -190,8 +201,8 @@ export function HistoryPanel() {
       {tab === 'session' ? (
         ocr.entries.length === 0 ? (
           <div className="history-empty">
-            <p>No images processed yet.</p>
-            <p>Recognize an image to see it here.</p>
+            <p>No session results yet.</p>
+            <p>Recognize an image or load pasted text to see it here.</p>
           </div>
         ) : (
           <ul className="history-list">
@@ -214,7 +225,7 @@ export function HistoryPanel() {
         ) : docs.documents.length === 0 ? (
           <div className="history-empty">
             <p>No saved documents yet.</p>
-            <p>Use Save Document to keep OCR results.</p>
+            <p>Use Save Document to keep OCR or pasted text results.</p>
           </div>
         ) : (
           <ul className="history-list">

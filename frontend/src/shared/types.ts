@@ -137,7 +137,8 @@ export type DocumentCandidateReviewSource =
 
 export interface HistoryEntry {
   id: string;
-  file: File;
+  type: 'image' | 'text';
+  file?: File;
   result: OcrResponse;
   processedAt: Date;
 }

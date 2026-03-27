@@ -34,7 +34,15 @@ vi.mock('../features/practice/practice.store', () => ({
 
 const makeEntry = (id: string, filename = `${id}.png`): HistoryEntry => ({
   id,
+  type: 'image',
   file: new File(['data'], filename, { type: 'image/png' }),
+  result: { rawText: 'raw text', markdown: '# markdown', filename },
+  processedAt: new Date(),
+});
+
+const makeTextEntry = (id: string, filename = `${id}.md`): HistoryEntry => ({
+  id,
+  type: 'text',
   result: { rawText: 'raw text', markdown: '# markdown', filename },
   processedAt: new Date(),
 });
@@ -113,7 +121,7 @@ describe('HistoryPanel', () => {
   it('shows the empty session state when no entries exist', () => {
     render(<HistoryPanel />);
 
-    expect(screen.getByText('No images processed yet.')).toBeInTheDocument();
+    expect(screen.getByText('No session results yet.')).toBeInTheDocument();
   });
 
   it('renders session items and marks the active entry when no saved doc is selected', () => {
@@ -245,5 +253,14 @@ describe('HistoryPanel', () => {
     unmount();
 
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumb-url');
+  });
+
+  it('renders a document icon for text entries without creating a thumbnail URL', () => {
+    storeMocks.mockOcr.entries = [makeTextEntry('text-entry', 'notes.md')];
+
+    render(<HistoryPanel />);
+
+    expect(screen.getByText('📄')).toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });
