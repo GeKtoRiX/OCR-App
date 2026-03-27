@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import {
   IVocabularyRepository,
   CreateVocabularyInput,
+  VOCABULARY_DUPLICATE_ERROR,
 } from '../../domain/ports/vocabulary-repository.port';
 import {
   VocabularyWord,
@@ -27,9 +28,6 @@ interface VocabularyRow {
   repetitions: number;
   next_review_at: string;
 }
-
-const DUPLICATE_VOCABULARY_ERROR =
-  'Vocabulary word already exists for this language pair';
 
 @Injectable()
 export class SqliteVocabularyRepository
@@ -142,7 +140,7 @@ export class SqliteVocabularyRepository
       nativeLang,
     ) as VocabularyRow | undefined;
     if (existing) {
-      throw new Error(DUPLICATE_VOCABULARY_ERROR);
+      throw new Error(VOCABULARY_DUPLICATE_ERROR);
     }
 
     const id = crypto.randomUUID();
@@ -157,7 +155,7 @@ export class SqliteVocabularyRepository
         error instanceof Error &&
         error.message.includes('UNIQUE constraint failed')
       ) {
-        throw new Error(DUPLICATE_VOCABULARY_ERROR);
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
       }
       throw error;
     }
@@ -193,7 +191,18 @@ export class SqliteVocabularyRepository
       },
     );
 
-    insertMany(inputs);
+    try {
+      insertMany(inputs);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed')
+      ) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+      throw error;
+    }
+
     return results;
   }
 

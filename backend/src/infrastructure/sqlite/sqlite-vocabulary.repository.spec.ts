@@ -1,6 +1,7 @@
 import { SqliteVocabularyRepository } from './sqlite-vocabulary.repository';
 import { SqliteConnectionProvider } from './sqlite-connection.provider';
 import { SqliteConfig } from '../config/sqlite.config';
+import { VOCABULARY_DUPLICATE_ERROR } from '../../domain/ports/vocabulary-repository.port';
 
 describe('SqliteVocabularyRepository', () => {
   let repo: SqliteVocabularyRepository;
@@ -78,6 +79,24 @@ describe('SqliteVocabularyRepository', () => {
 
     expect(words).toHaveLength(2);
     expect(await repo.findAll()).toHaveLength(2);
+  });
+
+  it('createMany normalizes unique constraint failures to the domain duplicate error', async () => {
+    await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
+
+    await expect(
+      repo.createMany([
+        {
+          word: 'hello',
+          vocabType: 'word',
+          translation: 'дубликат',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: '',
+          sourceDocumentId: null,
+        },
+      ]),
+    ).rejects.toThrow(VOCABULARY_DUPLICATE_ERROR);
   });
 
   it('findAll returns all words', async () => {

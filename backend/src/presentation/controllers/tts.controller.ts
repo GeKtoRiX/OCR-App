@@ -30,6 +30,18 @@ interface TtsRequestDto {
   removeSilence?: string | boolean;
 }
 
+function parseBooleanParam(
+  value: string | boolean | undefined,
+): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return typeof value === 'string'
+    ? value.toLowerCase() === 'true'
+    : Boolean(value);
+}
+
 @Controller('api')
 export class TtsController {
   constructor(private readonly synthesizeSpeech: SynthesizeSpeechUseCase) {}
@@ -46,12 +58,7 @@ export class TtsController {
     @Res() res: Response,
     @UploadedFile() refAudio?: Express.Multer.File,
   ): Promise<void> {
-    const autoTranscribe =
-      body.autoTranscribe === undefined
-        ? undefined
-        : typeof body.autoTranscribe === 'string'
-          ? body.autoTranscribe.toLowerCase() === 'true'
-          : Boolean(body.autoTranscribe);
+    const autoTranscribe = parseBooleanParam(body.autoTranscribe);
 
     if (!body.text || body.text.trim().length === 0) {
       throw new HttpException('text is required', HttpStatus.BAD_REQUEST);
@@ -84,10 +91,7 @@ export class TtsController {
         refText: body.refText?.trim(),
         refAudio: refAudioPayload,
         autoTranscribe,
-        removeSilence:
-          typeof body.removeSilence === 'string'
-            ? body.removeSilence.toLowerCase() === 'true'
-            : body.removeSilence,
+        removeSilence: parseBooleanParam(body.removeSilence),
       });
 
       res

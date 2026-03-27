@@ -307,7 +307,7 @@ function sanitizeDocumentCandidates(
       original?.normalized ||
       surface?.toLowerCase();
 
-    if (!surface || !normalized || !item.vocabType && !original?.vocabType) {
+    if (!surface || !normalized || (!item.vocabType && !original?.vocabType)) {
       continue;
     }
 

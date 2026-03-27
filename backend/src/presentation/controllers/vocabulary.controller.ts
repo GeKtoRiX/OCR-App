@@ -13,20 +13,15 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
-  VOCABULARY_DUPLICATE_ERROR,
   VocabularyUseCase,
 } from '../../application/use-cases/vocabulary.use-case';
 import { AddVocabularyDto, UpdateVocabularyDto } from '../dto/vocabulary.dto';
-import type { VocabType } from '../../domain/entities/vocabulary-word.entity';
+import {
+  VOCAB_TYPES,
+  type VocabType,
+} from '../../domain/entities/vocabulary-word.entity';
+import { VOCABULARY_DUPLICATE_ERROR } from '../../domain/ports/vocabulary-repository.port';
 import { ETagInterceptor } from '../interceptors/etag.interceptor';
-
-const VALID_VOCAB_TYPES: VocabType[] = [
-  'word',
-  'phrasal_verb',
-  'idiom',
-  'collocation',
-  'expression',
-];
 
 @UseInterceptors(ETagInterceptor)
 @Controller('api/vocabulary')
@@ -38,9 +33,9 @@ export class VocabularyController {
     if (!body.word || !body.word.trim()) {
       throw new BadRequestException('word is required');
     }
-    if (!body.vocabType || !VALID_VOCAB_TYPES.includes(body.vocabType as VocabType)) {
+    if (!body.vocabType || !VOCAB_TYPES.includes(body.vocabType as VocabType)) {
       throw new BadRequestException(
-        `vocabType must be one of: ${VALID_VOCAB_TYPES.join(', ')}`,
+        `vocabType must be one of: ${VOCAB_TYPES.join(', ')}`,
       );
     }
     if (!body.targetLang || !body.nativeLang) {
@@ -80,26 +75,39 @@ export class VocabularyController {
     }
     for (const item of body) {
       if (!item.word?.trim()) throw new BadRequestException('word is required for all items');
-      if (!item.vocabType || !VALID_VOCAB_TYPES.includes(item.vocabType as VocabType)) {
+      if (!item.vocabType || !VOCAB_TYPES.includes(item.vocabType as VocabType)) {
         throw new BadRequestException(
-          `vocabType must be one of: ${VALID_VOCAB_TYPES.join(', ')}`,
+          `vocabType must be one of: ${VOCAB_TYPES.join(', ')}`,
         );
       }
       if (!item.targetLang || !item.nativeLang) {
         throw new BadRequestException('targetLang and nativeLang are required for all items');
       }
     }
-    return this.vocabularyUseCase.addMany(
-      body.map((item) => ({
-        word: item.word.trim(),
-        vocabType: item.vocabType as VocabType,
-        translation: item.translation ?? '',
-        targetLang: item.targetLang,
-        nativeLang: item.nativeLang,
-        contextSentence: item.contextSentence ?? '',
-        sourceDocumentId: item.sourceDocumentId,
-      })),
-    );
+    try {
+      return await this.vocabularyUseCase.addMany(
+        body.map((item) => ({
+          word: item.word.trim(),
+          vocabType: item.vocabType as VocabType,
+          translation: item.translation ?? '',
+          targetLang: item.targetLang,
+          nativeLang: item.nativeLang,
+          contextSentence: item.contextSentence ?? '',
+          sourceDocumentId: item.sourceDocumentId,
+        })),
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === VOCABULARY_DUPLICATE_ERROR
+      ) {
+        throw new HttpException(
+          VOCABULARY_DUPLICATE_ERROR,
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw error;
+    }
   }
 
   @Get()

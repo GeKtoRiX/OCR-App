@@ -1,5 +1,8 @@
 import { VocabularyWord, VocabType } from '../entities/vocabulary-word.entity';
 
+export const VOCABULARY_DUPLICATE_ERROR =
+  'Word already exists in vocabulary';
+
 export interface CreateVocabularyInput {
   word: string;
   vocabType: VocabType;

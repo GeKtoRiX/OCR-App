@@ -24,6 +24,8 @@ interface ModelsResponse {
   data: Array<{ id: string }>;
 }
 
+const HEALTH_CHECK_TIMEOUT_MS = 5000;
+
 @Injectable()
 export class LMStudioClient
   extends ILmStudioHealthPort
@@ -131,7 +133,7 @@ export class LMStudioClient
 
   async listModels(): Promise<string[]> {
     const response = await fetch(this.modelsUrl, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
     });
 
     if (!response.ok) {

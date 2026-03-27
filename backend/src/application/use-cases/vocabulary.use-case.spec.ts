@@ -1,5 +1,8 @@
 import { VocabularyUseCase } from './vocabulary.use-case';
-import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
+import {
+  IVocabularyRepository,
+  VOCABULARY_DUPLICATE_ERROR,
+} from '../../domain/ports/vocabulary-repository.port';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 
 const mockWord = new VocabularyWord(
@@ -58,7 +61,7 @@ describe('VocabularyUseCase', () => {
         nativeLang: 'ru',
         contextSentence: 'The sunset was beautiful.',
       }),
-    ).rejects.toThrow('Word already exists in vocabulary');
+    ).rejects.toThrow(VOCABULARY_DUPLICATE_ERROR);
 
     expect(repo.create).not.toHaveBeenCalled();
   });

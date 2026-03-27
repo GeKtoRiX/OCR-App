@@ -5,6 +5,14 @@ export type VocabType =
   | 'collocation'
   | 'expression';
 
+export const VOCAB_TYPES: VocabType[] = [
+  'word',
+  'phrasal_verb',
+  'idiom',
+  'collocation',
+  'expression',
+];
+
 export class VocabularyWord {
   constructor(
     public readonly id: string,

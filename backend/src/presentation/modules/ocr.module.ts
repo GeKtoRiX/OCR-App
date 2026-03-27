@@ -3,7 +3,6 @@ import { OcrController } from '../controllers/ocr.controller';
 import { ProcessImageUseCase } from '../../application/use-cases/process-image.use-case';
 import { IOCRService } from '../../domain/ports/ocr-service.port';
 import { ITextStructuringService } from '../../domain/ports/text-structuring-service.port';
-import { LMStudioOCRService } from '../../infrastructure/lm-studio/lm-studio-ocr.service';
 import { LMStudioStructuringService } from '../../infrastructure/lm-studio/lm-studio-structuring.service';
 import { PaddleOCRService } from '../../infrastructure/paddleocr/paddleocr-ocr.service';
 import { PaddleOCRConfig } from '../../infrastructure/config/paddleocr.config';
@@ -28,7 +27,6 @@ const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
   providers: [
     PaddleOCRConfig,
     PaddleOCRHealthService,
-    LMStudioOCRService,
     LMStudioStructuringService,
     PassthroughStructuringService,
     PaddleOCRService,

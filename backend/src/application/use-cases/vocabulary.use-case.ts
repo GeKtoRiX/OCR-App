@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
+import {
+  IVocabularyRepository,
+  VOCABULARY_DUPLICATE_ERROR,
+} from '../../domain/ports/vocabulary-repository.port';
 import {
   AddVocabularyInput,
   UpdateVocabularyInput,
   VocabularyOutput,
 } from '../dto/vocabulary.dto';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
-
-export const VOCABULARY_DUPLICATE_ERROR = 'Word already exists in vocabulary';
 
 @Injectable()
 export class VocabularyUseCase {

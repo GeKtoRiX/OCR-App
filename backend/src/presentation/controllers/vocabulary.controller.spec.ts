@@ -1,6 +1,7 @@
 import { VocabularyController } from './vocabulary.controller';
 import { VocabularyUseCase } from '../../application/use-cases/vocabulary.use-case';
 import { HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
+import { VOCABULARY_DUPLICATE_ERROR } from '../../domain/ports/vocabulary-repository.port';
 
 const mockOutput = {
   id: 'v1',
@@ -87,7 +88,7 @@ describe('VocabularyController', () => {
     });
 
     it('returns 409 if word already exists', async () => {
-      useCase.add.mockRejectedValue(new Error('Word already exists in vocabulary'));
+      useCase.add.mockRejectedValue(new Error(VOCABULARY_DUPLICATE_ERROR));
 
       try {
         await controller.create({
@@ -245,6 +246,27 @@ describe('VocabularyController', () => {
           sourceDocumentId: undefined,
         },
       ]);
+    });
+
+    it('returns 409 if a batch contains a duplicate word', async () => {
+      useCase.addMany.mockRejectedValue(new Error(VOCABULARY_DUPLICATE_ERROR));
+
+      try {
+        await controller.createBatch([
+          {
+            word: 'beautiful',
+            vocabType: 'word',
+            translation: '',
+            targetLang: 'en',
+            nativeLang: 'ru',
+            contextSentence: '',
+          },
+        ]);
+        fail('Should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(HttpException);
+        expect((e as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
+      }
     });
   });
 

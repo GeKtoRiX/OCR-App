@@ -13,7 +13,6 @@ import { ILmStudioChatPort } from '../../domain/ports/lm-studio-chat.port';
   ],
   exports: [
     LMStudioConfig,
-    LMStudioClient,
     ILmStudioHealthPort,
     ILmStudioChatPort,
   ],

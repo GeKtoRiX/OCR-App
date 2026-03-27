@@ -11,7 +11,6 @@ import { IOCRService } from '@backend/domain/ports/ocr-service.port';
 import { IPaddleOcrHealthPort } from '@backend/domain/ports/paddle-ocr-health.port';
 import { ITextStructuringService } from '@backend/domain/ports/text-structuring-service.port';
 import { PaddleOCRConfig } from '@backend/infrastructure/config/paddleocr.config';
-import { LMStudioOCRService } from '@backend/infrastructure/lm-studio/lm-studio-ocr.service';
 import { LMStudioStructuringService } from '@backend/infrastructure/lm-studio/lm-studio-structuring.service';
 import { PaddleOCRHealthService } from '@backend/infrastructure/paddleocr/paddleocr-health.service';
 import { PaddleOCRService } from '@backend/infrastructure/paddleocr/paddleocr-ocr.service';
@@ -27,7 +26,6 @@ const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
   providers: [
     PaddleOCRConfig,
     PaddleOCRHealthService,
-    LMStudioOCRService,
     LMStudioStructuringService,
     PassthroughStructuringService,
     PaddleOCRService,
