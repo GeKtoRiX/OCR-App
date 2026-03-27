@@ -21,9 +21,9 @@ import {
 } from '@ocr-app/shared';
 import { PracticeUseCase } from '@backend/application/use-cases/practice.use-case';
 import {
-  VOCABULARY_DUPLICATE_ERROR,
   VocabularyUseCase,
 } from '@backend/application/use-cases/vocabulary.use-case';
+import { VOCABULARY_DUPLICATE_ERROR } from '@backend/domain/ports/vocabulary-repository.port';
 
 @Controller()
 export class VocabularyMessageController {

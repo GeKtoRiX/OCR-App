@@ -106,8 +106,9 @@
   border: 1.5px dashed var(--border-accent);
   border-radius: 16px;
   padding: 1rem;
-  min-height: 200px;
+  min-height: 0;
   display: grid;
+  grid-template-rows: auto auto 1fr;
   gap: 0.9rem;
   background: var(--bg-code);
   flex: 1;
@@ -133,7 +134,8 @@
 }
 
 .text-input-panel__field--grow {
-  flex: 1;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
 }
 
 .text-input-panel__field span {
@@ -155,11 +157,8 @@
 }
 
 .text-input-panel__field textarea {
-  min-height: 240px;
-  resize: vertical;
+  min-height: 120px;
+  height: 100%;
+  resize: none;
 }
 
-.text-input-panel__actions {
-  display: flex;
-  justify-content: flex-start;
-}

@@ -229,6 +229,13 @@ export default function App() {
               />
 
               <div className="app__actions">
+                <button
+                  className="btn btn--primary"
+                  onClick={handleLoadText}
+                  disabled={!textInput.canSubmit || isProcessing}
+                >
+                  Load Text
+                </button>
                 <button className="btn btn--secondary" onClick={handleReset} disabled={isProcessing}>
                   Clear
                 </button>

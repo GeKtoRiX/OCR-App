@@ -59,11 +59,6 @@ export function TextInputPanel({
         />
       </label>
 
-      <div className="text-input-panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={!canSubmit || disabled}>
-          Load Text
-        </button>
-      </div>
     </form>
   );
 }
