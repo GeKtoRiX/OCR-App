@@ -80,20 +80,52 @@ Backend source code lives exclusively in `backend/src/`.
 
 ## Frontend
 
-Frontend source code lives in `frontend/src/`.
+Frontend source code lives in `frontend/src/`. Architecture: Zustand stores + feature-sliced
+layout (FSD-inspired, without strict layer isolation rules).
 
-- `model/`: API client functions and TypeScript types.
-- `viewmodel/`: React hooks (state and logic).
-- `view/`: React components (UI only, no business logic).
-- `styles/`: CSS files (base.css, layout.css).
+### Layout
+
+- `features/`: domain-specific code, each subfolder owns its store, hooks, and components.
+  - `ocr/`: `ocr.store.ts`, `useImageUpload.ts`, `DropZone.tsx` + colocated CSS and specs.
+  - `tts/`: `useTts.ts` + spec.
+  - `documents/`: `documents.store.ts` + spec.
+  - `vocabulary/`: `vocabulary.store.ts`, `useVocabContextMenu.ts`,
+    `VocabularyPanel.tsx`, `VocabContextMenu.tsx`, `VocabAddForm.tsx` + colocated CSS and specs.
+  - `practice/`: `practice.store.ts`, `PracticeView.tsx` + colocated CSS and specs.
+  - `health/`: `health.store.ts` + spec.
+- `shared/`: cross-feature utilities with no upward dependencies.
+  - `api.ts`: all HTTP fetch wrappers (single file, not split).
+  - `types.ts`: all TypeScript types and constants.
+  - `lib/`: `health-status.ts`, `text-utils.ts`, `clipboard.ts` + colocated specs.
+- `ui/`: stateless presentational primitives used across features.
+  - `StatusBar.tsx`, `StatusLight.tsx` + colocated CSS and specs.
+- `view/`: cross-feature composite components that span multiple feature domains.
+  - `ResultPanel.tsx`, `TtsPanel.css`, `useResultPanel.ts` + colocated CSS and specs.
+  - `HistoryPanel.tsx` + colocated CSS and spec.
+- `styles/`: global CSS (`base.css`, `layout.css`).
 - `App.tsx`, `main.tsx`, `test-setup.ts`, `vite-env.d.ts`.
+
+### State Management
+
+Zustand stores (`features/*/`). Stores are singletons; AbortControllers and timers are
+closure variables inside `create()` — not part of Zustand state — so resets in tests do not
+orphan live requests or dangling timers. Health polling runs in a `useEffect` in `App.tsx`.
+
+### Rules
+
+- `features/*` may import from `shared/` and `ui/`. Cross-feature imports are allowed but
+  should go through `shared/` when possible.
+- `view/` components import from `features/` stores and `ui/` primitives.
+- `App.tsx` orchestrates layout, health polling, and cross-feature coordination.
+- No path aliases — all imports use relative paths.
 
 Files are named by responsibility:
 
 - Components: `PascalCase.tsx`
+- Stores: `*.store.ts`
 - Hooks: `use*.ts`
 - Tests: `*.spec.ts` / `*.spec.tsx`
-- CSS: colocated with components or in `styles/`.
+- CSS: colocated with their component.
 
 ## OCR Sidecar (`services/ocr/paddleocr-service/`)
 
@@ -165,3 +197,20 @@ They must not be used as the basis for architectural decisions and should not ap
 - New frontend views: `VocabularyPanel`, `VocabContextMenu`, `VocabAddForm`, `PracticeView`.
 - CSS moved to `frontend/src/styles/` (`base.css`, `layout.css`) plus colocated component CSS files.
 - Exception: `backend/src/integration.spec.ts` and `backend/src/app.e2e.spec.ts` reside at the root of `src/` as integration/e2e tests — permitted by design.
+
+## Audit Result On 2026-03-27
+
+- Frontend refactored: `model/` and `viewmodel/` directories removed. New layout: `features/`,
+  `shared/`, `ui/`, `view/` (see Frontend section above).
+- `zustand` added as a frontend dependency (`^5.0.12`). Five Zustand stores introduced:
+  `ocr.store.ts` (OCR + session history), `documents.store.ts` (saved docs + active selection),
+  `vocabulary.store.ts` (words + SRS metadata), `practice.store.ts` (session state machine),
+  `health.store.ts` (health-light color/tooltip).
+- `useAppOrchestrator` god-hook deleted. `App.tsx` reads stores directly and coordinates
+  health polling via `useEffect`.
+- `HistoryPanel` is now a zero-prop component; reads all five stores directly — eliminates
+  the 26-prop drilling that previously went through `App.tsx`.
+- AbortController (`ocr.store.ts`) and save-status timer (`documents.store.ts`) are closure
+  variables inside `create()`, not Zustand state, so store resets in tests are safe.
+- All 22 frontend test files updated/rewritten; store tests use `getState()` / `setState()`
+  directly without `renderHook`. All tests pass.

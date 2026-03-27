@@ -1,15 +1,15 @@
-import type { OcrResponse, VocabType } from '../model/types';
-import type { SaveStatus } from '../viewmodel/useSavedDocuments';
+import type { OcrResponse, VocabType } from '../shared/types';
+import type { SaveStatus } from '../features/documents/documents.store';
 import {
   TTS_VOICES,
   TTS_LANGS,
   TTS_LANG_LABELS,
   PIPER_VOICES,
   KOKORO_VOICES,
-} from '../model/types';
-import { useResultPanel } from '../viewmodel/useResultPanel';
-import { VocabContextMenu } from './VocabContextMenu';
-import { VocabAddForm } from './VocabAddForm';
+} from '../shared/types';
+import { useResultPanel } from './useResultPanel';
+import { VocabContextMenu } from '../features/vocabulary/VocabContextMenu';
+import { VocabAddForm } from '../features/vocabulary/VocabAddForm';
 import './ResultPanel.css';
 import './TtsPanel.css';
 

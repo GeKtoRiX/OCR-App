@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { VocabType } from '../model/types';
-import { VOCAB_TYPE_LABELS } from '../model/types';
+import type { VocabType } from '../../shared/types';
+import { VOCAB_TYPE_LABELS } from '../../shared/types';
 import './VocabAddForm.css';
 
 interface Props {

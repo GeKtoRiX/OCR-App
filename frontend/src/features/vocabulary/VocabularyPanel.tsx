@@ -1,5 +1,5 @@
-import type { VocabularyWord, LanguagePair } from '../model/types';
-import { VOCAB_TYPE_LABELS } from '../model/types';
+import type { VocabularyWord, LanguagePair } from '../../shared/types';
+import { VOCAB_TYPE_LABELS } from '../../shared/types';
 import './VocabularyPanel.css';
 
 interface Props {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { OcrResponse, VocabType } from '../model/types';
-import { copyToClipboard } from '../model/clipboard';
-import { useTts } from './useTts';
-import { useVocabContextMenu } from './useVocabContextMenu';
+import type { OcrResponse, VocabType } from '../shared/types';
+import { copyToClipboard } from '../shared/lib/clipboard';
+import { useTts } from '../features/tts/useTts';
+import { useVocabContextMenu } from '../features/vocabulary/useVocabContextMenu';
 
 interface UseResultPanelOptions {
   result: OcrResponse;
@@ -59,7 +59,7 @@ export function useResultPanel({
     copyResetTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
   }, [activeContent]);
 
-  const tts = useTts(activeContent, result.filename);
+  const tts = useTts(activeContent, result.filename, isEditing);
   const vocabCtx = useVocabContextMenu({
     textareaRef,
     contentRef,

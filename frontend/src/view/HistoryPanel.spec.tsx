@@ -1,8 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HistoryPanel } from './HistoryPanel';
-import type { HistoryEntry } from '../model/types';
+import type { HistoryEntry } from '../shared/types';
+
+const storeMocks = vi.hoisted(() => ({
+  mockOcr: {} as any,
+  mockDocs: {} as any,
+  mockVocab: {} as any,
+  mockHealth: {} as any,
+  mockPractice: {} as any,
+}));
+
+vi.mock('../features/ocr/ocr.store', () => ({
+  useOcrStore: () => storeMocks.mockOcr,
+}));
+
+vi.mock('../features/documents/documents.store', () => ({
+  useDocumentsStore: () => storeMocks.mockDocs,
+}));
+
+vi.mock('../features/vocabulary/vocabulary.store', () => ({
+  useVocabularyStore: () => storeMocks.mockVocab,
+}));
+
+vi.mock('../features/health/health.store', () => ({
+  useHealthStore: () => storeMocks.mockHealth,
+}));
+
+vi.mock('../features/practice/practice.store', () => ({
+  usePracticeStore: () => storeMocks.mockPractice,
+}));
 
 const makeEntry = (id: string, filename = `${id}.png`): HistoryEntry => ({
   id,
@@ -11,192 +39,199 @@ const makeEntry = (id: string, filename = `${id}.png`): HistoryEntry => ({
   processedAt: new Date(),
 });
 
-const baseProps = {
-  entries: [] as HistoryEntry[],
-  activeId: null,
-  onSelect: vi.fn(),
-  onDeleteSession: vi.fn(),
-  health: {
-    color: 'blue' as const,
-    label: 'All systems ready',
-    tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
-  },
-  saved: {
-    documents: [],
-    loading: false,
-    activeId: null,
-    onSelect: vi.fn(),
-    onDelete: vi.fn(),
-  },
-  vocab: {
-    words: [],
-    loading: false,
-    langPair: { targetLang: 'en', nativeLang: 'ru' },
-    dueCount: 0,
-    onLangPairChange: vi.fn(),
-    onDelete: vi.fn(),
-    onStartPractice: vi.fn(),
-  },
-};
+function defaultStores() {
+  return {
+    ocr: {
+      status: 'idle' as const,
+      result: null,
+      error: null,
+      entries: [] as HistoryEntry[],
+      activeHistoryId: null,
+      run: vi.fn(),
+      reset: vi.fn(),
+      selectEntry: vi.fn(),
+      removeEntry: vi.fn(),
+    },
+    docs: {
+      documents: [] as any[],
+      loading: false,
+      saveStatus: 'idle' as const,
+      error: null,
+      activeSavedId: null,
+      load: vi.fn(),
+      save: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn().mockResolvedValue(true),
+      selectDocument: vi.fn(),
+      clearSelection: vi.fn(),
+    },
+    vocab: {
+      words: [],
+      loading: false,
+      error: null,
+      langPair: { targetLang: 'en', nativeLang: 'ru' },
+      dueCount: 0,
+      existingWordsSet: new Set<string>(),
+      load: vi.fn(),
+      refresh: vi.fn(),
+      addWord: vi.fn(),
+      removeWord: vi.fn().mockResolvedValue(true),
+      updateWord: vi.fn(),
+      setLangPair: vi.fn(),
+    },
+    health: {
+      color: 'blue' as const,
+      tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
+    },
+    practice: {
+      start: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+}
 
 describe('HistoryPanel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    const defaults = defaultStores();
+    storeMocks.mockOcr = defaults.ocr;
+    storeMocks.mockDocs = defaults.docs;
+    storeMocks.mockVocab = defaults.vocab;
+    storeMocks.mockHealth = defaults.health;
+    storeMocks.mockPractice = defaults.practice;
     global.URL.createObjectURL = vi.fn(() => 'blob:thumb-url');
     global.URL.revokeObjectURL = vi.fn();
   });
 
-  it('should show empty state when there are no entries', () => {
-    render(<HistoryPanel {...baseProps} />);
+  it('shows the empty session state when no entries exist', () => {
+    render(<HistoryPanel />);
 
     expect(screen.getByText('No images processed yet.')).toBeInTheDocument();
   });
 
-  it('should render Session and Saved tab buttons', () => {
-    render(<HistoryPanel {...baseProps} />);
+  it('renders session items and marks the active entry when no saved doc is selected', () => {
+    storeMocks.mockOcr.entries = [makeEntry('first'), makeEntry('second')];
+    storeMocks.mockOcr.activeHistoryId = 'first';
 
-    expect(screen.getByText('Session')).toBeInTheDocument();
-    expect(screen.getByText('Saved')).toBeInTheDocument();
-  });
-
-  it('should render an item for each entry', () => {
-    const entries = [makeEntry('a'), makeEntry('b'), makeEntry('c')];
-    render(<HistoryPanel {...baseProps} entries={entries} />);
-
-    expect(screen.getByText('a.png')).toBeInTheDocument();
-    expect(screen.getByText('b.png')).toBeInTheDocument();
-    expect(screen.getByText('c.png')).toBeInTheDocument();
-  });
-
-  it('should apply active class only to the active entry', () => {
-    const entries = [makeEntry('first'), makeEntry('second')];
-    const { container } = render(
-      <HistoryPanel {...baseProps} entries={entries} activeId="first" />,
-    );
+    const { container } = render(<HistoryPanel />);
 
     const items = container.querySelectorAll('.history-item');
     expect(items[0]).toHaveClass('history-item--active');
     expect(items[1]).not.toHaveClass('history-item--active');
   });
 
-  it('should call onSelect with the entry id when clicked', () => {
-    const onSelect = vi.fn();
-    render(
-      <HistoryPanel {...baseProps} entries={[makeEntry('entry-1')]} onSelect={onSelect} />,
-    );
+  it('selects a session entry and clears saved selection', () => {
+    storeMocks.mockOcr.entries = [makeEntry('entry-1')];
 
+    render(<HistoryPanel />);
     fireEvent.click(screen.getByText('entry-1.png'));
 
-    expect(onSelect).toHaveBeenCalledWith('entry-1');
+    expect(storeMocks.mockOcr.selectEntry).toHaveBeenCalledWith('entry-1');
+    expect(storeMocks.mockDocs.clearSelection).toHaveBeenCalled();
   });
 
-  it('should call onDeleteSession when session delete button is clicked', async () => {
+  it('deletes a session entry through the OCR store', async () => {
     const user = userEvent.setup();
-    const onDeleteSession = vi.fn();
-    render(
-      <HistoryPanel
-        {...baseProps}
-        entries={[makeEntry('entry-1')]}
-        onDeleteSession={onDeleteSession}
-      />,
-    );
+    storeMocks.mockOcr.entries = [makeEntry('entry-1')];
 
+    render(<HistoryPanel />);
     await user.click(screen.getByLabelText('Delete entry-1.png'));
 
-    expect(onDeleteSession).toHaveBeenCalledWith('entry-1');
+    expect(storeMocks.mockOcr.removeEntry).toHaveBeenCalledWith('entry-1');
   });
 
-  it('should call onSelect on Enter key press', async () => {
-    const user = userEvent.setup();
-    const onSelect = vi.fn();
-    render(
-      <HistoryPanel {...baseProps} entries={[makeEntry('entry-2')]} onSelect={onSelect} />,
-    );
+  it('suppresses active session styling while a saved document is selected', () => {
+    storeMocks.mockOcr.entries = [makeEntry('entry-1')];
+    storeMocks.mockOcr.activeHistoryId = 'entry-1';
+    storeMocks.mockDocs.activeSavedId = 'saved-1';
 
-    const item = screen.getByText('entry-2.png').closest('li') as HTMLElement;
-    item.focus();
-    await user.keyboard('{Enter}');
+    const { container } = render(<HistoryPanel />);
 
-    expect(onSelect).toHaveBeenCalledWith('entry-2');
+    expect(container.querySelector('.history-item--active')).not.toBeInTheDocument();
   });
 
-  it('should call onSelect on Space key press', async () => {
-    const user = userEvent.setup();
-    const onSelect = vi.fn();
-    render(
-      <HistoryPanel {...baseProps} entries={[makeEntry('entry-3')]} onSelect={onSelect} />,
-    );
+  it('renders derived health label and tooltip', () => {
+    storeMocks.mockHealth = {
+      color: 'red',
+      tooltip: 'PaddleOCR unreachable',
+    };
 
-    const item = screen.getByText('entry-3.png').closest('li') as HTMLElement;
-    item.focus();
-    await user.keyboard(' ');
-
-    expect(onSelect).toHaveBeenCalledWith('entry-3');
-  });
-
-  it('should render StatusLight with the provided health props', () => {
-    const { container } = render(
-      <HistoryPanel
-        {...baseProps}
-        health={{ color: 'red', label: 'Service issue', tooltip: 'PaddleOCR unreachable' }}
-      />,
-    );
+    const { container } = render(<HistoryPanel />);
 
     expect(container.querySelector('.status-light--red')).toBeInTheDocument();
-    expect(screen.getByText('PaddleOCR unreachable')).toBeInTheDocument();
+    expect(screen.getByLabelText('Service issue. PaddleOCR unreachable')).toBeInTheDocument();
   });
 
-  it('should revoke thumbnail URL when item unmounts', () => {
-    const entries = [makeEntry('thumb-test')];
-    const { unmount } = render(<HistoryPanel {...baseProps} entries={entries} />);
-
-    unmount();
-
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumb-url');
-  });
-
-  it('should show saved documents when Saved tab is clicked', async () => {
+  it('shows saved documents on the Saved tab and wires select/delete', async () => {
     const user = userEvent.setup();
-    const savedDocuments = [
-      { id: 's1', markdown: '# Saved', filename: 'saved.png', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
+    storeMocks.mockDocs.documents = [
+      {
+        id: 's1',
+        markdown: '# Saved',
+        filename: 'saved.png',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
     ];
-    render(
-      <HistoryPanel
-        {...baseProps}
-        saved={{ ...baseProps.saved, documents: savedDocuments }}
-      />,
-    );
 
+    render(<HistoryPanel />);
     await user.click(screen.getByText('Saved (1)'));
 
     expect(screen.getByText('saved.png')).toBeInTheDocument();
-  });
 
-  it('should show empty state for saved tab when no documents', async () => {
-    const user = userEvent.setup();
-    render(<HistoryPanel {...baseProps} />);
+    await user.click(screen.getByText('saved.png'));
+    expect(storeMocks.mockDocs.selectDocument).toHaveBeenCalledWith('s1');
 
-    await user.click(screen.getByText('Saved'));
-
-    expect(screen.getByText('No saved documents yet.')).toBeInTheDocument();
-  });
-
-  it('should call onDelete when delete button is clicked', async () => {
-    const user = userEvent.setup();
-    const onDelete = vi.fn();
-    const savedDocuments = [
-      { id: 's1', markdown: '# Saved', filename: 'saved.png', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
-    ];
-    render(
-      <HistoryPanel
-        {...baseProps}
-        saved={{ ...baseProps.saved, documents: savedDocuments, onDelete }}
-      />,
-    );
-
-    await user.click(screen.getByText('Saved (1)'));
     await user.click(screen.getByLabelText('Delete saved.png'));
+    expect(storeMocks.mockDocs.remove).toHaveBeenCalledWith('s1');
+  });
 
-    expect(onDelete).toHaveBeenCalledWith('s1');
+  it('shows the vocab tab and wires language change, delete, and practice start', async () => {
+    const user = userEvent.setup();
+    storeMocks.mockVocab.words = [
+      {
+        id: 'w1',
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello there.',
+        sourceDocumentId: null,
+        intervalDays: 1,
+        easinessFactor: 2.5,
+        repetitions: 1,
+        nextReviewAt: '2024-01-01T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ];
+    storeMocks.mockVocab.dueCount = 3;
+
+    render(<HistoryPanel />);
+    await user.click(screen.getByText('Vocab (1)'));
+
+    expect(screen.getByText('hello')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('vocab-target-lang'), {
+      target: { value: 'de' },
+    });
+    expect(storeMocks.mockVocab.setLangPair).toHaveBeenCalledWith({
+      targetLang: 'de',
+      nativeLang: 'ru',
+    });
+
+    await user.click(screen.getByTitle('Remove'));
+    expect(storeMocks.mockVocab.removeWord).toHaveBeenCalledWith('w1');
+
+    await user.click(screen.getByTestId('vocab-practice-button'));
+    expect(storeMocks.mockPractice.start).toHaveBeenCalledWith('en', 'ru');
+  });
+
+  it('revokes thumbnail URLs on unmount', () => {
+    storeMocks.mockOcr.entries = [makeEntry('thumb-test')];
+
+    const { unmount } = render(<HistoryPanel />);
+    unmount();
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumb-url');
   });
 });

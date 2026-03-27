@@ -1,4 +1,4 @@
-import type { LightColor } from '../model/health-status';
+import type { LightColor } from '../shared/lib/health-status';
 import './StatusLight.css';
 
 interface Props {

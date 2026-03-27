@@ -1,4 +1,4 @@
-import type { HealthResponse } from './types';
+import type { HealthResponse } from '../types';
 
 export type LightColor = 'blue' | 'green' | 'yellow' | 'red';
 
@@ -6,6 +6,13 @@ export interface HealthStatus {
   color: LightColor;
   tooltip: string;
 }
+
+export const HEALTH_LABELS = {
+  blue: 'All systems ready',
+  green: 'OCR ready',
+  yellow: 'CPU mode',
+  red: 'Service issue',
+} as const;
 
 export function computeStatus(health: HealthResponse): HealthStatus {
   const {

@@ -3,16 +3,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ResultPanel } from './ResultPanel';
 
-vi.mock('../model/clipboard', () => ({
+vi.mock('../shared/lib/clipboard', () => ({
   copyToClipboard: vi.fn(),
 }));
 
-vi.mock('../model/api', () => ({
+vi.mock('../shared/api', () => ({
   generateSpeech: vi.fn(),
 }));
 
-import { copyToClipboard } from '../model/clipboard';
-import { generateSpeech } from '../model/api';
+import { copyToClipboard } from '../shared/lib/clipboard';
+import { generateSpeech } from '../shared/api';
 
 const mockCopy = vi.mocked(copyToClipboard);
 const mockGenerateSpeech = vi.mocked(generateSpeech);

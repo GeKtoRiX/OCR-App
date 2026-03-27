@@ -1,18 +1,134 @@
-import { lazy, Suspense } from 'react';
-import { useAppOrchestrator } from './viewmodel/useAppOrchestrator';
-import { DropZone } from './view/DropZone';
+import { lazy, Suspense, useEffect } from 'react';
+import { useDocumentsStore } from './features/documents/documents.store';
+import { POLL_INTERVAL_MS, useHealthStore } from './features/health/health.store';
+import { DropZone } from './features/ocr/DropZone';
+import { useImageUpload } from './features/ocr/useImageUpload';
+import { useOcrStore } from './features/ocr/ocr.store';
+import { usePracticeStore } from './features/practice/practice.store';
+import { useVocabularyStore } from './features/vocabulary/vocabulary.store';
+import { checkHealth } from './shared/api';
+import { computeStatus } from './shared/lib/health-status';
+import type { VocabType } from './shared/types';
+import { StatusBar } from './ui/StatusBar';
 import { ResultPanel } from './view/ResultPanel';
-import { StatusBar } from './view/StatusBar';
 
 const HistoryPanel = lazy(() =>
-  import('./view/HistoryPanel').then((m) => ({ default: m.HistoryPanel })),
+  import('./view/HistoryPanel').then((module) => ({ default: module.HistoryPanel })),
 );
 const PracticeView = lazy(() =>
-  import('./view/PracticeView').then((m) => ({ default: m.PracticeView })),
+  import('./features/practice/PracticeView').then((module) => ({ default: module.PracticeView })),
 );
 
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) {
+    return `${Math.round(size / 1024)} KB`;
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function App() {
-  const app = useAppOrchestrator();
+  const upload = useImageUpload();
+  const ocr = useOcrStore();
+  const docs = useDocumentsStore();
+  const vocab = useVocabularyStore();
+  const practice = usePracticeStore();
+  const loadDocuments = docs.load;
+  const loadVocabulary = vocab.load;
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
+
+  useEffect(() => {
+    void loadVocabulary();
+  }, [loadVocabulary]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollHealth() {
+      try {
+        const health = await checkHealth();
+        if (!cancelled) {
+          useHealthStore.setState(computeStatus(health));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          useHealthStore.setState({
+            color: 'red',
+            tooltip: `Health check failed: ${message}`,
+          });
+        }
+      }
+    }
+
+    void pollHealth();
+    const intervalId = window.setInterval(() => void pollHealth(), POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const isProcessing = ocr.status === 'loading';
+
+  const activeSavedDoc = docs.activeSavedId
+    ? docs.documents.find((document) => document.id === docs.activeSavedId) ?? null
+    : null;
+
+  const displayedResult = activeSavedDoc
+    ? {
+        rawText: activeSavedDoc.markdown,
+        markdown: activeSavedDoc.markdown,
+        filename: activeSavedDoc.filename,
+      }
+    : ocr.activeHistoryId !== null
+      ? ocr.entries.find((entry) => entry.id === ocr.activeHistoryId)?.result ?? null
+      : ocr.result;
+
+  const fileMeta = upload.file
+    ? `${formatFileSize(upload.file.size)} · ${upload.file.type || 'image'}`
+    : null;
+
+  const handleProcess = () => {
+    if (!upload.file) {
+      return;
+    }
+
+    void ocr.run(upload.file);
+  };
+
+  const handleReset = () => {
+    upload.clear();
+    ocr.reset();
+  };
+
+  const handleSave = (markdown: string, filename: string) => {
+    void docs.save(markdown, filename);
+  };
+
+  const handleUpdate = docs.activeSavedId
+    ? (markdown: string) => {
+        void docs.update(docs.activeSavedId!, markdown);
+      }
+    : undefined;
+
+  const handleAddVocabulary = (
+    word: string,
+    vocabType: VocabType,
+    translation: string,
+    contextSentence: string,
+  ) => {
+    void vocab.addWord(word, vocabType, translation, contextSentence);
+  };
+
+  const handlePracticeReset = () => {
+    practice.reset();
+    void vocab.refresh();
+  };
 
   return (
     <div className="app">
@@ -23,71 +139,41 @@ export default function App() {
               <span className="panel__eyebrow">Upload</span>
               <h2>Prepare source image</h2>
             </div>
-            <span className={`panel__badge ${app.upload.file ? 'panel__badge--ready' : ''}`}>
-              {app.upload.file ? 'File selected' : 'Awaiting file'}
+            <span className={`panel__badge ${upload.file ? 'panel__badge--ready' : ''}`}>
+              {upload.file ? 'File selected' : 'Awaiting file'}
             </span>
           </div>
 
           <DropZone
-            preview={app.upload.preview}
-            fileName={app.upload.file?.name ?? null}
-            fileMeta={app.fileMeta}
-            onFileChange={app.upload.onFileChange}
-            onDrop={app.upload.onDrop}
-            disabled={app.isProcessing}
+            preview={upload.preview}
+            fileName={upload.file?.name ?? null}
+            fileMeta={fileMeta}
+            onFileChange={upload.onFileChange}
+            onDrop={upload.onDrop}
+            disabled={isProcessing}
           />
 
-          {app.upload.error && <div className="inline-alert inline-alert--error">{app.upload.error}</div>}
+          {upload.error && <div className="inline-alert inline-alert--error">{upload.error}</div>}
 
           <div className="app__actions">
             <button
               className="btn btn--primary"
-              onClick={app.handleProcess}
-              disabled={!app.upload.file || app.isProcessing}
+              onClick={handleProcess}
+              disabled={!upload.file || isProcessing}
             >
-              {app.isProcessing ? 'Processing\u2026' : 'Recognize'}
+              {isProcessing ? 'Processing…' : 'Recognize'}
             </button>
-            <button
-              className="btn btn--secondary"
-              onClick={app.handleReset}
-              disabled={app.isProcessing}
-            >
+            <button className="btn btn--secondary" onClick={handleReset} disabled={isProcessing}>
               Clear
             </button>
           </div>
 
-          <StatusBar status={app.ocrStatus} error={app.ocrError} />
+          <StatusBar status={ocr.status} error={ocr.error} />
         </section>
 
         <aside className="sidebar">
           <Suspense fallback={<div className="panel-loading">Loading sidebar…</div>}>
-            <HistoryPanel
-              entries={app.historyEntries}
-              activeId={app.historyActiveId}
-              onSelect={app.handleSelectSession}
-              onDeleteSession={app.handleDeleteSession}
-              health={{
-                color: app.healthColor,
-                label: app.healthLabel,
-                tooltip: app.healthTooltip,
-              }}
-              saved={{
-                documents: app.savedDocuments,
-                loading: app.savedLoading,
-                activeId: app.activeSavedId,
-                onSelect: app.handleSelectSaved,
-                onDelete: app.handleDeleteSaved,
-              }}
-              vocab={{
-                words: app.vocabWords,
-                loading: app.vocabLoading,
-                langPair: app.vocabLangPair,
-                dueCount: app.vocabDueCount,
-                onLangPairChange: app.onVocabLangPairChange,
-                onDelete: app.onVocabDelete,
-                onStartPractice: app.handleStartPractice,
-              }}
-            />
+            <HistoryPanel />
           </Suspense>
         </aside>
 
@@ -97,47 +183,48 @@ export default function App() {
               <span className="panel__eyebrow">Result</span>
               <h2>Recognition output</h2>
             </div>
-            <span className={`panel__badge ${app.hasResult ? 'panel__badge--ready' : ''}`}>
-              {app.hasResult ? 'Ready' : 'Empty'}
+            <span className={`panel__badge ${displayedResult ? 'panel__badge--ready' : ''}`}>
+              {displayedResult ? 'Ready' : 'Empty'}
             </span>
           </div>
 
-          {app.displayedResult ? (
+          {displayedResult ? (
             <ResultPanel
-              result={app.displayedResult}
-              onSave={(markdown) => app.handleSave(markdown, app.displayedResult!.filename)}
-              saveStatus={app.savedSaveStatus}
-              onUpdate={app.handleUpdate}
-              isSavedDocument={app.isSavedDocument}
-              existingWordsSet={app.vocabExistingWordsSet}
-              onAddVocabulary={app.handleAddVocabulary}
+              result={displayedResult}
+              onSave={(markdown) => handleSave(markdown, displayedResult.filename)}
+              saveStatus={docs.saveStatus}
+              onUpdate={handleUpdate}
+              isSavedDocument={activeSavedDoc !== null}
+              existingWordsSet={vocab.existingWordsSet}
+              onAddVocabulary={handleAddVocabulary}
             />
           ) : (
             <div className="result-empty">
               <strong>Structured output will appear here</strong>
               <p>
-                After processing, switch between Markdown and raw text and copy either format with one click.
+                After processing, switch between Markdown and raw text and copy either
+                format with one click.
               </p>
             </div>
           )}
         </section>
       </main>
 
-      {app.practice.phase !== 'idle' && (
+      {practice.phase !== 'idle' && (
         <Suspense fallback={<div className="panel-loading">Loading practice…</div>}>
           <PracticeView
-            phase={app.practice.phase}
-            currentExercise={app.practice.currentExercise}
-            currentIndex={app.practice.currentIndex}
-            totalExercises={app.practice.exercises.length}
-            lastAnswer={app.practice.lastAnswer}
-            isLastExercise={app.practice.isLastExercise}
-            analysis={app.practice.analysis}
-            error={app.practice.error}
-            onAnswer={(a) => void app.practice.answer(a)}
-            onNext={app.practice.next}
-            onComplete={() => void app.practice.complete()}
-            onReset={app.handlePracticeReset}
+            phase={practice.phase}
+            currentExercise={practice.currentExercise}
+            currentIndex={practice.currentIndex}
+            totalExercises={practice.exercises.length}
+            lastAnswer={practice.lastAnswer}
+            isLastExercise={practice.isLastExercise}
+            analysis={practice.analysis}
+            error={practice.error}
+            onAnswer={(answer) => void practice.answer(answer)}
+            onNext={practice.next}
+            onComplete={() => void practice.complete()}
+            onReset={handlePracticeReset}
           />
         </Suspense>
       )}

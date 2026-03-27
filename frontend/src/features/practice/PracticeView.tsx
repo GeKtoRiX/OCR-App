@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { Exercise, AnswerResult, SessionAnalysis } from '../model/types';
-import type { PracticePhase } from '../viewmodel/usePractice';
+import type { Exercise, AnswerResult, SessionAnalysis } from '../../shared/types';
+import type { PracticePhase } from './practice.store';
 import './PracticeView.css';
 
 interface Props {

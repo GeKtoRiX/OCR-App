@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeStatus } from './health-status';
-import type { HealthResponse } from './types';
+import type { HealthResponse } from '../types';
 
 const allUp: HealthResponse = {
   paddleOcrReachable: true,

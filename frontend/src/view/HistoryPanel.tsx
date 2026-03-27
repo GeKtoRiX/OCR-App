@@ -1,45 +1,16 @@
-import { useState, useEffect } from 'react';
-import type { HistoryEntry, SavedDocument, VocabularyWord, LanguagePair } from '../model/types';
-import type { LightColor } from '../model/health-status';
-import { StatusLight } from './StatusLight';
-import { VocabularyPanel } from './VocabularyPanel';
+import { useEffect, useState } from 'react';
+import { useDocumentsStore } from '../features/documents/documents.store';
+import { useHealthStore } from '../features/health/health.store';
+import { useOcrStore } from '../features/ocr/ocr.store';
+import { usePracticeStore } from '../features/practice/practice.store';
+import { VocabularyPanel } from '../features/vocabulary/VocabularyPanel';
+import { useVocabularyStore } from '../features/vocabulary/vocabulary.store';
+import { HEALTH_LABELS } from '../shared/lib/health-status';
+import type { HistoryEntry, SavedDocument } from '../shared/types';
+import { StatusLight } from '../ui/StatusLight';
 import './HistoryPanel.css';
 
 type HistoryTab = 'session' | 'saved' | 'vocab';
-
-export interface HealthProps {
-  color: LightColor;
-  label: string;
-  tooltip: string;
-}
-
-export interface SavedDocsProps {
-  documents: SavedDocument[];
-  loading: boolean;
-  activeId: string | null;
-  onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
-}
-
-export interface VocabProps {
-  words: VocabularyWord[];
-  loading: boolean;
-  langPair: LanguagePair;
-  dueCount: number;
-  onLangPairChange: (lp: LanguagePair) => void;
-  onDelete: (id: string) => void;
-  onStartPractice: () => void;
-}
-
-interface Props {
-  entries: HistoryEntry[];
-  activeId: string | null;
-  onSelect: (id: string) => void;
-  onDeleteSession: (id: string) => void;
-  health: HealthProps;
-  saved: SavedDocsProps;
-  vocab: VocabProps;
-}
 
 interface ItemProps {
   entry: HistoryEntry;
@@ -66,7 +37,11 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
       onClick={() => onSelect(entry.id)}
       role="button"
       tabIndex={0}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onSelect(entry.id); }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          onSelect(entry.id);
+        }
+      }}
       aria-pressed={isActive}
     >
       <div className="history-item__thumb">
@@ -80,7 +55,10 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
       </div>
       <button
         className="history-item__delete"
-        onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete(entry.id);
+        }}
         title="Delete screenshot"
         aria-label={`Delete ${entry.result.filename}`}
       >
@@ -111,7 +89,11 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
       onClick={() => onSelect(doc.id)}
       role="button"
       tabIndex={0}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onSelect(doc.id); }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          onSelect(doc.id);
+        }
+      }}
       aria-pressed={isActive}
     >
       <div className="history-item__icon">📄</div>
@@ -123,7 +105,10 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
       </div>
       <button
         className="history-item__delete"
-        onClick={e => { e.stopPropagation(); onDelete(doc.id); }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete(doc.id);
+        }}
         title="Delete saved document"
         aria-label={`Delete ${doc.filename}`}
       >
@@ -133,16 +118,38 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
   );
 }
 
-export function HistoryPanel({
-  entries,
-  activeId,
-  onSelect,
-  onDeleteSession,
-  health,
-  saved,
-  vocab,
-}: Props) {
+export function HistoryPanel() {
   const [tab, setTab] = useState<HistoryTab>('session');
+  const ocr = useOcrStore();
+  const docs = useDocumentsStore();
+  const vocab = useVocabularyStore();
+  const health = useHealthStore();
+  const practice = usePracticeStore();
+
+  const handleSelectSession = (id: string) => {
+    ocr.selectEntry(id);
+    docs.clearSelection();
+  };
+
+  const handleSelectSaved = (id: string) => {
+    docs.selectDocument(id);
+  };
+
+  const handleDeleteSaved = (id: string) => {
+    void docs.remove(id);
+  };
+
+  const handleDeleteSession = (id: string) => {
+    ocr.removeEntry(id);
+  };
+
+  const handleVocabDelete = (id: string) => {
+    void vocab.removeWord(id);
+  };
+
+  const handleStartPractice = () => {
+    void practice.start(vocab.langPair.targetLang, vocab.langPair.nativeLang);
+  };
 
   return (
     <section className="panel panel--notes">
@@ -162,7 +169,7 @@ export function HistoryPanel({
               onClick={() => setTab('saved')}
               data-testid="history-tab-saved"
             >
-              Saved {saved.documents.length > 0 && `(${saved.documents.length})`}
+              Saved {docs.documents.length > 0 && `(${docs.documents.length})`}
             </button>
             <button
               className={`history-tabs__btn ${tab === 'vocab' ? 'history-tabs__btn--active' : ''}`}
@@ -173,47 +180,51 @@ export function HistoryPanel({
             </button>
           </div>
         </div>
-        <StatusLight color={health.color} label={health.label} tooltip={health.tooltip} />
+        <StatusLight
+          color={health.color}
+          label={HEALTH_LABELS[health.color]}
+          tooltip={health.tooltip}
+        />
       </div>
 
       {tab === 'session' ? (
-        entries.length === 0 ? (
+        ocr.entries.length === 0 ? (
           <div className="history-empty">
             <p>No images processed yet.</p>
             <p>Recognize an image to see it here.</p>
           </div>
         ) : (
           <ul className="history-list">
-            {entries.map(entry => (
+            {ocr.entries.map((entry) => (
               <HistoryItem
                 key={entry.id}
                 entry={entry}
-                isActive={entry.id === activeId}
-                onSelect={onSelect}
-                onDelete={onDeleteSession}
+                isActive={docs.activeSavedId === null && entry.id === ocr.activeHistoryId}
+                onSelect={handleSelectSession}
+                onDelete={handleDeleteSession}
               />
             ))}
           </ul>
         )
       ) : tab === 'saved' ? (
-        saved.loading ? (
+        docs.loading ? (
           <div className="history-empty">
             <p>Loading saved documents…</p>
           </div>
-        ) : saved.documents.length === 0 ? (
+        ) : docs.documents.length === 0 ? (
           <div className="history-empty">
             <p>No saved documents yet.</p>
             <p>Use 💾 Save to keep OCR results.</p>
           </div>
         ) : (
           <ul className="history-list">
-            {saved.documents.map(doc => (
+            {docs.documents.map((doc) => (
               <SavedItem
                 key={doc.id}
                 doc={doc}
-                isActive={doc.id === saved.activeId}
-                onSelect={saved.onSelect}
-                onDelete={saved.onDelete}
+                isActive={doc.id === docs.activeSavedId}
+                onSelect={handleSelectSaved}
+                onDelete={handleDeleteSaved}
               />
             ))}
           </ul>
@@ -224,9 +235,9 @@ export function HistoryPanel({
           loading={vocab.loading}
           langPair={vocab.langPair}
           dueCount={vocab.dueCount}
-          onLangPairChange={vocab.onLangPairChange}
-          onDelete={vocab.onDelete}
-          onStartPractice={vocab.onStartPractice}
+          onLangPairChange={vocab.setLangPair}
+          onDelete={handleVocabDelete}
+          onStartPractice={handleStartPractice}
         />
       )}
     </section>

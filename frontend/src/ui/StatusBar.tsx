@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { OcrStatus } from '../viewmodel/useOCR';
+import type { OcrStatus } from '../features/ocr/ocr.store';
 import './StatusBar.css';
 
 interface Props {

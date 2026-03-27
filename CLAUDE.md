@@ -179,41 +179,56 @@ AppModule
 4. `POST /api/practice/answer` → SM-2 update on `IVocabularyRepository.updateSrs`
 5. `POST /api/practice/complete` → `IVocabularyLlmService.analyzeSession` → `IPracticeSessionRepository`
 
-### Frontend — MVVM Pattern
+### Frontend — Zustand + FSD-like Layout
 
 ```
 frontend/src/
-├── model/            # API layer + types
+├── features/         # Domain-specific code; each folder owns its store, hooks, and components
+│   ├── ocr/          # ocr.store.ts, useImageUpload.ts, DropZone.tsx
+│   ├── tts/          # useTts.ts
+│   ├── documents/    # documents.store.ts
+│   ├── vocabulary/   # vocabulary.store.ts, useVocabContextMenu.ts,
+│   │                 # VocabularyPanel.tsx, VocabContextMenu.tsx, VocabAddForm.tsx
+│   ├── practice/     # practice.store.ts, PracticeView.tsx
+│   └── health/       # health.store.ts (POLL_INTERVAL_MS = 30 s)
+├── shared/           # Cross-feature utilities; no upward imports
 │   ├── api.ts        # processImage(), checkHealth(), generateSpeech(),
 │   │                 # document/vocabulary/practice fetch wrappers
-│   ├── types.ts      # OcrResponse, HealthResponse (9 health fields), TtsSettings
-│   │                 # (4 engine variants), SavedDocument, VocabularyWord, Exercise,
-│   │                 # AnswerResult, SessionAnalysis, HistoryEntry, LanguagePair
-│   └── clipboard.ts  # copyToClipboard() utility
-├── viewmodel/        # React hooks (state + logic)
-│   ├── useOCR.ts           # State machine: idle → loading → success/error; AbortController
-│   ├── useImageUpload.ts   # File validation, preview, drag & drop, clipboard paste
-│   ├── useHealthStatus.ts  # Polls /api/health every 30s; 4-color lamp (🔵🟢🟡🔴)
-│   ├── useSessionHistory.ts # In-session OCR result history (HistoryEntry list)
-│   ├── useTts.ts           # TTS state and audio generation for 4 engines
-│   ├── useResultPanel.ts   # Result-panel orchestration (copy/edit/tabs/TTS/vocab menu)
-│   ├── useSavedDocuments.ts # CRUD state for saved documents
-│   ├── useVocabulary.ts    # Vocabulary word list + language pair + due count
-│   └── usePractice.ts      # Practice session state machine (idle → practicing → reviewing → complete)
-├── view/             # React components (UI only, no business logic)
-│   ├── DropZone.tsx        # Drag-drop file input with preview
-│   ├── ResultPanel.tsx     # Rendering for tabs/edit/save/TTS panel; delegates orchestration to useResultPanel
+│   ├── types.ts      # OcrResponse, HealthResponse, TtsSettings (4 engines),
+│   │                 # SavedDocument, VocabularyWord, Exercise, AnswerResult,
+│   │                 # SessionAnalysis, HistoryEntry, LanguagePair + constants
+│   └── lib/          # health-status.ts (computeStatus, HEALTH_LABELS),
+│                     # text-utils.ts, clipboard.ts
+├── ui/               # Stateless shared primitives
 │   ├── StatusBar.tsx       # Loading spinner, success/error messages
-│   ├── StatusLight.tsx     # Color-coded service health indicator (blue/green/yellow/red)
-│   ├── HistoryPanel.tsx    # 3-tab panel (Session, Saved, Vocab) with practice launch
-│   ├── VocabularyPanel.tsx # Vocabulary word list with language pair selector
-│   ├── VocabContextMenu.tsx # Context menu for vocab type selection from text
-│   ├── VocabAddForm.tsx    # Form for entering translation after type selection
-│   └── PracticeView.tsx    # Modal for exercises, feedback, and session analysis
+│   └── StatusLight.tsx     # 4-color health lamp (blue/green/yellow/red)
+├── view/             # Cross-feature composite components
+│   ├── HistoryPanel.tsx    # 3-tab panel; zero props — reads all stores directly
+│   ├── ResultPanel.tsx     # tabs/edit/save/TTS panel; receives result + callbacks as props
+│   └── useResultPanel.ts   # Local hook: copy/edit/tabs/TTS/vocab-menu state
 ├── styles/           # base.css (CSS variables, dark theme), layout.css (app shell, panels)
-├── App.tsx           # Root component — composes hooks and views
+├── App.tsx           # Layout + health polling useEffect + cross-feature handlers
 └── main.tsx          # React DOM entry
 ```
+
+**State management:** Five Zustand stores (singletons). `HistoryPanel` has zero props — it reads
+stores directly, eliminating all prop drilling. `App.tsx` orchestrates health polling and
+cross-feature coordination (e.g. `practice.reset()` + `vocab.refresh()` on session end).
+
+**Store summary:**
+
+| Store | Key state | Notes |
+|-------|-----------|-------|
+| `ocr.store.ts` | `status`, `result`, `entries`, `activeHistoryId` | Merges OCR + session history; AbortController is a closure var inside `create()` |
+| `documents.store.ts` | `documents`, `activeSavedId`, `saveStatus` | Save-status timer is a closure var inside `create()` |
+| `vocabulary.store.ts` | `words`, `langPair`, `dueCount`, `existingWordsSet` | `setLangPair()` triggers reload internally |
+| `practice.store.ts` | `phase`, `exercises`, `currentIndex`, `currentExercise` | 8-phase state machine; derived `currentExercise`/`isLastExercise` in store |
+| `health.store.ts` | `color`, `tooltip` | Minimal store; polling runs in `useEffect` in `App.tsx` |
+
+**Local hooks** (component-scoped, not stores): `useImageUpload`, `useTts`, `useVocabContextMenu`,
+`useResultPanel`.
+
+**No path aliases** — all imports use relative paths.
 
 ## API Endpoints
 
@@ -399,7 +414,10 @@ npm run perf:phase4                        # Full Phase 4 benchmark harness
 
 - Test files: `*.spec.ts` / `*.spec.tsx` — colocated alongside source files
 - Backend: mocks via `jest.fn()`, e2e uses `@nestjs/testing` with `overrideProvider`
-- Frontend: mocks via `vi.mock()`, component tests with `@testing-library/react`
+- Frontend store tests: use `useXxxStore.setState(initialState)` in `beforeEach` to reset;
+  call actions via `useXxxStore.getState().action()` — no `renderHook` needed.
+- Frontend component tests: mock stores with `vi.mock('../features/xxx/xxx.store')`;
+  mock shared API with `vi.mock('../shared/api')`.
 - E2E test (`app.e2e.spec.ts`): bootstraps full NestJS app with mocked providers, tests real HTTP
 - Integration test (`integration.spec.ts`): backend-level integration scenarios (requires live sidecars; skips gracefully)
 
@@ -414,6 +432,8 @@ npm run perf:phase4                        # Full Phase 4 benchmark harness
 - **LmStudioModule singleton:** `LMStudioConfig`, `LMStudioClient`, and `ILmStudioHealthPort` are owned by `LmStudioModule`; `OcrModule`, `VocabularyModule`, and `HealthModule` import it. Never provide these outside `LmStudioModule`.
 - **DatabaseModule singleton:** `SqliteConnectionProvider` is owned by `DatabaseModule`; `DocumentModule` and `VocabularyModule` import it. Never provide `SqliteConnectionProvider` outside `DatabaseModule`.
 - **SM-2 Algorithm:** `application/utils/sm2.ts` implements `calculateSm2`, `computeErrorPosition`, `computeQualityRating`. Used by `PracticeUseCase` on answer submission.
+- **Zustand closure vars:** AbortController (`ocr.store`) and save-status timer (`documents.store`) are closure variables inside `create()`, not Zustand state. This prevents dangling references when store state is reset between tests.
+- **Zero-prop HistoryPanel:** `HistoryPanel` imports stores directly — do not add props to it for data that is already in a store.
 - **Agentic Isolation:** `agentic` bounded context must not break local OCR runtime. Without `OPENAI_API_KEY`, `/api/agents/*` currently returns 5xx while the rest of the app stays available.
 - **Schema-driven Handoffs:** Agentic phase payloads are validated by Zod schemas and output guardrails. Change schema + docs together.
 

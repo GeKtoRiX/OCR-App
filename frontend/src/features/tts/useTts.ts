@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { TtsSettings, TtsEngine } from '../model/types';
-import { generateSpeech } from '../model/api';
+import type { TtsSettings, TtsEngine } from '../../shared/types';
+import { generateSpeech } from '../../shared/api';
 
 const DEFAULT_SETTINGS: TtsSettings = {
   engine: 'supertone',
@@ -43,8 +43,9 @@ export interface TtsState {
 /**
  * Manages all TTS state and side-effects for a given text content and filename.
  * Keeps ResultPanel.tsx a pure view component.
+ * @param disabled - when true, canGenerate is forced to false (e.g. while editing)
  */
-export function useTts(activeContent: string, filename: string): TtsState {
+export function useTts(activeContent: string, filename: string, disabled = false): TtsState {
   const [ttsOpen, setTtsOpen]       = useState(false);
   const [ttsSettings, setTtsSettings] = useState<TtsSettings>(DEFAULT_SETTINGS);
   const [piperVoice, setPiperVoice]   = useState(DEFAULT_PIPER_VOICE);
@@ -127,6 +128,7 @@ export function useTts(activeContent: string, filename: string): TtsState {
   }, [activeContent, ttsSettings, piperVoice, kokoroVoice, filename]);
 
   const canGenerate =
+    !disabled &&
     activeContent.trim().length > 0 &&
     (ttsSettings.engine !== 'f5' ||
       (((ttsSettings.autoTranscribe || ttsSettings.refText.trim().length > 0)) &&

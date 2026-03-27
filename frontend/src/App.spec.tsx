@@ -1,27 +1,54 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-const useAppOrchestratorMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  mockOcr: {} as any,
+  mockDocs: {} as any,
+  mockVocab: {} as any,
+  mockPractice: {} as any,
+  mockUpload: {} as any,
+  mockHealth: {} as any,
+  healthSetState: vi.fn(),
+  checkHealth: vi.fn(),
+}));
 
-vi.mock('./viewmodel/useAppOrchestrator', () => ({
-  useAppOrchestrator: () => useAppOrchestratorMock(),
+vi.mock('./features/ocr/ocr.store', () => ({
+  useOcrStore: () => mocks.mockOcr,
+}));
+
+vi.mock('./features/documents/documents.store', () => ({
+  useDocumentsStore: () => mocks.mockDocs,
+}));
+
+vi.mock('./features/vocabulary/vocabulary.store', () => ({
+  useVocabularyStore: () => mocks.mockVocab,
+}));
+
+vi.mock('./features/practice/practice.store', () => ({
+  usePracticeStore: () => mocks.mockPractice,
+}));
+
+vi.mock('./features/health/health.store', () => ({
+  POLL_INTERVAL_MS: 30_000,
+  useHealthStore: Object.assign(() => mocks.mockHealth, {
+    setState: mocks.healthSetState,
+  }),
+}));
+
+vi.mock('./features/ocr/useImageUpload', () => ({
+  useImageUpload: () => mocks.mockUpload,
+}));
+
+vi.mock('./shared/api', () => ({
+  checkHealth: mocks.checkHealth,
 }));
 
 vi.mock('./view/HistoryPanel', () => ({
-  HistoryPanel: (props: any) => (
-    <div data-testid="history-panel">
-      <div>Session</div>
-      <button onClick={() => props.onSelect('session-1')}>select-session</button>
-      <button onClick={() => props.onDeleteSession('session-1')}>delete-session</button>
-      <button onClick={() => props.saved.onSelect('saved-1')}>select-saved</button>
-      <button onClick={() => props.saved.onDelete('saved-1')}>delete-saved</button>
-      <button onClick={() => props.vocab.onStartPractice()}>start-practice</button>
-    </div>
-  ),
+  HistoryPanel: () => <div data-testid="history-panel">Session</div>,
 }));
 
-vi.mock('./view/PracticeView', () => ({
+vi.mock('./features/practice/PracticeView', () => ({
   PracticeView: (props: any) => (
     <div data-testid="practice-view">
       <button onClick={() => props.onAnswer('typed answer')}>practice-answer</button>
@@ -39,9 +66,7 @@ vi.mock('./view/ResultPanel', () => ({
       {onSave && <button onClick={() => onSave('# saved markdown')}>save-result</button>}
       {onUpdate && <button onClick={() => onUpdate('# updated markdown')}>update-result</button>}
       {onAddVocabulary && (
-        <button
-          onClick={() => onAddVocabulary('hello', 'word', 'привет', 'Hello there.')}
-        >
+        <button onClick={() => onAddVocabulary('hello', 'word', 'привет', 'Hello there.')}>
           add-vocab
         </button>
       )}
@@ -49,8 +74,63 @@ vi.mock('./view/ResultPanel', () => ({
   ),
 }));
 
-function defaultApp() {
+function defaultStores() {
   return {
+    ocr: {
+      status: 'idle' as const,
+      result: null,
+      error: null,
+      entries: [],
+      activeHistoryId: null,
+      run: vi.fn(),
+      reset: vi.fn(),
+      selectEntry: vi.fn(),
+      removeEntry: vi.fn(),
+    },
+    docs: {
+      documents: [],
+      loading: false,
+      saveStatus: 'idle' as const,
+      error: null,
+      activeSavedId: null,
+      load: vi.fn().mockResolvedValue(undefined),
+      save: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue(null),
+      remove: vi.fn().mockResolvedValue(true),
+      selectDocument: vi.fn(),
+      clearSelection: vi.fn(),
+    },
+    vocab: {
+      words: [],
+      loading: false,
+      error: null,
+      langPair: { targetLang: 'en', nativeLang: 'ru' },
+      dueCount: 0,
+      existingWordsSet: new Set<string>(),
+      load: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(undefined),
+      addWord: vi.fn().mockResolvedValue(null),
+      removeWord: vi.fn().mockResolvedValue(true),
+      updateWord: vi.fn().mockResolvedValue(null),
+      setLangPair: vi.fn(),
+    },
+    practice: {
+      phase: 'idle' as const,
+      sessionId: null,
+      exercises: [],
+      currentIndex: 0,
+      answers: [],
+      lastAnswer: null,
+      analysis: null,
+      error: null,
+      currentExercise: null,
+      isLastExercise: false,
+      start: vi.fn().mockResolvedValue(undefined),
+      answer: vi.fn().mockResolvedValue(undefined),
+      next: vi.fn(),
+      complete: vi.fn().mockResolvedValue(undefined),
+      reset: vi.fn(),
+    },
     upload: {
       file: null,
       preview: null,
@@ -59,286 +139,164 @@ function defaultApp() {
       onDrop: vi.fn(),
       clear: vi.fn(),
     },
-    ocrStatus: 'idle' as const,
-    ocrError: null,
-    isProcessing: false,
-    healthColor: 'blue' as const,
-    healthLabel: 'All systems ready',
-    healthTooltip: 'All OK',
-    historyEntries: [],
-    historyActiveId: null,
-    savedDocuments: [],
-    savedLoading: false,
-    savedSaveStatus: 'idle' as const,
-    activeSavedId: null,
-    handleSave: vi.fn(),
-    handleUpdate: undefined,
-    vocabWords: [],
-    vocabLoading: false,
-    vocabLangPair: { targetLang: 'en', nativeLang: 'ru' },
-    vocabDueCount: 0,
-    vocabExistingWordsSet: new Set<string>(),
-    onVocabLangPairChange: vi.fn(),
-    onVocabDelete: vi.fn(),
-    practice: {
-      phase: 'idle' as const,
-      exercises: [],
-      currentExercise: null,
-      currentIndex: 0,
-      lastAnswer: null,
-      isLastExercise: false,
-      analysis: null,
-      error: null,
-      start: vi.fn(),
-      answer: vi.fn(),
-      next: vi.fn(),
-      complete: vi.fn(),
-      reset: vi.fn(),
+    health: {
+      color: 'red' as const,
+      tooltip: 'Checking status...',
     },
-    displayedResult: null,
-    isSavedDocument: false,
-    hasResult: false,
-    fileMeta: null,
-    handleProcess: vi.fn(),
-    handleReset: vi.fn(),
-    handleSelectSession: vi.fn(),
-    handleDeleteSession: vi.fn(),
-    handleSelectSaved: vi.fn(),
-    handleDeleteSaved: vi.fn(),
-    handleAddVocabulary: vi.fn(),
-    handleStartPractice: vi.fn(),
-    handlePracticeReset: vi.fn(),
   };
 }
 
 describe('App', () => {
   beforeEach(() => {
-    useAppOrchestratorMock.mockReturnValue(defaultApp());
+    const defaults = defaultStores();
+    mocks.mockOcr = defaults.ocr;
+    mocks.mockDocs = defaults.docs;
+    mocks.mockVocab = defaults.vocab;
+    mocks.mockPractice = defaults.practice;
+    mocks.mockUpload = defaults.upload;
+    mocks.mockHealth = defaults.health;
+    mocks.healthSetState.mockReset();
+    mocks.checkHealth.mockReset();
+    mocks.checkHealth.mockResolvedValue({
+      paddleOcrReachable: true,
+      paddleOcrModels: ['det', 'rec'],
+      paddleOcrDevice: 'gpu',
+      lmStudioReachable: true,
+      lmStudioModels: ['qwen'],
+      superToneReachable: true,
+      kokoroReachable: true,
+      f5TtsReachable: true,
+      f5TtsDevice: 'gpu',
+    });
   });
 
-  it('should render section headings', async () => {
+  it('renders section headings and lazy sidebar', async () => {
     render(<App />);
 
     expect(screen.getByText('Prepare source image')).toBeInTheDocument();
     expect(screen.getByText('Recognition output')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('history-panel')).toBeInTheDocument());
+  });
+
+  it('loads documents and vocabulary on mount and polls health', async () => {
+    render(<App />);
+
     await waitFor(() => {
-      expect(screen.getByText('Session')).toBeInTheDocument();
+      expect(mocks.mockDocs.load).toHaveBeenCalled();
+      expect(mocks.mockVocab.load).toHaveBeenCalled();
+      expect(mocks.checkHealth).toHaveBeenCalled();
+      expect(mocks.healthSetState).toHaveBeenCalled();
     });
   });
 
-  it('should render Recognize and Clear buttons', () => {
-    render(<App />);
-
-    expect(screen.getByText('Recognize')).toBeInTheDocument();
-    expect(screen.getByText('Clear')).toBeInTheDocument();
-  });
-
-  it('should have Recognize button disabled when no file is selected', () => {
+  it('disables Recognize until a file is selected', () => {
     render(<App />);
 
     expect(screen.getByText('Recognize')).toBeDisabled();
+    expect(screen.getByText('Awaiting file')).toBeInTheDocument();
   });
 
-  it('should have Recognize button enabled when a file is selected', () => {
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      upload: {
-        ...defaultApp().upload,
-        file: new File(['x'], 'photo.png', { type: 'image/png' }),
-      },
-    });
+  it('enables Recognize and shows file badge when a file exists', () => {
+    mocks.mockUpload.file = new File(['x'], 'photo.png', { type: 'image/png' });
 
     render(<App />);
 
     expect(screen.getByText('Recognize')).not.toBeDisabled();
-  });
-
-  it('should show "Awaiting file" badge when no file is selected', () => {
-    render(<App />);
-
-    expect(screen.getByText('Awaiting file')).toBeInTheDocument();
-  });
-
-  it('should show "File selected" badge when a file is ready', () => {
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      upload: {
-        ...defaultApp().upload,
-        file: new File(['x'], 'photo.png', { type: 'image/png' }),
-      },
-    });
-
-    render(<App />);
-
     expect(screen.getByText('File selected')).toBeInTheDocument();
   });
 
-  it('should show "Processing\u2026" on button during OCR', () => {
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      upload: {
-        ...defaultApp().upload,
-        file: new File(['x'], 'photo.png', { type: 'image/png' }),
-      },
-      ocrStatus: 'loading',
-      isProcessing: true,
-    });
+  it('runs OCR when Recognize is clicked', () => {
+    mocks.mockUpload.file = new File(['x'], 'photo.png', { type: 'image/png' });
 
     render(<App />);
+    fireEvent.click(screen.getByText('Recognize'));
 
-    expect(screen.getByText('Processing\u2026')).toBeInTheDocument();
+    expect(mocks.mockOcr.run).toHaveBeenCalledWith(mocks.mockUpload.file);
   });
 
-  it('should render result placeholder when no result', () => {
+  it('clears upload and OCR state when Clear is clicked', () => {
+    render(<App />);
+    fireEvent.click(screen.getByText('Clear'));
+
+    expect(mocks.mockUpload.clear).toHaveBeenCalled();
+    expect(mocks.mockOcr.reset).toHaveBeenCalled();
+  });
+
+  it('renders the empty result state when no data is available', () => {
     render(<App />);
 
     expect(screen.getByText('Structured output will appear here')).toBeInTheDocument();
   });
 
-  it('should render ResultPanel when OCR result is available', () => {
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      displayedResult: { rawText: 'Hello', markdown: '# Hello', filename: 'doc.png' },
-      hasResult: true,
-    });
+  it('renders the result panel from OCR state and wires save/add callbacks', () => {
+    mocks.mockOcr.result = {
+      rawText: 'Hello',
+      markdown: '# Hello',
+      filename: 'doc.png',
+    };
 
     render(<App />);
 
     expect(screen.getByText('# Hello')).toBeInTheDocument();
-  });
 
-  it('should show upload validation error', () => {
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      upload: { ...defaultApp().upload, error: 'Unsupported file type: application/pdf' },
-    });
-
-    render(<App />);
-
-    expect(screen.getByText('Unsupported file type: application/pdf')).toBeInTheDocument();
-  });
-
-  it('should call handleProcess when Recognize is clicked', () => {
-    const handleProcess = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      upload: {
-        ...defaultApp().upload,
-        file: new File(['x'], 'photo.png', { type: 'image/png' }),
-      },
-      handleProcess,
-    });
-
-    render(<App />);
-    fireEvent.click(screen.getByText('Recognize'));
-
-    expect(handleProcess).toHaveBeenCalled();
-  });
-
-  it('should call handleReset when Clear is clicked', () => {
-    const handleReset = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      handleReset,
-    });
-
-    render(<App />);
-    fireEvent.click(screen.getByText('Clear'));
-
-    expect(handleReset).toHaveBeenCalled();
-  });
-
-  it('should pass save callback into ResultPanel', () => {
-    const handleSave = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      handleSave,
-      displayedResult: { rawText: 'Hello', markdown: '# Hello', filename: 'doc.png' },
-      hasResult: true,
-    });
-
-    render(<App />);
     fireEvent.click(screen.getByText('save-result'));
+    expect(mocks.mockDocs.save).toHaveBeenCalledWith('# saved markdown', 'doc.png');
 
-    expect(handleSave).toHaveBeenCalledWith('# saved markdown', 'doc.png');
-  });
-
-  it('should pass update and add-vocabulary callbacks into ResultPanel', () => {
-    const handleUpdate = vi.fn();
-    const handleAddVocabulary = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      handleUpdate,
-      handleAddVocabulary,
-      displayedResult: { rawText: 'Hello', markdown: '# Hello', filename: 'doc.png' },
-      hasResult: true,
-    });
-
-    render(<App />);
-
-    fireEvent.click(screen.getByText('update-result'));
     fireEvent.click(screen.getByText('add-vocab'));
-
-    expect(handleUpdate).toHaveBeenCalledWith('# updated markdown');
-    expect(handleAddVocabulary).toHaveBeenCalledWith('hello', 'word', 'привет', 'Hello there.');
+    expect(mocks.mockVocab.addWord).toHaveBeenCalledWith(
+      'hello',
+      'word',
+      'привет',
+      'Hello there.',
+    );
   });
 
-  it('should forward history panel actions', async () => {
-    const handleSelectSession = vi.fn();
-    const handleDeleteSession = vi.fn();
-    const handleSelectSaved = vi.fn();
-    const handleDeleteSaved = vi.fn();
-    const handleStartPractice = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      handleSelectSession,
-      handleDeleteSession,
-      handleSelectSaved,
-      handleDeleteSaved,
-      handleStartPractice,
-    });
-
-    render(<App />);
-    await waitFor(() => expect(screen.getByTestId('history-panel')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('select-session'));
-    fireEvent.click(screen.getByText('delete-session'));
-    fireEvent.click(screen.getByText('select-saved'));
-    fireEvent.click(screen.getByText('delete-saved'));
-    fireEvent.click(screen.getByText('start-practice'));
-
-    expect(handleSelectSession).toHaveBeenCalledWith('session-1');
-    expect(handleDeleteSession).toHaveBeenCalledWith('session-1');
-    expect(handleSelectSaved).toHaveBeenCalledWith('saved-1');
-    expect(handleDeleteSaved).toHaveBeenCalledWith('saved-1');
-    expect(handleStartPractice).toHaveBeenCalled();
-  });
-
-  it('should render PracticeView and forward practice callbacks', async () => {
-    const answer = vi.fn();
-    const complete = vi.fn();
-    const handlePracticeReset = vi.fn();
-    useAppOrchestratorMock.mockReturnValue({
-      ...defaultApp(),
-      practice: {
-        ...defaultApp().practice,
-        phase: 'practicing',
-        exercises: [{ id: '1' }],
-        answer,
-        complete,
+  it('renders a saved document and wires update callback', () => {
+    mocks.mockDocs.documents = [
+      {
+        id: 'saved-1',
+        markdown: '# Saved doc',
+        filename: 'saved.md',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
       },
-      handlePracticeReset,
-    });
+    ];
+    mocks.mockDocs.activeSavedId = 'saved-1';
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('practice-answer')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('practice-answer'));
-    fireEvent.click(screen.getByText('practice-complete'));
-    fireEvent.click(screen.getByText('practice-reset'));
+    expect(screen.getByText('# Saved doc')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('update-result'));
+    expect(mocks.mockDocs.update).toHaveBeenCalledWith('saved-1', '# updated markdown');
+  });
 
-    expect(answer).toHaveBeenCalledWith('typed answer');
-    expect(complete).toHaveBeenCalled();
-    expect(handlePracticeReset).toHaveBeenCalled();
+  it('renders PracticeView and forwards practice callbacks', async () => {
+    mocks.mockPractice.phase = 'practicing';
+    mocks.mockPractice.currentExercise = {
+      vocabularyId: 'v1',
+      word: 'hello',
+      exerciseType: 'spelling',
+      prompt: 'Spell hello',
+      correctAnswer: 'hello',
+    };
+    mocks.mockPractice.exercises = [mocks.mockPractice.currentExercise];
+    mocks.mockPractice.isLastExercise = true;
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('practice-view')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('practice-answer'));
+    expect(mocks.mockPractice.answer).toHaveBeenCalledWith('typed answer');
+
+    fireEvent.click(screen.getByText('practice-next'));
+    expect(mocks.mockPractice.next).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('practice-complete'));
+    expect(mocks.mockPractice.complete).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('practice-reset'));
+    expect(mocks.mockPractice.reset).toHaveBeenCalled();
+    expect(mocks.mockVocab.refresh).toHaveBeenCalled();
   });
 });

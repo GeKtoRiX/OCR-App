@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTts } from './useTts';
 
-vi.mock('../model/api', () => ({
+vi.mock('../../shared/api', () => ({
   generateSpeech: vi.fn(),
 }));
 
-import { generateSpeech } from '../model/api';
+import { generateSpeech } from '../../shared/api';
 
 const mockGenerateSpeech = vi.mocked(generateSpeech);
 

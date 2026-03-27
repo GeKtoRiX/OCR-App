@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, type RefObject } from 'react';
-import type { VocabType } from '../model/types';
-import { extractContextSentence } from '../model/text-utils';
+import type { VocabType } from '../../shared/types';
+import { extractContextSentence } from '../../shared/lib/text-utils';
 
 export interface ContextMenuState {
   x: number;
