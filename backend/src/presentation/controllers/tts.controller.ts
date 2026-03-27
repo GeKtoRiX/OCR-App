@@ -7,17 +7,21 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
-  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Response } from 'express';
-import { SynthesizeSpeechUseCase } from '../../application/use-cases/synthesize-speech.use-case';
+import {
+  F5_TTS_REQUIRES_REF_AUDIO_ERROR,
+  F5_TTS_REQUIRES_REF_TEXT_ERROR,
+  SynthesizeSpeechUseCase,
+} from '../../application/use-cases/synthesize-speech.use-case';
 
 interface TtsRequestDto {
   text: string;
   engine?: string;
   voice?: string;
+  format?: 'wav';
   lang?: string;
   speed?: number;
   totalSteps?: number;
@@ -59,15 +63,6 @@ export class TtsController {
       );
     }
 
-    if (body.engine === 'f5') {
-      if (!refAudio) {
-        throw new BadRequestException('refAudio is required for engine=f5');
-      }
-      if (!autoTranscribe && (!body.refText || body.refText.trim().length === 0)) {
-        throw new BadRequestException('refText is required for engine=f5');
-      }
-    }
-
     try {
       const refAudioPayload = refAudio
         ? {
@@ -82,6 +77,7 @@ export class TtsController {
         text: body.text,
         engine: body.engine,
         voice: body.voice,
+        format: body.format,
         lang: body.lang,
         speed: body.speed,
         totalSteps: body.totalSteps,
@@ -103,8 +99,15 @@ export class TtsController {
         })
         .send(wav);
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (
+        message === F5_TTS_REQUIRES_REF_AUDIO_ERROR ||
+        message === F5_TTS_REQUIRES_REF_TEXT_ERROR
+      ) {
+        throw new HttpException(message, HttpStatus.BAD_REQUEST);
+      }
       throw new HttpException(
-        `TTS synthesis failed: ${e instanceof Error ? e.message : String(e)}`,
+        `TTS synthesis failed: ${message}`,
         HttpStatus.BAD_GATEWAY,
       );
     }

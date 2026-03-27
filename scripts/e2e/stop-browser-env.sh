@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-PORTS=(3000 8000 8100 8200 8300)
+PORTS=(3000 3901 3902 3903 3904 3905 8000 8100 8200 8300)
 
 for port in "${PORTS[@]}"; do
   if fuser "${port}/tcp" >/dev/null 2>&1; then

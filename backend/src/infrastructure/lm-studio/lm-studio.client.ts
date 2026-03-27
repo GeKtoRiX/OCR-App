@@ -1,24 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
+import {
+  ChatMessage,
+  ChatOptions,
+  ILmStudioChatPort,
+} from '../../domain/ports/lm-studio-chat.port';
 import { LMStudioConfig } from '../config/lm-studio.config';
-
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string | ChatContentPart[];
-}
-
-export interface ChatContentPart {
-  type: 'text' | 'image_url';
-  text?: string;
-  image_url?: { url: string };
-}
-
-interface ChatCompletionParams {
-  model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-}
 
 interface ChatCompletionResponse {
   choices: Array<{
@@ -26,12 +13,22 @@ interface ChatCompletionResponse {
   }>;
 }
 
+interface ChatCompletionStreamParams {
+  model: string;
+  messages: ChatMessage[];
+  temperature?: number;
+  max_tokens?: number;
+}
+
 interface ModelsResponse {
   data: Array<{ id: string }>;
 }
 
 @Injectable()
-export class LMStudioClient extends ILmStudioHealthPort {
+export class LMStudioClient
+  extends ILmStudioHealthPort
+  implements ILmStudioChatPort
+{
   private readonly chatUrl: string;
   private readonly modelsUrl: string;
 
@@ -41,15 +38,19 @@ export class LMStudioClient extends ILmStudioHealthPort {
     this.modelsUrl = `${config.baseUrl}/models`;
   }
 
-  async chatCompletion(params: ChatCompletionParams): Promise<string> {
+  async chatCompletion(
+    messages: ChatMessage[],
+    model: string,
+    opts?: ChatOptions,
+  ): Promise<string> {
     const response = await fetch(this.chatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: params.model,
-        messages: params.messages,
-        temperature: params.temperature ?? 0.1,
-        max_tokens: params.max_tokens ?? 4096,
+        model,
+        messages,
+        temperature: opts?.temperature ?? 0.1,
+        max_tokens: opts?.maxTokens ?? 4096,
       }),
       signal: AbortSignal.timeout(this.config.timeoutMs),
     });
@@ -62,11 +63,14 @@ export class LMStudioClient extends ILmStudioHealthPort {
     }
 
     const data = (await response.json()) as ChatCompletionResponse;
+    if (!data.choices?.length) {
+      throw new Error('LM Studio returned an empty choices array');
+    }
     return data.choices[0].message.content;
   }
 
   async *chatCompletionStream(
-    params: ChatCompletionParams,
+    params: ChatCompletionStreamParams,
   ): AsyncGenerator<string> {
     const response = await fetch(this.chatUrl, {
       method: 'POST',

@@ -1,0 +1,19 @@
+{
+  "name": "@ocr-app/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "echo \"@ocr-app/shared does not start a process\"",
+    "start:dev": "echo \"@ocr-app/shared does not start a process\"",
+    "start:prod": "echo \"@ocr-app/shared does not start a process\"",
+    "test": "echo \"No tests for @ocr-app/shared\"",
+    "test:cov": "echo \"No coverage for @ocr-app/shared\"",
+    "test:smoke:lmstudio": "echo \"@ocr-app/shared has no LM Studio smoke tests\"",
+    "test:e2e:api": "echo \"@ocr-app/shared has no API e2e tests\"",
+    "test:e2e:integration": "echo \"@ocr-app/shared has no integration e2e tests\"",
+    "test:e2e": "echo \"@ocr-app/shared has no e2e tests\""
+  }
+}

@@ -23,6 +23,8 @@ export function computeStatus(health: HealthResponse): HealthStatus {
     kokoroReachable,
     f5TtsReachable,
     f5TtsDevice,
+    voxtralReachable,
+    voxtralDevice,
   } = health;
 
   const f5Label = !f5TtsReachable
@@ -30,6 +32,11 @@ export function computeStatus(health: HealthResponse): HealthStatus {
     : f5TtsDevice === 'cpu'
       ? 'F5 TTS CPU ⚠'
       : 'F5 TTS ✓';
+  const voxtralLabel = !voxtralReachable
+    ? 'Voxtral ✗'
+    : voxtralDevice === 'cpu'
+      ? 'Voxtral CPU ⚠'
+      : 'Voxtral ✓';
 
   // 🔴 PaddleOCR down — nothing works
   if (!paddleOcrReachable) {
@@ -40,7 +47,7 @@ export function computeStatus(health: HealthResponse): HealthStatus {
   if (paddleOcrDevice === 'cpu') {
     return {
       color: 'yellow',
-      tooltip: `PaddleOCR CPU ⚠ | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${f5Label} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
+      tooltip: `PaddleOCR CPU ⚠ | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${f5Label} | ${voxtralLabel} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
     };
   }
 
@@ -54,7 +61,7 @@ export function computeStatus(health: HealthResponse): HealthStatus {
   ) {
     return {
       color: 'blue',
-      tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | Kokoro ✓ | Supertone ✓',
+      tooltip: `PaddleOCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | ${voxtralLabel} | Kokoro ✓ | Supertone ✓`,
     };
   }
 
@@ -62,6 +69,7 @@ export function computeStatus(health: HealthResponse): HealthStatus {
   const parts: string[] = ['PaddleOCR GPU ✓'];
   parts.push(`LM Studio ${lmStudioReachable ? '✓' : '✗'}`);
   parts.push(f5Label);
+  parts.push(voxtralLabel);
   parts.push(`Kokoro ${kokoroReachable ? '✓' : '✗'}`);
   parts.push(`Supertone ${superToneReachable ? '✓' : '✗'}`);
 

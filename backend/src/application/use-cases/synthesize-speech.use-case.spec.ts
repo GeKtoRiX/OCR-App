@@ -2,12 +2,14 @@ import { SynthesizeSpeechUseCase } from './synthesize-speech.use-case';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
 import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
+import { IVoxtralTtsPort } from '../../domain/ports/voxtral-tts.port';
 
 describe('SynthesizeSpeechUseCase', () => {
   let useCase: SynthesizeSpeechUseCase;
   let mockSupertone: jest.Mocked<ISupertonePort>;
   let mockKokoro: jest.Mocked<IKokoroPort>;
   let mockF5Tts: jest.Mocked<IF5TtsPort>;
+  let mockVoxtralTts: jest.Mocked<IVoxtralTtsPort>;
 
   beforeEach(() => {
     mockSupertone = {
@@ -22,8 +24,36 @@ describe('SynthesizeSpeechUseCase', () => {
       synthesize: jest.fn().mockResolvedValue(Buffer.from('f5')),
       getHealth: jest.fn(),
     } as unknown as jest.Mocked<IF5TtsPort>;
+    mockVoxtralTts = {
+      synthesize: jest.fn().mockResolvedValue(Buffer.from('voxtral')),
+      getHealth: jest.fn(),
+    } as unknown as jest.Mocked<IVoxtralTtsPort>;
 
-    useCase = new SynthesizeSpeechUseCase(mockSupertone, mockKokoro, mockF5Tts);
+    useCase = new SynthesizeSpeechUseCase(
+      mockSupertone,
+      mockKokoro,
+      mockF5Tts,
+      mockVoxtralTts,
+    );
+  });
+
+  it('routes voxtral engine to IVoxtralTtsPort', async () => {
+    const result = await useCase.execute({
+      text: 'hello',
+      engine: 'voxtral',
+      voice: 'casual_male',
+      format: 'wav',
+    });
+
+    expect(mockVoxtralTts.synthesize).toHaveBeenCalledWith({
+      text: 'hello',
+      voice: 'casual_male',
+      format: 'wav',
+    });
+    expect(mockSupertone.synthesize).not.toHaveBeenCalled();
+    expect(mockKokoro.synthesize).not.toHaveBeenCalled();
+    expect(mockF5Tts.synthesize).not.toHaveBeenCalled();
+    expect(result.wav).toEqual(Buffer.from('voxtral'));
   });
 
   it('routes f5 engine to IF5TtsPort', async () => {
@@ -50,6 +80,7 @@ describe('SynthesizeSpeechUseCase', () => {
     });
     expect(mockSupertone.synthesize).not.toHaveBeenCalled();
     expect(mockKokoro.synthesize).not.toHaveBeenCalled();
+    expect(mockVoxtralTts.synthesize).not.toHaveBeenCalled();
     expect(result.wav).toEqual(Buffer.from('f5'));
   });
 
@@ -68,6 +99,7 @@ describe('SynthesizeSpeechUseCase', () => {
     });
     expect(mockSupertone.synthesize).not.toHaveBeenCalled();
     expect(mockF5Tts.synthesize).not.toHaveBeenCalled();
+    expect(mockVoxtralTts.synthesize).not.toHaveBeenCalled();
     expect(result.wav).toEqual(Buffer.from('kokoro'));
   });
 
@@ -91,6 +123,7 @@ describe('SynthesizeSpeechUseCase', () => {
     });
     expect(mockKokoro.synthesize).not.toHaveBeenCalled();
     expect(mockF5Tts.synthesize).not.toHaveBeenCalled();
+    expect(mockVoxtralTts.synthesize).not.toHaveBeenCalled();
     expect(result.wav).toEqual(Buffer.from('supertone'));
   });
 
@@ -100,6 +133,7 @@ describe('SynthesizeSpeechUseCase', () => {
     expect(mockSupertone.synthesize).toHaveBeenCalled();
     expect(mockKokoro.synthesize).not.toHaveBeenCalled();
     expect(mockF5Tts.synthesize).not.toHaveBeenCalled();
+    expect(mockVoxtralTts.synthesize).not.toHaveBeenCalled();
   });
 
   it('routes undefined engine to ISupertonePort (default)', async () => {

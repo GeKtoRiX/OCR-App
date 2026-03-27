@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ProcessImageUseCase } from '../../application/use-cases/process-image.use-case';
 import { OcrResponseDto } from '../dto/ocr-response.dto';
-import { Semaphore } from '../../infrastructure/concurrency/semaphore';
+import { OcrConcurrencyService } from '../../infrastructure/concurrency/ocr-concurrency.service';
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/png',
@@ -26,19 +26,16 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_CONCURRENT_OCR = parseInt(
-  process.env.MAX_CONCURRENT_OCR || '3',
-  10,
-);
 
 const uploadDir = path.join(os.tmpdir(), 'ocr-uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 
-const ocrSemaphore = new Semaphore(MAX_CONCURRENT_OCR);
-
 @Controller('api')
 export class OcrController {
-  constructor(private readonly processImage: ProcessImageUseCase) {}
+  constructor(
+    private readonly processImage: ProcessImageUseCase,
+    private readonly ocrConcurrency: OcrConcurrencyService,
+  ) {}
 
   @Post('ocr')
   @UseInterceptors(
@@ -73,7 +70,7 @@ export class OcrController {
     }
 
     // Backpressure: reject early if too many requests are queued
-    if (ocrSemaphore.pending >= MAX_CONCURRENT_OCR * 2) {
+    if (this.ocrConcurrency.isBackpressured()) {
       if (file.path) this.cleanupFile(file.path);
       throw new HttpException(
         { statusCode: 429, message: 'Too many OCR requests in progress, try again later' },
@@ -81,15 +78,16 @@ export class OcrController {
       );
     }
 
-    await ocrSemaphore.acquire();
     try {
-      const buffer = file.path
-        ? await fs.promises.readFile(file.path)
-        : file.buffer;
-      const result = await this.processImage.execute({
-        buffer,
-        mimeType: file.mimetype,
-        originalName: file.originalname,
+      const result = await this.ocrConcurrency.withLock(async () => {
+        const buffer = file.path
+          ? await fs.promises.readFile(file.path)
+          : file.buffer;
+        return this.processImage.execute({
+          buffer,
+          mimeType: file.mimetype,
+          originalName: file.originalname,
+        });
       });
 
       return {
@@ -105,7 +103,6 @@ export class OcrController {
         HttpStatus.BAD_GATEWAY,
       );
     } finally {
-      ocrSemaphore.release();
       if (file.path) this.cleanupFile(file.path);
     }
   }

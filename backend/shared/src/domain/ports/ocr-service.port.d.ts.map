@@ -1,0 +1,1 @@
+{"version":3,"file":"ocr-service.port.d.ts","sourceRoot":"","sources":["ocr-service.port.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,SAAS,EAAE,MAAM,+BAA+B,CAAC;AAE1D,8BAAsB,WAAW;IAC/B,QAAQ,CAAC,WAAW,CAAC,KAAK,EAAE,SAAS,GAAG,OAAO,CAAC,MAAM,CAAC;CACxD"}

@@ -47,7 +47,35 @@ export default defineConfig({
     },
     {
       command:
-        "bash -lc 'export PORT=3000 SQLITE_DB_PATH=tmp/test-db/browser-e2e.sqlite LM_STUDIO_SMOKE_ONLY=true; bash scripts/linux/run-js-command.sh node backend/dist/main.js'",
+        "bash -lc 'export LM_STUDIO_SMOKE_ONLY=true; bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js'",
+      port: 3901,
+      reuseExistingServer: true,
+      timeout: 2 * 60 * 1000,
+    },
+    {
+      command:
+        "bash -lc 'bash scripts/linux/run-js-command.sh node backend/dist/services/tts/src/main.js'",
+      port: 3902,
+      reuseExistingServer: true,
+      timeout: 2 * 60 * 1000,
+    },
+    {
+      command:
+        "bash -lc 'export DOCUMENTS_SQLITE_DB_PATH=tmp/test-db/documents.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js'",
+      port: 3903,
+      reuseExistingServer: true,
+      timeout: 2 * 60 * 1000,
+    },
+    {
+      command:
+        "bash -lc 'export LM_STUDIO_SMOKE_ONLY=true VOCABULARY_SQLITE_DB_PATH=tmp/test-db/vocabulary.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/vocabulary/src/main.js'",
+      port: 3904,
+      reuseExistingServer: true,
+      timeout: 2 * 60 * 1000,
+    },
+    {
+      command:
+        "bash -lc 'export PORT=3000; bash scripts/linux/run-js-command.sh node backend/dist/gateway/main.js'",
       url: 'http://127.0.0.1:3000',
       reuseExistingServer: true,
       timeout: 2 * 60 * 1000,

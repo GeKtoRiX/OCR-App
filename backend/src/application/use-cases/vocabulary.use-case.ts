@@ -7,6 +7,8 @@ import {
 } from '../dto/vocabulary.dto';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 
+export const VOCABULARY_DUPLICATE_ERROR = 'Word already exists in vocabulary';
+
 @Injectable()
 export class VocabularyUseCase {
   constructor(private readonly repository: IVocabularyRepository) {}
@@ -31,6 +33,15 @@ export class VocabularyUseCase {
   }
 
   async add(input: AddVocabularyInput): Promise<VocabularyOutput> {
+    const existing = await this.repository.findByWord(
+      input.word,
+      input.targetLang,
+      input.nativeLang,
+    );
+    if (existing) {
+      throw new Error(VOCABULARY_DUPLICATE_ERROR);
+    }
+
     const word = await this.repository.create(
       input.word,
       input.vocabType,

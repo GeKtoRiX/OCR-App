@@ -12,6 +12,8 @@ const allUp: HealthResponse = {
   kokoroReachable: true,
   f5TtsReachable: true,
   f5TtsDevice: 'gpu',
+  voxtralReachable: false,
+  voxtralDevice: null,
 };
 
 describe('computeStatus', () => {
@@ -22,6 +24,7 @@ describe('computeStatus', () => {
     expect(result.tooltip).toContain('PaddleOCR GPU');
     expect(result.tooltip).toContain('LM Studio');
     expect(result.tooltip).toContain('F5 TTS');
+    expect(result.tooltip).toContain('Voxtral');
     expect(result.tooltip).toContain('Kokoro');
     expect(result.tooltip).toContain('Supertone');
   });
@@ -77,6 +80,13 @@ describe('computeStatus', () => {
 
     expect(result.color).toBe('green');
     expect(result.tooltip).toContain('Supertone ✗');
+  });
+
+  it('keeps blue when Voxtral is down but the baseline stack is healthy', () => {
+    const result = computeStatus({ ...allUp, voxtralReachable: false, voxtralDevice: null });
+
+    expect(result.color).toBe('blue');
+    expect(result.tooltip).toContain('Voxtral ✗');
   });
 
   it('yellow tooltip includes all service statuses', () => {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ITextStructuringService } from '../../domain/ports/text-structuring-service.port';
-import { LMStudioClient } from './lm-studio.client';
+import { ILmStudioChatPort } from '../../domain/ports/lm-studio-chat.port';
 import { LMStudioConfig } from '../config/lm-studio.config';
 
 const STRUCTURING_SYSTEM_PROMPT = `You are an expert document formatter. You convert raw OCR output into clean, professional Markdown.
@@ -48,17 +48,15 @@ const STRUCTURING_SYSTEM_PROMPT = `You are an expert document formatter. You con
 @Injectable()
 export class LMStudioStructuringService extends ITextStructuringService {
   constructor(
-    private readonly client: LMStudioClient,
+    private readonly client: ILmStudioChatPort,
     private readonly config: LMStudioConfig,
   ) {
     super();
   }
 
   async structureAsMarkdown(rawText: string): Promise<string> {
-    const chunks: string[] = [];
-    for await (const chunk of this.client.chatCompletionStream({
-      model: this.config.structuringModel,
-      messages: [
+    return this.client.chatCompletion(
+      [
         {
           role: 'system',
           content: STRUCTURING_SYSTEM_PROMPT,
@@ -68,11 +66,11 @@ export class LMStudioStructuringService extends ITextStructuringService {
           content: `Reconstruct the following OCR text into a well-structured Markdown document:\n\n${rawText}`,
         },
       ],
-      temperature: 0.05,
-      max_tokens: 4096,
-    })) {
-      chunks.push(chunk);
-    }
-    return chunks.join('');
+      this.config.structuringModel,
+      {
+        temperature: 0.05,
+        maxTokens: 4096,
+      },
+    );
   }
 }

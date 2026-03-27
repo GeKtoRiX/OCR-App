@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS: TtsSettings = {
 
 const DEFAULT_PIPER_VOICE  = 'en_US-ryan-high';
 const DEFAULT_KOKORO_VOICE = 'af_heart';
+const DEFAULT_VOXTRAL_VOICE = 'casual_female';
 
 export interface TtsState {
   ttsOpen: boolean;
@@ -25,6 +26,8 @@ export interface TtsState {
   setPiperVoice: React.Dispatch<React.SetStateAction<string>>;
   kokoroVoice: string;
   setKokoroVoice: React.Dispatch<React.SetStateAction<string>>;
+  voxtralVoice: string;
+  setVoxtralVoice: React.Dispatch<React.SetStateAction<string>>;
 
   ttsStatus: 'idle' | 'loading' | 'error';
   ttsError: string | null;
@@ -50,6 +53,7 @@ export function useTts(activeContent: string, filename: string, disabled = false
   const [ttsSettings, setTtsSettings] = useState<TtsSettings>(DEFAULT_SETTINGS);
   const [piperVoice, setPiperVoice]   = useState(DEFAULT_PIPER_VOICE);
   const [kokoroVoice, setKokoroVoice] = useState(DEFAULT_KOKORO_VOICE);
+  const [voxtralVoice, setVoxtralVoice] = useState(DEFAULT_VOXTRAL_VOICE);
   const [ttsStatus, setTtsStatus]     = useState<'idle' | 'loading' | 'error'>('idle');
   const [ttsError, setTtsError]       = useState<string | null>(null);
   const [audioUrl, setAudioUrl]       = useState<string | null>(null);
@@ -87,6 +91,12 @@ export function useTts(activeContent: string, filename: string, disabled = false
         autoTranscribe: false,
         removeSilence: false,
       });
+    } else if (engine === 'voxtral') {
+      setTtsSettings({
+        engine: 'voxtral',
+        voice: voxtralVoice,
+        format: 'wav',
+      });
     }
   };
 
@@ -101,6 +111,8 @@ export function useTts(activeContent: string, filename: string, disabled = false
       settingsToUse = { ...ttsSettings, voice: piperVoice };
     } else if (ttsSettings.engine === 'kokoro') {
       settingsToUse = { ...ttsSettings, voice: kokoroVoice };
+    } else if (ttsSettings.engine === 'voxtral') {
+      settingsToUse = { ...ttsSettings, voice: voxtralVoice };
     } else if (
       ttsSettings.engine === 'f5' &&
       ((!ttsSettings.autoTranscribe && !ttsSettings.refText.trim()) || !ttsSettings.refAudioFile)
@@ -125,7 +137,7 @@ export function useTts(activeContent: string, filename: string, disabled = false
       setTtsError(e instanceof Error ? e.message : 'TTS failed');
       setTtsStatus('error');
     }
-  }, [activeContent, ttsSettings, piperVoice, kokoroVoice, filename]);
+  }, [activeContent, ttsSettings, piperVoice, kokoroVoice, voxtralVoice, filename]);
 
   const canGenerate =
     !disabled &&
@@ -139,6 +151,7 @@ export function useTts(activeContent: string, filename: string, disabled = false
     ttsSettings, setTtsSettings, setEngine,
     piperVoice, setPiperVoice,
     kokoroVoice, setKokoroVoice,
+    voxtralVoice, setVoxtralVoice,
     ttsStatus, ttsError,
     audioUrl, audioFilename, audioRef,
     playbackRate, setPlaybackRate,

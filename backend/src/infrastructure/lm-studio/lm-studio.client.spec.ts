@@ -28,10 +28,10 @@ describe('LMStudioClient', () => {
         }),
       });
 
-      const result = await client.chatCompletion({
-        model: 'test-model',
-        messages: [{ role: 'user', content: 'Hello' }],
-      });
+      const result = await client.chatCompletion(
+        [{ role: 'user', content: 'Hello' }],
+        'test-model',
+      );
 
       expect(result).toBe('OCR result text');
       expect(global.fetch).toHaveBeenCalledWith(
@@ -57,12 +57,14 @@ describe('LMStudioClient', () => {
         }),
       });
 
-      await client.chatCompletion({
-        model: 'model',
-        messages: [{ role: 'user', content: 'Hi' }],
-        temperature: 0.5,
-        max_tokens: 1024,
-      });
+      await client.chatCompletion(
+        [{ role: 'user', content: 'Hi' }],
+        'model',
+        {
+          temperature: 0.5,
+          maxTokens: 1024,
+        },
+      );
 
       const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
       expect(body.temperature).toBe(0.5);
@@ -77,10 +79,7 @@ describe('LMStudioClient', () => {
       });
 
       await expect(
-        client.chatCompletion({
-          model: 'model',
-          messages: [{ role: 'user', content: 'Hi' }],
-        }),
+        client.chatCompletion([{ role: 'user', content: 'Hi' }], 'model'),
       ).rejects.toThrow('LM Studio API error (500): Internal Server Error');
     });
   });

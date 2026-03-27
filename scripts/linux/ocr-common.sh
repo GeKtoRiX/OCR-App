@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # OCR App — shared launcher implementation
 #
-#  ./ocr.sh             — start OCR mode (PaddleOCR + Kokoro + LM Studio + backend)
-#  ./tts.sh             — start TTS mode (PaddleOCR + Supertone + Piper + Kokoro + F5 TTS)
-#  ./ocr-tts.sh         — start all services (OCR + TTS + LM Studio model + backend)
+#  ./ocr.sh             — start OCR mode (PaddleOCR + selected TTS sidecars + LM Studio + backend)
+#  ./tts.sh             — start TTS mode (PaddleOCR + selected TTS sidecars + backend)
+#  ./ocr-tts.sh         — start all services (OCR + selected TTS sidecars + LM Studio model + backend)
 #  ./stack.sh           — interactive stack menu (start, stop, switch, status)
 #  ./*.sh stop          — stop all known project services and clear ports
 #  ./*.sh status        — show current mode, health and process state
@@ -36,10 +36,12 @@ PADDLE_VENV="${ROOT_DIR}/services/ocr/paddleocr-service/.venv"
 SUPERTONE_VENV="${ROOT_DIR}/services/tts/supertone-service/.venv"
 KOKORO_VENV="${ROOT_DIR}/services/tts/kokoro-service/.venv"
 F5_VENV="${ROOT_DIR}/services/tts/f5-service/.venv"
+VOXTRAL_VENV="${ROOT_DIR}/services/tts/voxtral-service/.venv"
 
 SUPERTONE_TORCH_LIB="${SUPERTONE_VENV}/lib/python3.12/site-packages/torch/lib"
 KOKORO_TORCH_LIB="${KOKORO_VENV}/lib/python3.12/site-packages/torch/lib"
 F5_TORCH_LIB="${F5_VENV}/lib/python3.12/site-packages/torch/lib"
+VOXTRAL_TORCH_LIB="${VOXTRAL_VENV}/lib/python3.12/site-packages/torch/lib"
 TORCH_LIB_SYSTEM="/home/cbandy/.local/lib/python3.12/site-packages/torch/lib"
 
 PID_DIR="${ROOT_DIR}/.pids"
@@ -47,7 +49,13 @@ PID_PADDLE="${PID_DIR}/paddleocr.pid"
 PID_SUPERTONE="${PID_DIR}/supertone.pid"
 PID_KOKORO="${PID_DIR}/kokoro.pid"
 PID_F5="${PID_DIR}/f5.pid"
+PID_VOXTRAL="${PID_DIR}/voxtral.pid"
 PID_BACKEND="${PID_DIR}/backend.pid"
+PID_SVC_OCR="${PID_DIR}/svc-ocr.pid"
+PID_SVC_TTS="${PID_DIR}/svc-tts.pid"
+PID_SVC_DOC="${PID_DIR}/svc-doc.pid"
+PID_SVC_VOCAB="${PID_DIR}/svc-vocab.pid"
+PID_SVC_AGENTIC="${PID_DIR}/svc-agentic.pid"
 STATE_FILE="${PID_DIR}/ocr-launcher.state"
 
 LOG_DIR="${ROOT_DIR}/logs"
@@ -55,10 +63,17 @@ LOG_PADDLE="${LOG_DIR}/paddleocr.log"
 LOG_SUPERTONE="${LOG_DIR}/supertone.log"
 LOG_KOKORO="${LOG_DIR}/kokoro.log"
 LOG_F5="${LOG_DIR}/f5.log"
+LOG_VOXTRAL="${LOG_DIR}/voxtral.log"
 LOG_BACKEND="${LOG_DIR}/backend.log"
+LOG_SVC_OCR="${LOG_DIR}/svc-ocr.log"
+LOG_SVC_TTS="${LOG_DIR}/svc-tts.log"
+LOG_SVC_DOC="${LOG_DIR}/svc-doc.log"
+LOG_SVC_VOCAB="${LOG_DIR}/svc-vocab.log"
+LOG_SVC_AGENTIC="${LOG_DIR}/svc-agentic.log"
 LOG_LM="${LOG_DIR}/lmstudio.log"
 
 ENV_FILE="${ROOT_DIR}/.env"
+TTS_MODELS_CONFIG_FILE="${TTS_MODELS_CONFIG_FILE:-${ROOT_DIR}/scripts/linux/tts-models.conf}"
 
 # ─── Load .env ─────────────────────────────────────────────────────────────────
 if [[ -f "${ENV_FILE}" ]]; then
@@ -68,8 +83,19 @@ if [[ -f "${ENV_FILE}" ]]; then
     set +o allexport
 fi
 
+# ─── Load launcher TTS config ──────────────────────────────────────────────────
+if [[ -f "${TTS_MODELS_CONFIG_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${TTS_MODELS_CONFIG_FILE}"
+fi
+
 # ─── Resolve config ─────────────────────────────────────────────────────────────
 APP_PORT="${PORT:-3000}"
+OCR_SERVICE_PORT="${OCR_SERVICE_PORT:-3901}"
+TTS_SERVICE_PORT="${TTS_SERVICE_PORT:-3902}"
+DOCUMENT_SERVICE_PORT="${DOCUMENT_SERVICE_PORT:-3903}"
+VOCABULARY_SERVICE_PORT="${VOCABULARY_SERVICE_PORT:-3904}"
+AGENTIC_SERVICE_PORT="${AGENTIC_SERVICE_PORT:-3905}"
 LM_URL="${LM_STUDIO_BASE_URL:-http://localhost:1234/v1}"
 LM_BASE_URL="${LM_URL%/v1}"
 LM_MODEL_ID="${STRUCTURING_MODEL:-qwen/qwen3.5-9b}"
@@ -95,9 +121,17 @@ KOKORO_PORT_CFG="${KOKORO_PORT:-8200}"
 
 F5_HOST_CFG="${F5_TTS_HOST:-localhost}"
 F5_PORT_CFG="${F5_TTS_PORT:-8300}"
+TTS_ENABLE_SUPERTONE_CFG="${TTS_ENABLE_SUPERTONE:-false}"
+TTS_ENABLE_KOKORO_CFG="${TTS_ENABLE_KOKORO:-false}"
+TTS_ENABLE_F5_CFG="${TTS_ENABLE_F5:-${F5_TTS_AUTO_START:-false}}"
+TTS_ENABLE_VOXTRAL_CFG="${TTS_ENABLE_VOXTRAL:-true}"
+F5_AUTO_START_CFG="${F5_TTS_AUTO_START:-${TTS_ENABLE_F5_CFG}}"
+
+VOXTRAL_HOST_CFG="${VOXTRAL_HOST:-localhost}"
+VOXTRAL_PORT_CFG="${VOXTRAL_PORT:-8400}"
 
 VITE_PORT="${VITE_PORT:-5173}"
-PROJECT_PORTS=("${APP_PORT}" "${VITE_PORT}" "${PADDLE_PORT}" "${SUPERTONE_PORT_CFG}" "${KOKORO_PORT_CFG}" "${F5_PORT_CFG}")
+PROJECT_PORTS=("${APP_PORT}" "${OCR_SERVICE_PORT}" "${TTS_SERVICE_PORT}" "${DOCUMENT_SERVICE_PORT}" "${VOCABULARY_SERVICE_PORT}" "${AGENTIC_SERVICE_PORT}" "${VITE_PORT}" "${PADDLE_PORT}" "${SUPERTONE_PORT_CFG}" "${KOKORO_PORT_CFG}" "${F5_PORT_CFG}" "${VOXTRAL_PORT_CFG}")
 
 ACTIVE_MODE=""
 ACTIVE_MODE_LABEL=""
@@ -138,6 +172,29 @@ format_gib() {
     awk -v bytes="${1}" 'BEGIN { printf "%.2f GiB", bytes / 1073741824 }'
 }
 
+flag_enabled() {
+    case "${1,,}" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+supertone_launcher_enabled() {
+    flag_enabled "${TTS_ENABLE_SUPERTONE_CFG}"
+}
+
+kokoro_launcher_enabled() {
+    flag_enabled "${TTS_ENABLE_KOKORO_CFG}"
+}
+
+f5_launcher_enabled() {
+    flag_enabled "${TTS_ENABLE_F5_CFG}"
+}
+
+voxtral_launcher_enabled() {
+    flag_enabled "${TTS_ENABLE_VOXTRAL_CFG}"
+}
+
 mode_includes_lm() {
     [[ "${ACTIVE_MODE}" == "ocr" || "${ACTIVE_MODE}" == "all" ]]
 }
@@ -152,6 +209,61 @@ mode_includes_kokoro() {
 
 mode_includes_backend() {
     [[ "${ACTIVE_MODE}" == "ocr" || "${ACTIVE_MODE}" == "tts" || "${ACTIVE_MODE}" == "all" ]]
+}
+
+f5_auto_start_enabled() {
+    f5_launcher_enabled && flag_enabled "${F5_AUTO_START_CFG}"
+}
+
+supertone_required_in_mode() {
+    mode_includes_tts && supertone_launcher_enabled
+}
+
+kokoro_required_in_mode() {
+    mode_includes_kokoro && kokoro_launcher_enabled
+}
+
+voxtral_required_in_mode() {
+    mode_includes_tts && voxtral_launcher_enabled
+}
+
+status_marker() {
+    local ok="${1}"
+    if [[ "${ok}" -eq 1 ]]; then
+        printf '✓'
+    else
+        printf '✗'
+    fi
+}
+
+service_lamp_part() {
+    local label="${1}" enabled="${2}" ok="${3}"
+    if [[ "${enabled}" -eq 1 ]]; then
+        printf '%s %s' "${label}" "$(status_marker "${ok}")"
+    else
+        printf '%s off' "${label}"
+    fi
+}
+
+show_disabled_service() {
+    local name="${1}"
+    dim "${name} disabled in ${TTS_MODELS_CONFIG_FILE}"
+}
+
+join_by() {
+    local separator="${1}"
+    shift || true
+    local first=1
+    local item
+
+    for item in "$@"; do
+        if [[ ${first} -eq 1 ]]; then
+            printf '%s' "${item}"
+            first=0
+        else
+            printf '%s%s' "${separator}" "${item}"
+        fi
+    done
 }
 
 write_state() {
@@ -298,7 +410,14 @@ kill_known_project_processes() {
     kill_by_pattern "Kokoro" "services/tts/kokoro-service"
     kill_by_pattern "F5 TTS" "${ROOT_DIR}/services/tts/f5-service"
     kill_by_pattern "F5 TTS" "services/tts/f5-service"
-    kill_by_pattern "Backend" "${ROOT_DIR}/backend/dist/main.js"
+    kill_by_pattern "Voxtral" "${ROOT_DIR}/services/tts/voxtral-service"
+    kill_by_pattern "Voxtral" "services/tts/voxtral-service"
+    kill_by_pattern "Gateway" "${ROOT_DIR}/backend/dist/gateway/main.js"
+    kill_by_pattern "OCR service" "${ROOT_DIR}/backend/dist/services/ocr/src/main.js"
+    kill_by_pattern "TTS service" "${ROOT_DIR}/backend/dist/services/tts/src/main.js"
+    kill_by_pattern "Document service" "${ROOT_DIR}/backend/dist/services/document/src/main.js"
+    kill_by_pattern "Vocabulary service" "${ROOT_DIR}/backend/dist/services/vocabulary/src/main.js"
+    kill_by_pattern "Agentic service" "${ROOT_DIR}/backend/dist/services/agentic/src/main.js"
     kill_by_pattern "Frontend Vite" "${ROOT_DIR}/node_modules/.bin/vite"
     kill_by_pattern "Frontend Vite" "${ROOT_DIR}/node_modules/vite"
     kill_by_pattern "Frontend Vite" "node_modules/.bin/vite"
@@ -306,8 +425,14 @@ kill_known_project_processes() {
 }
 
 global_cleanup() {
-    stop_service "Backend" "${PID_BACKEND}"
+    stop_service "Gateway" "${PID_BACKEND}"
+    stop_service "Agentic service" "${PID_SVC_AGENTIC}"
+    stop_service "Vocabulary service" "${PID_SVC_VOCAB}"
+    stop_service "Document service" "${PID_SVC_DOC}"
+    stop_service "TTS service" "${PID_SVC_TTS}"
+    stop_service "OCR service" "${PID_SVC_OCR}"
     stop_service "F5 TTS" "${PID_F5}"
+    stop_service "Voxtral" "${PID_VOXTRAL}"
     stop_service "Kokoro" "${PID_KOKORO}"
     stop_service "Supertone" "${PID_SUPERTONE}"
     stop_service "PaddleOCR" "${PID_PADDLE}"
@@ -434,6 +559,22 @@ fetch_f5_device() {
     echo "${json}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("device", "unknown"))'
 }
 
+check_voxtral() {
+    local json
+    json=$(probe_json "http://${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}/health") || return 1
+    echo "${json}" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("ready") is True and d.get("device") == "gpu" else 1)'
+}
+
+check_voxtral_http() {
+    probe_url "http://${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}/health"
+}
+
+fetch_voxtral_device() {
+    local json
+    json=$(probe_json "http://${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}/health") || return 1
+    echo "${json}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("device", "unknown"))'
+}
+
 warm_f5() {
     if [[ ! -f "${F5_VENV}/bin/python" ]]; then
         return 1
@@ -447,6 +588,26 @@ check_backend() {
     local code
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:${APP_PORT}/api/health" || true)
     [[ "${code}" == "200" || "${code}" == "503" ]]
+}
+
+check_ocr_service() {
+    port_has_listener "${OCR_SERVICE_PORT}"
+}
+
+check_tts_service() {
+    port_has_listener "${TTS_SERVICE_PORT}"
+}
+
+check_document_service() {
+    port_has_listener "${DOCUMENT_SERVICE_PORT}"
+}
+
+check_vocabulary_service() {
+    port_has_listener "${VOCABULARY_SERVICE_PORT}"
+}
+
+check_agentic_service() {
+    port_has_listener "${AGENTIC_SERVICE_PORT}"
 }
 
 wait_for_check() {
@@ -586,37 +747,6 @@ confirm_all_vram_readiness() {
         case "${confirm}" in
             YES)
                 ok "VRAM warning acknowledged."
-                echo
-                return 0
-                ;;
-            "")
-                warn "Confirmation is required to continue."
-                ;;
-            *)
-                warn "Please type the exact word: YES"
-                ;;
-        esac
-    done
-}
-
-confirm_tts_lm_readiness() {
-    [[ "${ACTIVE_MODE}" == "tts" ]] || return 0
-
-    warn "TTS stack startup requires LM Studio model ${LM_MODEL_ID} to be unloaded."
-    warn "Make sure ${LM_MODEL_ID} is unloaded from LM Studio before continuing."
-
-    if [[ ! -t 0 ]]; then
-        warn "Interactive confirmation is not available in this shell."
-        warn "Rerun the launcher interactively and confirm the LM Studio warning."
-        return 1
-    fi
-
-    while true; do
-        echo
-        read -rp "Type 'YES' to confirm that ${LM_MODEL_ID} is unloaded from LM Studio: " confirm
-        case "${confirm}" in
-            YES)
-                ok "LM Studio unload warning acknowledged."
                 echo
                 return 0
                 ;;
@@ -872,6 +1002,64 @@ start_f5() {
     return 1
 }
 
+start_voxtral_optional() {
+    local torch_lib
+
+    if check_voxtral; then
+        ok "Voxtral already reachable on GPU"
+        return 0
+    fi
+
+    if check_voxtral_http; then
+        warn "Voxtral HTTP is reachable, but readiness is degraded. Keeping the stack up."
+        diagnose_voxtral_startup 30 || true
+        return 0
+    fi
+
+    if is_running "${PID_VOXTRAL}"; then
+        warn "Voxtral already running (PID $(cat "${PID_VOXTRAL}")) but not ready"
+        diagnose_voxtral_startup 15 || true
+        return 0
+    fi
+
+    if [[ ! -f "${VOXTRAL_VENV}/bin/python" ]]; then
+        warn "Voxtral venv not found at ${VOXTRAL_VENV}"
+        warn "Run: cd services/tts/voxtral-service && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+        warn "The adapter builds/runs the ROCm Docker runtime itself on first ready-mode startup."
+        return 0
+    fi
+
+    torch_lib=$(resolve_torch_lib "${VOXTRAL_TORCH_LIB}")
+
+    log "Starting Voxtral sidecar (port ${VOXTRAL_PORT_CFG})..."
+    dim "Voxtral log file: ${LOG_VOXTRAL}"
+    env HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" \
+        LD_LIBRARY_PATH="${torch_lib}:${LD_LIBRARY_PATH:-}" \
+        "${VOXTRAL_VENV}/bin/python" -m uvicorn \
+        --app-dir "${ROOT_DIR}/services/tts/voxtral-service" main:app \
+        --host 0.0.0.0 --port "${VOXTRAL_PORT_CFG}" \
+        > "${LOG_VOXTRAL}" 2>&1 &
+    echo $! > "${PID_VOXTRAL}"
+    dim "Voxtral process launched with PID $(cat "${PID_VOXTRAL}")"
+
+    if ! wait_for_check "Voxtral HTTP" 30 check_voxtral_http; then
+        warn "Voxtral did not expose /health. Continuing without it."
+        warn "The project-local Voxtral cache lives under services/tts/voxtral-service/models/"
+        diagnose_voxtral_startup 30 || true
+        return 0
+    fi
+
+    if wait_for_check_with_diagnostics "Voxtral GPU readiness" 60 check_voxtral diagnose_voxtral_startup 10; then
+        ok "Voxtral ready on GPU (PID $(cat "${PID_VOXTRAL}"))"
+        return 0
+    fi
+
+    warn "Voxtral stayed in no-go mode on this stack. Keeping the rest of TTS online."
+    warn "Check project-local model/runtime cache under services/tts/voxtral-service/models/"
+    diagnose_voxtral_startup 90 || true
+    return 0
+}
+
 start_lm_studio_server() {
     if check_lm_studio; then
         ok "LM Studio server reachable"
@@ -914,15 +1102,15 @@ diagnose_backend_startup() {
     health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:${APP_PORT}/api/health" || true)
     [[ -n "${health_code}" ]] || health_code="none"
 
-    dim "Backend diagnostics @ ${elapsed}s: pid=${pid_state}, port ${APP_PORT}=${port_state}, /api/health=${health_code}"
+    dim "Gateway diagnostics @ ${elapsed}s: pid=${pid_state}, port ${APP_PORT}=${port_state}, /api/health=${health_code}"
 
     if [[ -f "${LOG_BACKEND}" ]]; then
         while IFS= read -r line; do
             [[ -n "${line}" ]] || continue
-            dim "Backend log: $(shorten_text "${line}" 220)"
+            dim "Gateway log: $(shorten_text "${line}" 220)"
         done < <(tail -n 5 "${LOG_BACKEND}" 2>/dev/null || true)
     else
-        dim "Backend log: file not created yet"
+        dim "Gateway log: file not created yet"
     fi
 }
 
@@ -962,57 +1150,60 @@ diagnose_f5_startup() {
     fi
 }
 
-ensure_tts_lm_unloaded() {
-    [[ "${ACTIVE_MODE}" == "tts" ]] || return 0
+diagnose_voxtral_startup() {
+    local elapsed="${1:-0}"
+    local pid_state="missing"
+    local port_state="closed"
+    local health_json=""
+    local line
 
-    if ! check_lm_model_loaded; then
-        dim "LM Studio model ${LM_MODEL_ID} is not loaded. TTS startup can continue."
-        return 0
+    if is_running "${PID_VOXTRAL}"; then
+        pid_state="running:$(cat "${PID_VOXTRAL}")"
+    elif [[ -f "${PID_VOXTRAL}" ]]; then
+        pid_state="stale:$(cat "${PID_VOXTRAL}")"
     fi
 
-    warn "LM Studio model ${LM_MODEL_ID} is still loaded."
-    warn "Unload ${LM_MODEL_ID} manually in LM Studio before starting the TTS stack."
-
-    if [[ ! -t 0 ]]; then
-        warn "Interactive confirmation is not available in this shell."
-        warn "Unload the model manually, then rerun the launcher."
-        return 1
+    if port_has_listener "${VOXTRAL_PORT_CFG}"; then
+        port_state="listening"
     fi
 
-    while true; do
-        echo
-        read -rp "Type 'Done' after ${LM_MODEL_ID} is unloaded from LM Studio: " confirm
-        [[ "${confirm}" == "Done" ]] || {
-            warn "Waiting for exact input: Done"
-            continue
-        }
+    dim "Voxtral diagnostics @ ${elapsed}s: pid=${pid_state}, port ${VOXTRAL_PORT_CFG}=${port_state}"
 
-        if check_lm_model_loaded; then
-            warn "LM Studio still reports ${LM_MODEL_ID} as loaded."
-            warn "Unload it in LM Studio, then type Done again."
-            continue
-        fi
+    health_json=$(curl -fsS --max-time 2 "http://${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}/health" 2>/dev/null || true)
+    if [[ -n "${health_json}" ]]; then
+        dim "Voxtral /health: $(shorten_text "${health_json}" 220)"
+    else
+        dim "Voxtral /health: no response yet"
+    fi
 
-        ok "LM Studio model ${LM_MODEL_ID} is no longer loaded."
-        echo
-        return 0
-    done
+    if [[ -f "${LOG_VOXTRAL}" ]]; then
+        while IFS= read -r line; do
+            [[ -n "${line}" ]] || continue
+            dim "Voxtral log: $(shorten_text "${line}" 220)"
+        done < <(tail -n 5 "${LOG_VOXTRAL}" 2>/dev/null || true)
+    else
+        dim "Voxtral log: file not created yet"
+    fi
+
+    if [[ -d "${ROOT_DIR}/services/tts/voxtral-service/models" ]]; then
+        dim "Voxtral cache dir: ${ROOT_DIR}/services/tts/voxtral-service/models"
+    fi
 }
 
 start_backend() {
     if check_backend; then
-        ok "Backend already reachable"
+        ok "Gateway already reachable"
         return 0
     fi
 
     if is_running "${PID_BACKEND}"; then
-        ok "Backend already running (PID $(cat "${PID_BACKEND}"))"
+        ok "Gateway already running (PID $(cat "${PID_BACKEND}"))"
         return 0
     fi
 
     cd "${ROOT_DIR}"
 
-    if [[ -f "backend/dist/main.js" && -f "frontend/dist/index.html" ]]; then
+    if [[ -f "backend/dist/gateway/main.js" && -f "backend/dist/services/ocr/src/main.js" && -f "backend/dist/services/tts/src/main.js" && -f "backend/dist/services/document/src/main.js" && -f "backend/dist/services/vocabulary/src/main.js" && -f "frontend/dist/index.html" ]]; then
         dim "Build artifacts found — skipping build."
     else
         log "Building app (frontend + backend)..."
@@ -1020,19 +1211,96 @@ start_backend() {
         echo
     fi
 
-    log "Starting NestJS backend (port ${APP_PORT})..."
-    dim "Backend log file: ${LOG_BACKEND}"
-    bash scripts/linux/run-js-command.sh node backend/dist/main.js > "${LOG_BACKEND}" 2>&1 &
-    echo $! > "${PID_BACKEND}"
-    dim "Backend process launched with PID $(cat "${PID_BACKEND}")"
+    local lm_smoke_only="false"
+    if ! mode_includes_lm; then
+        lm_smoke_only="true"
+    fi
 
-    if wait_for_check_with_diagnostics "backend" 90 check_backend diagnose_backend_startup 15; then
-        ok "Backend ready (PID $(cat "${PID_BACKEND}"))  →  http://localhost:${APP_PORT}"
+    start_tcp_service \
+        "OCR service" \
+        "${PID_SVC_OCR}" \
+        "${LOG_SVC_OCR}" \
+        "export LM_STUDIO_SMOKE_ONLY=${lm_smoke_only}; bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js" \
+        check_ocr_service \
+        30 || return 1
+
+    start_tcp_service \
+        "TTS service" \
+        "${PID_SVC_TTS}" \
+        "${LOG_SVC_TTS}" \
+        "bash scripts/linux/run-js-command.sh node backend/dist/services/tts/src/main.js" \
+        check_tts_service \
+        30 || return 1
+
+    start_tcp_service \
+        "Document service" \
+        "${PID_SVC_DOC}" \
+        "${LOG_SVC_DOC}" \
+        "bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js" \
+        check_document_service \
+        30 || return 1
+
+    start_tcp_service \
+        "Vocabulary service" \
+        "${PID_SVC_VOCAB}" \
+        "${LOG_SVC_VOCAB}" \
+        "export LM_STUDIO_SMOKE_ONLY=${lm_smoke_only}; bash scripts/linux/run-js-command.sh node backend/dist/services/vocabulary/src/main.js" \
+        check_vocabulary_service \
+        30 || return 1
+
+    if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+        start_tcp_service \
+            "Agentic service" \
+            "${PID_SVC_AGENTIC}" \
+            "${LOG_SVC_AGENTIC}" \
+            "bash scripts/linux/run-js-command.sh node backend/dist/services/agentic/src/main.js" \
+            check_agentic_service \
+            30 || return 1
+    else
+        dim "Agentic service skipped because OPENAI_API_KEY is not set."
+    fi
+
+    log "Starting API gateway (port ${APP_PORT})..."
+    dim "Gateway log file: ${LOG_BACKEND}"
+    bash scripts/linux/run-js-command.sh node backend/dist/gateway/main.js > "${LOG_BACKEND}" 2>&1 &
+    echo $! > "${PID_BACKEND}"
+    dim "Gateway process launched with PID $(cat "${PID_BACKEND}")"
+
+    if wait_for_check_with_diagnostics "gateway" 90 check_backend diagnose_backend_startup 15; then
+        ok "Gateway ready (PID $(cat "${PID_BACKEND}"))  →  http://localhost:${APP_PORT}"
         return 0
     fi
 
     diagnose_backend_startup 90 || true
-    warn "Backend did not respond — check ${LOG_BACKEND}"
+    warn "Gateway did not respond — check ${LOG_BACKEND}"
+    return 1
+}
+
+start_tcp_service() {
+    local name="${1}" pid_file="${2}" log_file="${3}" command="${4}" check_fn="${5}" timeout="${6:-30}"
+
+    if "${check_fn}"; then
+        ok "${name} already reachable"
+        return 0
+    fi
+
+    if is_running "${pid_file}"; then
+        ok "${name} already running (PID $(cat "${pid_file}"))"
+        return 0
+    fi
+
+    log "Starting ${name}..."
+    dim "${name} log file: ${log_file}"
+    bash -lc "${command}" > "${log_file}" 2>&1 &
+    echo $! > "${pid_file}"
+    dim "${name} process launched with PID $(cat "${pid_file}")"
+
+    if wait_for_check "${name}" "${timeout}" "${check_fn}"; then
+        ok "${name} ready (PID $(cat "${pid_file}"))"
+        return 0
+    fi
+
+    warn "${name} did not respond — check ${log_file}"
     return 1
 }
 
@@ -1057,8 +1325,25 @@ compute_mode_lamp() {
     local piper_ok=0
     local kokoro_ok=0
     local f5_ok=0
+    local voxtral_ok=0
     local backend_ok=0
     local paddle_device="unknown"
+    local supertone_enabled=0
+    local piper_enabled=0
+    local kokoro_enabled=0
+    local f5_enabled=0
+    local voxtral_enabled=0
+    local ocr_kokoro_ready=1
+    local tts_supertone_ready=1
+    local tts_piper_ready=1
+    local tts_kokoro_ready=1
+    local tts_f5_ready=1
+    local tts_voxtral_ready=1
+    local all_supertone_ready=1
+    local all_piper_ready=1
+    local all_kokoro_ready=1
+    local all_f5_ready=1
+    local all_voxtral_ready=1
 
     if check_paddle; then
         paddle_ok=1
@@ -1071,7 +1356,26 @@ compute_mode_lamp() {
     check_piper     && piper_ok=1 || true
     check_kokoro    && kokoro_ok=1 || true
     check_f5        && f5_ok=1 || true
+    check_voxtral   && voxtral_ok=1 || true
     check_lm_model_loaded && lm_ok=1 || true
+
+    supertone_required_in_mode && supertone_enabled=1 || true
+    supertone_required_in_mode && piper_enabled=1 || true
+    kokoro_required_in_mode && kokoro_enabled=1 || true
+    f5_auto_start_enabled && f5_enabled=1 || true
+    voxtral_required_in_mode && voxtral_enabled=1 || true
+
+    [[ ${kokoro_enabled} -eq 1 ]] && ocr_kokoro_ready=${kokoro_ok}
+    [[ ${supertone_enabled} -eq 1 ]] && tts_supertone_ready=${supertone_ok}
+    [[ ${piper_enabled} -eq 1 ]] && tts_piper_ready=${piper_ok}
+    [[ ${kokoro_enabled} -eq 1 ]] && tts_kokoro_ready=${kokoro_ok}
+    [[ ${f5_enabled} -eq 1 ]] && tts_f5_ready=${f5_ok}
+    [[ ${voxtral_enabled} -eq 1 ]] && tts_voxtral_ready=${voxtral_ok}
+    [[ ${supertone_enabled} -eq 1 ]] && all_supertone_ready=${supertone_ok}
+    [[ ${piper_enabled} -eq 1 ]] && all_piper_ready=${piper_ok}
+    [[ ${kokoro_enabled} -eq 1 ]] && all_kokoro_ready=${kokoro_ok}
+    [[ ${f5_enabled} -eq 1 ]] && all_f5_ready=${f5_ok}
+    [[ ${voxtral_enabled} -eq 1 ]] && all_voxtral_ready=${voxtral_ok}
 
     if [[ ${paddle_ok} -eq 0 ]]; then
         echo "${LAMP_RED}  PaddleOCR unreachable"
@@ -1080,30 +1384,30 @@ compute_mode_lamp() {
 
     case "${mode}" in
         ocr)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${kokoro_ok} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  OCR mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | Kokoro ✓ | Backend ✓"
-            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${kokoro_ok} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  OCR mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | Kokoro ✓ | Backend ✓"
+            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  OCR mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
+            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
+                echo "${LAMP_YELLOW}  OCR mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  OCR mode partial | PaddleOCR ${paddle_device} | LM Studio $( [[ ${lm_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Kokoro $( [[ ${kokoro_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Backend $( [[ ${backend_ok} -eq 1 ]] && echo ✓ || echo ✗ )"
+                echo "${LAMP_GREEN}  OCR mode partial | PaddleOCR ${paddle_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
         tts)
-            if [[ ${backend_ok} -eq 1 && ${supertone_ok} -eq 1 && ${piper_ok} -eq 1 && ${kokoro_ok} -eq 1 && ${f5_ok} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  TTS mode ready | PaddleOCR GPU ✓ | Supertone ✓ | Piper ✓ | Kokoro ✓ | F5 TTS ✓ | Backend ✓"
-            elif [[ ${backend_ok} -eq 1 && ${supertone_ok} -eq 1 && ${piper_ok} -eq 1 && ${kokoro_ok} -eq 1 && ${f5_ok} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  TTS mode ready | PaddleOCR ${paddle_device} | Supertone ✓ | Piper ✓ | Kokoro ✓ | F5 TTS ✓ | Backend ✓"
+            if [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 && ${tts_f5_ready} -eq 1 && ${tts_voxtral_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  TTS mode ready | PaddleOCR GPU ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
+            elif [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 && ${tts_f5_ready} -eq 1 && ${tts_voxtral_ready} -eq 1 ]]; then
+                echo "${LAMP_YELLOW}  TTS mode ready | PaddleOCR ${paddle_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  TTS mode partial | PaddleOCR ${paddle_device} | Supertone $( [[ ${supertone_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Piper $( [[ ${piper_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Kokoro $( [[ ${kokoro_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | F5 TTS $( [[ ${f5_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Backend $( [[ ${backend_ok} -eq 1 ]] && echo ✓ || echo ✗ )"
+                echo "${LAMP_GREEN}  TTS mode partial | PaddleOCR ${paddle_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
         *)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${supertone_ok} -eq 1 && ${piper_ok} -eq 1 && ${kokoro_ok} -eq 1 && ${f5_ok} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  All mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | Supertone ✓ | Piper ✓ | Kokoro ✓ | F5 TTS ✓ | Backend ✓"
-            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${supertone_ok} -eq 1 && ${piper_ok} -eq 1 && ${kokoro_ok} -eq 1 && ${f5_ok} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  All mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | Supertone ✓ | Piper ✓ | Kokoro ✓ | F5 TTS ✓ | Backend ✓"
+            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 && ${all_f5_ready} -eq 1 && ${all_voxtral_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  All mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
+            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 && ${all_f5_ready} -eq 1 && ${all_voxtral_ready} -eq 1 ]]; then
+                echo "${LAMP_YELLOW}  All mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  All mode partial | PaddleOCR ${paddle_device} | LM Studio $( [[ ${lm_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Supertone $( [[ ${supertone_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Piper $( [[ ${piper_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Kokoro $( [[ ${kokoro_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | F5 TTS $( [[ ${f5_ok} -eq 1 ]] && echo ✓ || echo ✗ ) | Backend $( [[ ${backend_ok} -eq 1 ]] && echo ✓ || echo ✗ )"
+                echo "${LAMP_GREEN}  All mode partial | PaddleOCR ${paddle_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
     esac
@@ -1118,48 +1422,100 @@ show_health_block() {
         ocr)
             check_lm_studio && ok "LM Studio server" || warn "LM Studio server unreachable"
             check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
-            if check_kokoro; then
-                ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+            if kokoro_required_in_mode; then
+                if check_kokoro; then
+                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+                else
+                    warn "Kokoro unreachable"
+                fi
             else
-                warn "Kokoro unreachable"
+                show_disabled_service "Kokoro"
             fi
             ;;
         tts)
-            check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
-            check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
-            if check_kokoro; then
-                ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+            if supertone_required_in_mode; then
+                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
+                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
             else
-                warn "Kokoro unreachable"
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
             fi
-            if check_f5; then
-                ok "F5 TTS (${F5_HOST_CFG}:${F5_PORT_CFG}) — $(fetch_f5_device 2>/dev/null || echo unknown)"
+            if kokoro_required_in_mode; then
+                if check_kokoro; then
+                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+                else
+                    warn "Kokoro unreachable"
+                fi
             else
-                warn "F5 TTS unreachable or not GPU-ready"
+                show_disabled_service "Kokoro"
+            fi
+            if f5_auto_start_enabled; then
+                if check_f5; then
+                    ok "F5 TTS (${F5_HOST_CFG}:${F5_PORT_CFG}) — $(fetch_f5_device 2>/dev/null || echo unknown)"
+                else
+                    warn "F5 TTS unreachable or not GPU-ready"
+                fi
+            elif f5_launcher_enabled; then
+                dim "F5 TTS enabled but auto-start disabled (${F5_HOST_CFG}:${F5_PORT_CFG})"
+            else
+                show_disabled_service "F5 TTS"
+            fi
+            if voxtral_required_in_mode; then
+                if check_voxtral; then
+                    ok "Voxtral (${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}) — $(fetch_voxtral_device 2>/dev/null || echo unknown)"
+                else
+                    warn "Voxtral unreachable or not GPU-ready"
+                fi
+            else
+                show_disabled_service "Voxtral"
             fi
             ;;
         *)
             check_lm_studio && ok "LM Studio server" || warn "LM Studio server unreachable"
             check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
-            check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
-            check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
-            if check_kokoro; then
-                ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+            if supertone_required_in_mode; then
+                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
+                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
             else
-                warn "Kokoro unreachable"
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
             fi
-            if check_f5; then
-                ok "F5 TTS (${F5_HOST_CFG}:${F5_PORT_CFG}) — $(fetch_f5_device 2>/dev/null || echo unknown)"
+            if kokoro_required_in_mode; then
+                if check_kokoro; then
+                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+                else
+                    warn "Kokoro unreachable"
+                fi
             else
-                warn "F5 TTS unreachable or not GPU-ready"
+                show_disabled_service "Kokoro"
+            fi
+            if f5_auto_start_enabled; then
+                if check_f5; then
+                    ok "F5 TTS (${F5_HOST_CFG}:${F5_PORT_CFG}) — $(fetch_f5_device 2>/dev/null || echo unknown)"
+                else
+                    warn "F5 TTS unreachable or not GPU-ready"
+                fi
+            elif f5_launcher_enabled; then
+                dim "F5 TTS enabled but auto-start disabled (${F5_HOST_CFG}:${F5_PORT_CFG})"
+            else
+                show_disabled_service "F5 TTS"
+            fi
+            if voxtral_required_in_mode; then
+                if check_voxtral; then
+                    ok "Voxtral (${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}) — $(fetch_voxtral_device 2>/dev/null || echo unknown)"
+                else
+                    warn "Voxtral unreachable or not GPU-ready"
+                fi
+            else
+                show_disabled_service "Voxtral"
             fi
             ;;
     esac
 
     if mode_includes_backend; then
-        check_backend && ok "Backend (port ${APP_PORT})" || warn "Backend unreachable"
+        check_backend && ok "Gateway (port ${APP_PORT})" || warn "Gateway unreachable"
     else
-        dim "Backend skipped in ${mode^^} mode"
+        dim "Gateway skipped in ${mode^^} mode"
     fi
 
     if port_has_listener "${VITE_PORT}"; then
@@ -1203,13 +1559,21 @@ live_status_loop() {
 show_config_block() {
     echo -e "${BOLD}Config:${RESET}"
     echo "  Active mode    : ${ACTIVE_MODE_LABEL}"
+    echo "  TTS config     : ${TTS_MODELS_CONFIG_FILE}"
     echo "  App port       : ${APP_PORT}"
+    echo "  OCR TCP        : ${OCR_SERVICE_PORT}"
+    echo "  TTS TCP        : ${TTS_SERVICE_PORT}"
+    echo "  Document TCP   : ${DOCUMENT_SERVICE_PORT}"
+    echo "  Vocabulary TCP : ${VOCABULARY_SERVICE_PORT}"
+    echo "  Agentic TCP    : ${AGENTIC_SERVICE_PORT}"
     echo "  LM Studio      : ${LM_URL}"
     echo "  LM model       : ${LM_MODEL_ID}"
     echo "  PaddleOCR      : ${PADDLE_HOST}:${PADDLE_PORT}"
     echo "  Supertone      : ${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG}"
     echo "  Kokoro         : ${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}"
-    echo "  F5 TTS         : ${F5_HOST_CFG}:${F5_PORT_CFG}"
+    echo "  Voxtral        : ${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}"
+    echo "  F5 TTS         : ${F5_HOST_CFG}:${F5_PORT_CFG} (auto-start: ${F5_AUTO_START_CFG})"
+    echo "  Launch TTS     : supertone=$(supertone_launcher_enabled && echo on || echo off), kokoro=$(kokoro_launcher_enabled && echo on || echo off), f5=$(f5_launcher_enabled && echo on || echo off), voxtral=$(voxtral_launcher_enabled && echo on || echo off)"
     echo
 }
 
@@ -1247,9 +1611,15 @@ show_logs_block() {
     dim "  PaddleOCR  → ${LOG_PADDLE}"
     dim "  Supertone  → ${LOG_SUPERTONE}"
     dim "  Kokoro     → ${LOG_KOKORO}"
+    dim "  Voxtral    → ${LOG_VOXTRAL}"
     dim "  F5 TTS     → ${LOG_F5}"
     dim "  LM Studio  → ${LOG_LM}"
-    dim "  Backend    → ${LOG_BACKEND}"
+    dim "  OCR svc    → ${LOG_SVC_OCR}"
+    dim "  TTS svc    → ${LOG_SVC_TTS}"
+    dim "  Doc svc    → ${LOG_SVC_DOC}"
+    dim "  Vocab svc  → ${LOG_SVC_VOCAB}"
+    dim "  Agentic    → ${LOG_SVC_AGENTIC}"
+    dim "  Gateway    → ${LOG_BACKEND}"
     echo
 }
 
@@ -1263,17 +1633,28 @@ show_lamp_legend() {
 }
 
 describe_startup_order() {
-    case "${ACTIVE_MODE}" in
-        ocr)
-            echo "PaddleOCR -> Kokoro -> LM Studio -> Backend"
-            ;;
-        tts)
-            echo "PaddleOCR -> Supertone -> Kokoro -> F5 TTS -> Backend"
-            ;;
-        *)
-            echo "PaddleOCR -> Supertone -> Kokoro -> F5 TTS -> LM Studio -> Backend"
-            ;;
-    esac
+    local -a steps=("PaddleOCR")
+
+    if supertone_required_in_mode; then
+        steps+=("Supertone/Piper")
+    fi
+    if kokoro_required_in_mode; then
+        steps+=("Kokoro")
+    fi
+    if voxtral_required_in_mode; then
+        steps+=("Voxtral")
+    fi
+    if f5_auto_start_enabled; then
+        steps+=("F5 TTS")
+    fi
+    if mode_includes_lm; then
+        steps+=("LM Studio")
+    fi
+    if mode_includes_backend; then
+        steps+=("OCR/TTS/Document/Vocabulary services" "Gateway")
+    fi
+
+    join_by " -> " "${steps[@]}"
 }
 
 start_mode_stack() {
@@ -1296,20 +1677,6 @@ start_mode_stack() {
     show_config_block
     log "Startup order: $(describe_startup_order)"
     echo
-
-    if [[ "${ACTIVE_MODE}" == "tts" ]]; then
-        echo -e "${BOLD}[preflight] User confirmation${RESET}"
-        if ! confirm_tts_lm_readiness; then
-            rollback_startup "TTS startup cancelled before LM Studio confirmation."
-            return 1
-        fi
-
-        echo -e "${BOLD}[preflight] LM Studio check${RESET}"
-        if ! ensure_tts_lm_unloaded; then
-            rollback_startup "TTS startup blocked until ${LM_MODEL_ID} is unloaded from LM Studio."
-            return 1
-        fi
-    fi
 
     if [[ "${ACTIVE_MODE}" == "all" ]]; then
         echo -e "${BOLD}[preflight] User confirmation${RESET}"
@@ -1334,30 +1701,50 @@ start_mode_stack() {
     fi
 
     if mode_includes_tts; then
-        dim "Step 1b: Supertone"
-        if ! start_supertone; then
-            rollback_startup "Supertone failed to start."
-            return 1
+        if supertone_required_in_mode; then
+            dim "Step 1b: Supertone"
+            if ! start_supertone; then
+                rollback_startup "Supertone failed to start."
+                return 1
+            fi
+        else
+            dim "Supertone/Piper disabled in ${TTS_MODELS_CONFIG_FILE}."
         fi
     else
         dim "Supertone and F5 skipped in OCR mode."
     fi
 
     if mode_includes_kokoro; then
-        dim "Step 1c: Kokoro"
-        if ! start_kokoro; then
-            rollback_startup "Kokoro failed to start."
-            return 1
+        if kokoro_required_in_mode; then
+            dim "Step 1c: Kokoro"
+            if ! start_kokoro; then
+                rollback_startup "Kokoro failed to start."
+                return 1
+            fi
+        else
+            dim "Kokoro disabled in ${TTS_MODELS_CONFIG_FILE}."
         fi
     else
         dim "Kokoro skipped in ${ACTIVE_MODE_LABEL} mode."
     fi
 
     if mode_includes_tts; then
-        dim "Step 1d: F5 TTS"
-        if ! start_f5; then
-            rollback_startup "F5 TTS failed to start."
-            return 1
+        if voxtral_required_in_mode; then
+            dim "Step 1d: Voxtral"
+            start_voxtral_optional
+        else
+            dim "Voxtral disabled in ${TTS_MODELS_CONFIG_FILE}."
+        fi
+        if f5_auto_start_enabled; then
+            dim "Step 1e: F5 TTS (optional manual override)"
+            if ! start_f5; then
+                rollback_startup "F5 TTS failed to start."
+                return 1
+            fi
+        elif f5_launcher_enabled; then
+            dim "F5 TTS enabled but auto-start disabled."
+        else
+            dim "F5 TTS disabled in ${TTS_MODELS_CONFIG_FILE}."
         fi
     fi
     echo
@@ -1377,14 +1764,14 @@ start_mode_stack() {
     fi
     echo
 
-    echo -e "${BOLD}[3/3] Backend${RESET}"
+    echo -e "${BOLD}[3/3] API stack${RESET}"
     if mode_includes_backend; then
         if ! start_backend; then
-            rollback_startup "Backend failed to start."
+            rollback_startup "API stack failed to start."
             return 1
         fi
     else
-        dim "Backend skipped in ${ACTIVE_MODE_LABEL} mode."
+        dim "API stack skipped in ${ACTIVE_MODE_LABEL} mode."
     fi
     echo
 
@@ -1441,15 +1828,47 @@ cmd_status() {
             else
                 fail "LM Studio server stopped"
             fi
-            show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            show_process_state "Backend" "${PID_BACKEND}" "${APP_PORT}"
+            if kokoro_required_in_mode; then
+                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
+            else
+                show_disabled_service "Kokoro"
+            fi
+            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
+            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
+            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
+            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
+            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
             ;;
         tts)
-            show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
-            show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            show_process_state "F5 TTS" "${PID_F5}" "${F5_PORT_CFG}"
-            dim "Piper runs inside the Supertone sidecar"
-            show_process_state "Backend" "${PID_BACKEND}" "${APP_PORT}"
+            if supertone_required_in_mode; then
+                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
+                dim "Piper runs inside the Supertone sidecar"
+            else
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
+            fi
+            if kokoro_required_in_mode; then
+                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
+            else
+                show_disabled_service "Kokoro"
+            fi
+            if voxtral_required_in_mode; then
+                show_process_state "Voxtral" "${PID_VOXTRAL}" "${VOXTRAL_PORT_CFG}"
+            else
+                show_disabled_service "Voxtral"
+            fi
+            if f5_auto_start_enabled; then
+                show_process_state "F5 TTS" "${PID_F5}" "${F5_PORT_CFG}"
+            elif f5_launcher_enabled; then
+                dim "F5 TTS enabled but auto-start disabled (${F5_HOST_CFG}:${F5_PORT_CFG})"
+            else
+                show_disabled_service "F5 TTS"
+            fi
+            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
+            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
+            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
+            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
+            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
             ;;
         *)
             if port_has_listener "${LM_PORT}"; then
@@ -1457,10 +1876,40 @@ cmd_status() {
             else
                 fail "LM Studio server stopped"
             fi
-            show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
-            show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            show_process_state "F5 TTS" "${PID_F5}" "${F5_PORT_CFG}"
-            show_process_state "Backend" "${PID_BACKEND}" "${APP_PORT}"
+            if supertone_required_in_mode; then
+                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
+                dim "Piper runs inside the Supertone sidecar"
+            else
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
+            fi
+            if kokoro_required_in_mode; then
+                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
+            else
+                show_disabled_service "Kokoro"
+            fi
+            if voxtral_required_in_mode; then
+                show_process_state "Voxtral" "${PID_VOXTRAL}" "${VOXTRAL_PORT_CFG}"
+            else
+                show_disabled_service "Voxtral"
+            fi
+            if f5_auto_start_enabled; then
+                show_process_state "F5 TTS" "${PID_F5}" "${F5_PORT_CFG}"
+            elif f5_launcher_enabled; then
+                dim "F5 TTS enabled but auto-start disabled (${F5_HOST_CFG}:${F5_PORT_CFG})"
+            else
+                show_disabled_service "F5 TTS"
+            fi
+            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
+            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
+            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
+            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
+            if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+                show_process_state "Agentic service" "${PID_SVC_AGENTIC}" "${AGENTIC_SERVICE_PORT}"
+            else
+                dim "Agentic service skipped (OPENAI_API_KEY not set)"
+            fi
+            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
             ;;
     esac
 

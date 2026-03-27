@@ -1,0 +1,1 @@
+{"version":3,"file":"paddle-ocr-health.port.d.ts","sourceRoot":"","sources":["paddle-ocr-health.port.ts"],"names":[],"mappings":"AAAA,8BAAsB,oBAAoB;IACxC,QAAQ,CAAC,WAAW,IAAI,OAAO,CAAC,OAAO,CAAC;IACxC,QAAQ,CAAC,UAAU,IAAI,OAAO,CAAC,MAAM,EAAE,CAAC;IACxC,QAAQ,CAAC,SAAS,IAAI,OAAO,CAAC,KAAK,GAAG,KAAK,GAAG,IAAI,CAAC;CACpD"}

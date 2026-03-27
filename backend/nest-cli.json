@@ -1,8 +1,66 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
+  "monorepo": true,
+  "root": "gateway",
+  "sourceRoot": "gateway/src",
   "compilerOptions": {
-    "deleteOutDir": true
+    "deleteOutDir": false
+  },
+  "projects": {
+    "gateway": {
+      "type": "application",
+      "root": "gateway",
+      "entryFile": "main",
+      "sourceRoot": "gateway/src",
+      "compilerOptions": {
+        "tsConfigPath": "gateway/tsconfig.json"
+      }
+    },
+    "svc-ocr": {
+      "type": "application",
+      "root": "services/ocr",
+      "entryFile": "main",
+      "sourceRoot": "services/ocr/src",
+      "compilerOptions": {
+        "tsConfigPath": "services/ocr/tsconfig.json"
+      }
+    },
+    "svc-tts": {
+      "type": "application",
+      "root": "services/tts",
+      "entryFile": "main",
+      "sourceRoot": "services/tts/src",
+      "compilerOptions": {
+        "tsConfigPath": "services/tts/tsconfig.json"
+      }
+    },
+    "svc-doc": {
+      "type": "application",
+      "root": "services/document",
+      "entryFile": "main",
+      "sourceRoot": "services/document/src",
+      "compilerOptions": {
+        "tsConfigPath": "services/document/tsconfig.json"
+      }
+    },
+    "svc-vocab": {
+      "type": "application",
+      "root": "services/vocabulary",
+      "entryFile": "main",
+      "sourceRoot": "services/vocabulary/src",
+      "compilerOptions": {
+        "tsConfigPath": "services/vocabulary/tsconfig.json"
+      }
+    },
+    "svc-agentic": {
+      "type": "application",
+      "root": "services/agentic",
+      "entryFile": "main",
+      "sourceRoot": "services/agentic/src",
+      "compilerOptions": {
+        "tsConfigPath": "services/agentic/tsconfig.json"
+      }
+    }
   }
 }

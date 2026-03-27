@@ -11,6 +11,7 @@ import { PaddleOCRHealthService } from '../../infrastructure/paddleocr/paddleocr
 import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
 import { LmStudioModule } from './lm-studio.module';
 import { PassthroughStructuringService } from '../../infrastructure/testing/passthrough-structuring.service';
+import { OcrConcurrencyService } from '../../infrastructure/concurrency/ocr-concurrency.service';
 
 const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 
@@ -31,6 +32,7 @@ const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
     LMStudioStructuringService,
     PassthroughStructuringService,
     PaddleOCRService,
+    OcrConcurrencyService,
 
     { provide: IOCRService, useExisting: PaddleOCRService },
     {

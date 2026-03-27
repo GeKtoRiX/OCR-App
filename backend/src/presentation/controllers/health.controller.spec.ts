@@ -21,6 +21,8 @@ describe('HealthController', () => {
       kokoroReachable: true,
       f5TtsReachable: true,
       f5TtsDevice: 'gpu' as const,
+      voxtralReachable: false,
+      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
@@ -40,6 +42,8 @@ describe('HealthController', () => {
       kokoroReachable: false,
       f5TtsReachable: false,
       f5TtsDevice: null,
+      voxtralReachable: false,
+      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 

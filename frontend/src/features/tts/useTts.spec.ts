@@ -167,6 +167,18 @@ describe('useTts', () => {
         removeSilence: false,
       });
     });
+
+    it('should switch to voxtral with preset voice defaults', () => {
+      const { result } = renderHook(() => useTts('text', 'file.png'));
+
+      act(() => { result.current.setEngine('voxtral'); });
+
+      expect(result.current.ttsSettings).toEqual({
+        engine: 'voxtral',
+        voice: 'casual_female',
+        format: 'wav',
+      });
+    });
   });
 
   it('should sync custom piperVoice into settings for the API call', async () => {
@@ -242,6 +254,30 @@ describe('useTts', () => {
     );
   });
 
+  it('should sync voxtralVoice into settings for the API call', async () => {
+    mockGenerateSpeech.mockResolvedValue(new Blob());
+
+    const { result } = renderHook(() => useTts('text', 'file.png'));
+
+    act(() => {
+      result.current.setEngine('voxtral');
+      result.current.setVoxtralVoice('casual_male');
+    });
+
+    await act(async () => {
+      await result.current.handleGenerate();
+    });
+
+    expect(mockGenerateSpeech).toHaveBeenCalledWith(
+      'text',
+      expect.objectContaining({
+        engine: 'voxtral',
+        voice: 'casual_male',
+        format: 'wav',
+      }),
+    );
+  });
+
   it('should disable f5 generation until required fields are provided', () => {
     const { result } = renderHook(() => useTts('text', 'file.png'));
 
@@ -273,6 +309,16 @@ describe('useTts', () => {
         autoTranscribe: true,
         removeSilence: false,
       });
+    });
+
+    expect(result.current.canGenerate).toBe(true);
+  });
+
+  it('should allow voxtral generation without reference audio', () => {
+    const { result } = renderHook(() => useTts('text', 'file.png'));
+
+    act(() => {
+      result.current.setEngine('voxtral');
     });
 
     expect(result.current.canGenerate).toBe(true);

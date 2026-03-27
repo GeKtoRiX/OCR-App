@@ -2,14 +2,17 @@ import { BadRequestException, HttpException } from '@nestjs/common';
 import * as fs from 'fs';
 import { OcrController } from './ocr.controller';
 import { ProcessImageUseCase } from '../../application/use-cases/process-image.use-case';
+import { OcrConcurrencyService } from '../../infrastructure/concurrency/ocr-concurrency.service';
 
 describe('OcrController', () => {
   let controller: OcrController;
   let mockProcessImage: jest.Mocked<ProcessImageUseCase>;
+  let concurrency: OcrConcurrencyService;
 
   beforeEach(() => {
     mockProcessImage = { execute: jest.fn() } as any;
-    controller = new OcrController(mockProcessImage);
+    concurrency = new OcrConcurrencyService();
+    controller = new OcrController(mockProcessImage, concurrency);
   });
 
   const validFile = {

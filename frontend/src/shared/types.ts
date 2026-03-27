@@ -14,6 +14,8 @@ export interface HealthResponse {
   kokoroReachable: boolean;
   f5TtsReachable: boolean;
   f5TtsDevice: 'gpu' | 'cpu' | null;
+  voxtralReachable: boolean;
+  voxtralDevice: 'gpu' | 'cpu' | null;
 }
 
 export interface ApiError {
@@ -21,7 +23,7 @@ export interface ApiError {
   message: string;
 }
 
-export type TtsEngine = 'supertone' | 'piper' | 'kokoro' | 'f5';
+export type TtsEngine = 'supertone' | 'piper' | 'kokoro' | 'f5' | 'voxtral';
 
 export interface SupertoneTtsSettings {
   engine: 'supertone';
@@ -51,11 +53,18 @@ export interface F5TtsSettings {
   removeSilence: boolean;
 }
 
+export interface VoxtralTtsSettings {
+  engine: 'voxtral';
+  voice: string;
+  format: 'wav';
+}
+
 export type TtsSettings =
   | SupertoneTtsSettings
   | PiperTtsSettings
   | KokoroTtsSettings
-  | F5TtsSettings;
+  | F5TtsSettings
+  | VoxtralTtsSettings;
 
 // Supertone voices
 export const TTS_VOICES = ['M1', 'M2', 'M3', 'M4', 'M5', 'F1', 'F2', 'F3', 'F4', 'F5'] as const;
@@ -83,6 +92,31 @@ export const KOKORO_VOICES = [
   { id: 'bf_emma',     label: 'Emma',     lang: 'en-GB', gender: 'F' },
   { id: 'bm_fable',    label: 'Fable',    lang: 'en-GB', gender: 'M' },
 ] as const;
+
+export const VOXTRAL_VOICES = [
+  { id: 'casual_female', label: 'Casual', meta: 'EN • F' },
+  { id: 'casual_male', label: 'Casual', meta: 'EN • M' },
+  { id: 'cheerful_female', label: 'Cheerful', meta: 'EN • F' },
+  { id: 'neutral_female', label: 'Neutral', meta: 'EN • F' },
+  { id: 'neutral_male', label: 'Neutral', meta: 'EN • M' },
+  { id: 'ar_male', label: 'Arabic', meta: 'AR • M' },
+  { id: 'de_female', label: 'German', meta: 'DE • F' },
+  { id: 'de_male', label: 'German', meta: 'DE • M' },
+  { id: 'es_female', label: 'Spanish', meta: 'ES • F' },
+  { id: 'es_male', label: 'Spanish', meta: 'ES • M' },
+  { id: 'fr_female', label: 'French', meta: 'FR • F' },
+  { id: 'fr_male', label: 'French', meta: 'FR • M' },
+  { id: 'hi_female', label: 'Hindi', meta: 'HI • F' },
+  { id: 'hi_male', label: 'Hindi', meta: 'HI • M' },
+  { id: 'it_female', label: 'Italian', meta: 'IT • F' },
+  { id: 'it_male', label: 'Italian', meta: 'IT • M' },
+  { id: 'nl_female', label: 'Dutch', meta: 'NL • F' },
+  { id: 'nl_male', label: 'Dutch', meta: 'NL • M' },
+  { id: 'pt_female', label: 'Portuguese', meta: 'PT • F' },
+  { id: 'pt_male', label: 'Portuguese', meta: 'PT • M' },
+] as const;
+
+export const VOXTRAL_EN_VOICES = VOXTRAL_VOICES.filter((voice) => voice.meta.startsWith('EN'));
 
 export interface SavedDocument {
   id: string;

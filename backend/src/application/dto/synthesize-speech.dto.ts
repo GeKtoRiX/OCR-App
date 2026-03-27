@@ -4,6 +4,7 @@ export interface SynthesizeSpeechInput {
   text: string;
   engine?: string;
   voice?: string;
+  format?: 'wav';
   lang?: string;
   speed?: number;
   totalSteps?: number;

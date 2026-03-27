@@ -1,11 +1,11 @@
 import { LMStudioOCRService } from './lm-studio-ocr.service';
-import { LMStudioClient } from './lm-studio.client';
 import { LMStudioConfig } from '../config/lm-studio.config';
 import { ImageData } from '../../domain/entities/image-data.entity';
+import { ILmStudioChatPort } from '../../domain/ports/lm-studio-chat.port';
 
 describe('LMStudioOCRService', () => {
   let service: LMStudioOCRService;
-  let mockClient: jest.Mocked<LMStudioClient>;
+  let mockClient: jest.Mocked<ILmStudioChatPort>;
   let config: LMStudioConfig;
 
   beforeEach(() => {
@@ -22,9 +22,8 @@ describe('LMStudioOCRService', () => {
     const result = await service.extractText(image);
 
     expect(result).toBe('Extracted text');
-    expect(mockClient.chatCompletion).toHaveBeenCalledWith({
-      model: 'test-ocr-model',
-      messages: [
+    expect(mockClient.chatCompletion).toHaveBeenCalledWith(
+      [
         {
           role: 'user',
           content: [
@@ -39,9 +38,12 @@ describe('LMStudioOCRService', () => {
           ],
         },
       ],
-      temperature: 0.0,
-      max_tokens: 4096,
-    });
+      'test-ocr-model',
+      {
+        temperature: 0.0,
+        maxTokens: 4096,
+      },
+    );
   });
 
   it('should propagate client errors', async () => {

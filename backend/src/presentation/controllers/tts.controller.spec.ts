@@ -1,6 +1,10 @@
 import { HttpException } from '@nestjs/common';
 import { TtsController } from './tts.controller';
-import { SynthesizeSpeechUseCase } from '../../application/use-cases/synthesize-speech.use-case';
+import {
+  F5_TTS_REQUIRES_REF_AUDIO_ERROR,
+  F5_TTS_REQUIRES_REF_TEXT_ERROR,
+  SynthesizeSpeechUseCase,
+} from '../../application/use-cases/synthesize-speech.use-case';
 
 describe('TtsController', () => {
   let controller: TtsController;
@@ -52,6 +56,7 @@ describe('TtsController', () => {
       },
       autoTranscribe: undefined,
       removeSilence: true,
+      format: undefined,
       voice: undefined,
       lang: undefined,
       speed: undefined,
@@ -85,6 +90,7 @@ describe('TtsController', () => {
       lang: 'en',
       speed: 1.2,
       totalSteps: 5,
+      format: undefined,
       refText: undefined,
       refAudio: undefined,
       removeSilence: undefined,
@@ -105,6 +111,7 @@ describe('TtsController', () => {
       text: 'hello',
       engine: 'kokoro',
       voice: 'am_michael',
+      format: undefined,
       speed: 1.2,
       lang: undefined,
       totalSteps: undefined,
@@ -116,6 +123,10 @@ describe('TtsController', () => {
   });
 
   it('rejects f5 requests without refAudio', async () => {
+    mockSynthesizeSpeech.execute.mockRejectedValue(
+      new Error(F5_TTS_REQUIRES_REF_AUDIO_ERROR),
+    );
+
     await expect(
       controller.synthesize(
         {
@@ -125,10 +136,14 @@ describe('TtsController', () => {
         },
         mockRes,
       ),
-    ).rejects.toBeInstanceOf(HttpException);
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('rejects f5 requests without refText', async () => {
+    mockSynthesizeSpeech.execute.mockRejectedValue(
+      new Error(F5_TTS_REQUIRES_REF_TEXT_ERROR),
+    );
+
     await expect(
       controller.synthesize(
         {
@@ -142,7 +157,7 @@ describe('TtsController', () => {
           buffer: Buffer.from('wav'),
         } as any,
       ),
-    ).rejects.toBeInstanceOf(HttpException);
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('allows f5 requests without refText when autoTranscribe=true', async () => {
@@ -199,6 +214,7 @@ describe('TtsController', () => {
       text: 'hello',
       engine: 'f5',
       voice: undefined,
+      format: undefined,
       lang: undefined,
       speed: undefined,
       totalSteps: undefined,

@@ -6,6 +6,7 @@ import {
   TTS_LANG_LABELS,
   PIPER_VOICES,
   KOKORO_VOICES,
+  VOXTRAL_EN_VOICES,
 } from '../shared/types';
 import { useResultPanel } from './useResultPanel';
 import { VocabContextMenu } from '../features/vocabulary/VocabContextMenu';
@@ -177,7 +178,7 @@ export function ResultPanel({
         <div className="tts-panel">
           {/* ── Engine toggle ── */}
           <div className="tts-panel__engine-row">
-            {(['supertone', 'piper', 'kokoro', 'f5'] as const).map(engine => (
+            {(['supertone', 'piper', 'kokoro', 'f5', 'voxtral'] as const).map(engine => (
               <button
                 key={engine}
                 className={`tts-panel__engine-btn ${ttsSettings.engine === engine ? 'tts-panel__engine-btn--active' : ''}`}
@@ -346,6 +347,31 @@ export function ResultPanel({
 
               <p className="tts-panel__hint">
                 F5 uses uploaded reference audio for voice cloning. Keep the clip short. You can provide its transcript manually or let F5 detect it automatically. The first auto-detect run can take much longer because the ASR model may need to download.
+              </p>
+            </div>
+
+          ) : ttsSettings.engine === 'voxtral' ? (
+            /* ── Voxtral preset voice settings ── */
+            <div className="tts-panel__settings">
+              <div className="tts-panel__row">
+                <label className="tts-panel__field-label">Voice</label>
+                <div className="tts-panel__chips tts-panel__chips--wrap">
+                  {VOXTRAL_EN_VOICES.map(v => (
+                    <button
+                      key={v.id}
+                      className={`tts-panel__chip ${panel.tts.voxtralVoice === v.id ? 'tts-panel__chip--active' : ''}`}
+                      onClick={() => panel.tts.setVoxtralVoice(v.id)}
+                      title={`${v.label} — ${v.id}`}
+                    >
+                      <span className="tts-panel__chip-label">{v.label}</span>
+                      <span className="tts-panel__chip-lang">{v.meta}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="tts-panel__hint">
+                Voxtral in this stack uses the open-weight preset voices exposed by local `vLLM-Omni`. AI Studio demo presets such as `Jane, Curious` or `Paul, Sad` are not part of this local runtime. Output stays fixed to WAV while the AMD/ROCm path is validated.
               </p>
             </div>
 

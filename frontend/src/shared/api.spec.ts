@@ -113,6 +113,8 @@ describe('API service', () => {
         kokoroReachable: true,
         f5TtsReachable: true,
         f5TtsDevice: 'gpu',
+        voxtralReachable: false,
+        voxtralDevice: null,
       };
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -239,6 +241,32 @@ describe('API service', () => {
       expect(form.get('autoTranscribe')).toBe('false');
       expect(form.get('removeSilence')).toBe('true');
       expect(form.get('refAudio')).toBeInstanceOf(File);
+    });
+
+    it('should POST JSON for voxtral requests', async () => {
+      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
+
+      const result = await generateSpeech('hello world', {
+        engine: 'voxtral',
+        voice: 'casual_male',
+        format: 'wav',
+      });
+
+      expect(result).toBe(fakeBlob);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/tts',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: 'hello world',
+            engine: 'voxtral',
+            voice: 'casual_male',
+            format: 'wav',
+          }),
+        }),
+      );
     });
   });
 

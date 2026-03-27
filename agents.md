@@ -1,131 +1,180 @@
 # Agents Workspace Guide
 
-This file defines the entry rules for both humans and agent systems. Read it first, then follow the linked documents in order before making any changes.
+Read this file before changing architecture, launchers, contracts, or documentation.
 
 ## Read Order
 
-1. `CLAUDE.md` — technical guide: stack, architecture, commands, env vars
-2. `agents.md` — roles, handoff protocol, working rules (this file)
-3. `structure.md` — normative repository structure contract
-4. `docs/agents/project-overview.md` — project summary and public APIs
-5. `docs/agents/architecture.md` — backend layers, port map, all pipelines, agentic bounded context
-6. `docs/agents/file-map.md` — map of all significant files
-7. `docs/agents/runbook.md` — run, test and curl examples
-8. `docs/agents/context.md` — current system status and active risks
-9. `docs/agents/adr.md` — recorded architecture decisions
-10. `docs/agents/task-log.md` — short memory of recent changes
+1. `README.md`
+2. `CLAUDE.md`
+3. `agents.md`
+4. `structure.md`
+5. `docs/agents/project-overview.md`
+6. `docs/agents/architecture.md`
+7. `docs/agents/file-map.md`
+8. `docs/agents/runbook.md`
+9. `docs/agents/context.md`
+10. `docs/agents/adr.md`
+11. `docs/agents/task-log.md`
 
 ## Project Intent
 
-- OCR application monorepo with vocabulary learning and TTS synthesis.
-- Backend: NestJS 10, clean/hexagonal architecture.
-- Frontend: React 18 + Vite 6, MVVM pattern.
-- OCR: PaddleOCR Python sidecar (primary); LM Studio — only for structuring raw text after OCR.
-- Persistence: SQLite via better-sqlite3 for saved documents, vocabulary words (SRS), and practice sessions.
-- TTS: Supertone + Piper (shared sidecar, port 8100), Kokoro (port 8200), F5 TTS (port 8300) — all Python FastAPI sidecars.
-- Agentic: `backend/src/agentic` — isolated bounded context for autonomous architecture planning and deployment via OpenAI Agents SDK.
+- local-first OCR application with study workflows
+- gateway + TCP service backend
+- SQLite-backed documents, vocabulary, and practice sessions
+- multi-engine TTS including Voxtral
+- optional agentic planning/deployment features
 
 ## Working Rules
 
-- Do not break the existing clean/hexagonal backend structure.
-- Read local context first, then edit.
-- Domain ports are abstract classes used as NestJS DI tokens — never import concrete infrastructure from application or presentation layers.
-- The core OCR runtime must work without an OpenAI API key. Agentic runtime is an optional dependency.
-- Any changes in `backend/src/agentic/*` must be aligned with `docs/agents/architecture.md`.
-- If a document is stale, update it alongside the code (ADR-005).
-- Build artifacts (`backend/dist`, `frontend/dist`, `*.tsbuildinfo`) are not source files and must not be treated as source of truth.
+- Preserve the clean-architecture direction inside `backend/src`.
+- Treat `backend/gateway`, `backend/services/*`, and `backend/shared` as the runtime split.
+- Do not import concrete infrastructure into application or presentation layers.
+- Keep the base OCR/TTS/document/vocabulary runtime independent from `OPENAI_API_KEY`.
+- Update documentation together with code when routes, ports, stores, launchers, or file layout change.
+- Do not treat `dist/`, `node_modules/`, `*.tsbuildinfo`, caches, or runtime logs as source of truth.
 - When changing the file tree, update `structure.md` and `docs/agents/file-map.md`.
-- When changing REST endpoints or Zod schemas, update DTOs, schemas and docs simultaneously.
+- When changing contracts, update gateway DTO assumptions, shared contracts, frontend API wrappers, and docs together.
 
-## Agent Roles
+## Architecture Guardrails
+
+### Backend
+
+- HTTP entrypoint: `backend/gateway`
+- TCP services: `backend/services/{ocr,tts,document,vocabulary,agentic}`
+- process boundary contracts: `backend/shared`
+- reusable implementation: `backend/src`
+
+Dependency expectations:
+
+- `backend/shared` contains only shared entities, ports, value objects, and TCP contracts
+- `backend/gateway` must stay thin: validate HTTP shape, proxy to TCP, map upstream errors
+- `backend/services/*` host service-specific Nest apps
+- `backend/src` remains the business-logic source reused by services
+
+### Frontend
+
+Current frontend layout is:
+
+- `features/` for domain stores and feature-local components
+- `shared/` for HTTP wrappers, types, and pure utilities
+- `ui/` for shared presentational primitives
+- `view/` for cross-feature composition surfaces
+
+Do not reintroduce the removed `model/` / `viewmodel/` structure.
+
+## Role Ownership
 
 ### Repository Architect
 
-- Owns the monorepo structure, backend layers and documentation integrity.
-- Must update `structure.md` and `docs/agents/file-map.md` whenever the file tree changes.
-- Ensures ADR-005 compliance: architectural changes are not complete without documentation updates.
+- Owns monorepo-wide structure, runtime split, and documentation integrity.
+- Must update `structure.md` and `docs/agents/file-map.md` when the tree changes.
 
 ### Backend Architect
 
-- Owns `backend/src/domain`, `application`, `infrastructure`, `presentation`.
-- Enforces strict dependency direction: `presentation → application → domain`; `infrastructure → domain/application`.
-- Ensures every new service or repository provides a corresponding domain port abstract class.
-- Prevents imports between `agentic` and OCR layers in either direction.
-- New ports must be bound as NestJS tokens via `useExisting` in the appropriate module and exported for cross-module consumers.
+- Owns `backend/src`, `backend/gateway`, `backend/services/*`, and `backend/shared`.
+- Protects the gateway/services/shared split.
+- Ensures new cross-process payloads are defined in `backend/shared/src/contracts/*`.
+- Ensures local and shared DI tokens stay aligned where both are used.
+
+### Gateway Owner
+
+- Owns `backend/gateway/*`.
+- Keeps HTTP concerns in the gateway only.
+- Preserves upstream error mapping behavior.
+- Updates user-facing API docs when routes or validation rules change.
+
+### Service Owner
+
+- Owns `backend/services/*`.
+- Keeps each service narrowly scoped to its bounded responsibility.
+- Ensures service app modules bind the required local and shared tokens.
 
 ### Agentic Architect
 
-- Owns `backend/src/agentic/*`.
-- Designs agent roles (Analyze/Scaffold/Initialization/Deployment coordinators), handoff flows, guardrails, tool contracts and the deployment workflow.
-- New agent roles, schemas and endpoints must be reflected in `docs/agents/architecture.md`.
-- Owns graceful-degradation behavior when the OpenAI API key is absent; current runtime still returns 5xx and needs an explicit degraded response path.
+- Owns `backend/src/agentic/*` and `backend/services/agentic/*`.
+- Documents schema changes, tool changes, and deployment behavior.
+- Responsible for future graceful degradation when `OPENAI_API_KEY` is absent.
 
 ### Frontend Architect
 
 - Owns `frontend/src/*`.
-- Preserves the current MVVM organisation: `model/` (API + types), `viewmodel/` (hooks), `view/` (components).
-- Hooks (`useOCR`, `useImageUpload`, `useHealthStatus`, `useSessionHistory`, `useTts`, `useSavedDocuments`, `useVocabulary`, `usePractice`, `useResultPanel`) hold view and orchestration logic; view components should stay rendering-focused.
-- Health lamp uses 4 colors: 🔵 blue (all OK), 🟢 green (GPU OK, partial), 🟡 yellow (CPU), 🔴 red (PaddleOCR down).
+- Preserves the feature/store/view split.
+- Keeps orchestration in hooks and stores, not in shared UI primitives.
+- Updates docs whenever store layout or result-panel flows change.
 
 ### OCR Integration Owner
 
-- Owns `services/ocr/paddleocr-service/` and backend integrations with PaddleOCR / LM Studio.
-- Any change to OCR or structuring sidecar contracts must be accompanied by updates to `docs/agents/runbook.md` and `docs/agents/context.md`.
+- Owns PaddleOCR integration and LM Studio structuring path.
+- Must update docs when OCR or structuring contracts change.
 
 ### TTS Integration Owner
 
-- Owns `services/tts/` sidecars and backend integrations (`ISupertonePort`, `IKokoroPort`, `IF5TtsPort`, `SynthesizeSpeechUseCase`, `TtsController`, `TtsModule`).
-- Any change to TTS sidecar contracts (request shape, response format, health endpoint) must be accompanied by updates to `docs/agents/runbook.md`, `docs/agents/context.md`, and the REST API documentation.
-- Responsible for GPU (ROCm ONNX Runtime) runtime setup and `LD_LIBRARY_PATH` correctness in the Linux launcher scripts and `package.json` scripts.
-- `piper` is served through the Supertone sidecar and routed by `SynthesizeSpeechUseCase`.
-- Preserve the current controller boundary: `TtsController` accepts multipart in memory and passes typed payloads into `SynthesizeSpeechUseCase`; temp-file handling does not belong in presentation.
+- Owns Supertone/Piper, Kokoro, F5, and Voxtral sidecars plus backend integrations.
+- Must update docs when sidecar contracts, launcher behavior, health fields, or frontend engine options change.
+- Preserves the current rule that launcher defaults are configured in `scripts/linux/tts-models.conf`.
 
 ### Documentation Steward
 
-- Owns `agents.md`, `structure.md`, `docs/agents/*` synchronisation.
-- Records current status, decisions and open questions without requiring a full code re-read.
+- Owns `README.md`, `CLAUDE.md`, `agents.md`, `structure.md`, `docs/agents/*`, and `docs/agent-ecosystem.md`.
+- Maintains current-state accuracy, not aspirational descriptions.
 
-## Task Handoff Protocol
+## Handoff Protocol
 
-Every task handed off between roles or agents must carry a minimum set of fields:
+Every significant task handoff must include:
 
-- `goal`: expected output.
-- `scope`: directories and files that may be changed.
-- `constraints`: architectural and runtime restrictions.
-- `inputs`: document references, API contracts, env vars, related decisions.
-- `deliverables`: code, tests, documents, migrations.
-- `verification`: how completion is confirmed.
+- `goal`
+- `scope`
+- `constraints`
+- `inputs`
+- `deliverables`
+- `verification`
 
-## Mandatory Context For Agent Tasks
+## Mandatory Checks Before Changes
 
-Before executing an agent-related task, the assignee must explicitly verify:
+Verify all applicable items before implementation:
 
-- whether there is a dependency on the OpenAI API key;
-- whether a local-first fallback is required;
-- whether public REST endpoints (`/api/ocr`, `/api/health`, `/api/tts`, `/api/documents`, `/api/vocabulary`, `/api/practice`, `/api/agents/*`) are changing;
-- whether Zod schemas / DTOs / guardrails in `agentic/core/` are changing;
-- whether `docs/agents/context.md` or `docs/agents/adr.md` needs updating;
-- whether health response fields (paddleOcrReachable, superToneReachable, kokoroReachable, f5TtsReachable, etc.) are being added/removed.
+- Are public routes changing?
+  - `/api/ocr`
+  - `/api/health`
+  - `/api/tts`
+  - `/api/documents/*`
+  - `/api/vocabulary/*`
+  - `/api/practice/*`
+  - `/api/agents/*`
+- Are TCP contracts in `backend/shared/src/contracts/*` changing?
+- Are health response fields changing?
+- Are launcher defaults or runtime ports changing?
+- Are frontend store boundaries or result-panel flows changing?
+- Are docs now stale because of this task?
 
 ## Primary Entry Points
 
-- Backend bootstrap: `backend/src/main.ts`
-- Root Nest module: `backend/src/presentation/app.module.ts`
-- OCR API: `backend/src/presentation/controllers/ocr.controller.ts`
-- Health API: `backend/src/presentation/controllers/health.controller.ts`
-- TTS API: `backend/src/presentation/controllers/tts.controller.ts`
-- Document API: `backend/src/presentation/controllers/document.controller.ts`
-- Vocabulary API: `backend/src/presentation/controllers/vocabulary.controller.ts`
-- Practice API: `backend/src/presentation/controllers/practice.controller.ts`
-- Agent APIs: `backend/src/agentic/presentation/controllers/agent-ecosystem.controller.ts`
+- Gateway bootstrap: `backend/gateway/src/main.ts`
+- Gateway root module: `backend/gateway/src/app.module.ts`
+- OCR TCP service: `backend/services/ocr/src/main.ts`
+- TTS TCP service: `backend/services/tts/src/main.ts`
+- Document TCP service: `backend/services/document/src/main.ts`
+- Vocabulary TCP service: `backend/services/vocabulary/src/main.ts`
+- Agentic TCP service: `backend/services/agentic/src/main.ts`
+- Frontend root: `frontend/src/App.tsx`
+
+## Current Runtime Facts
+
+- launcher defaults currently enable only Voxtral by default
+- health includes Voxtral fields
+- frontend shows only English Voxtral voices
+- Kokoro is blocked client-side for Cyrillic text
+- browser/perf automation may run with `LM_STUDIO_SMOKE_ONLY=true`
 
 ## Related Docs
 
-- Structure contract: `structure.md`
-- Overview: `docs/agents/project-overview.md`
-- Architecture: `docs/agents/architecture.md`
-- File map: `docs/agents/file-map.md`
-- Runbook: `docs/agents/runbook.md`
-- Current status: `docs/agents/context.md`
-- ADR register: `docs/agents/adr.md`
-- Change memory: `docs/agents/task-log.md`
+- `README.md`
+- `CLAUDE.md`
+- `structure.md`
+- `docs/agents/project-overview.md`
+- `docs/agents/architecture.md`
+- `docs/agents/file-map.md`
+- `docs/agents/runbook.md`
+- `docs/agents/context.md`
+- `docs/agents/adr.md`
+- `docs/agents/task-log.md`

@@ -1,8 +1,8 @@
 import { LMStudioVocabularyService, parseJsonResponse } from './lm-studio-vocabulary.service';
-import { LMStudioClient } from './lm-studio.client';
 import { LMStudioConfig } from '../config/lm-studio.config';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { ExerciseAttempt } from '../../domain/entities/exercise-attempt.entity';
+import { ILmStudioChatPort } from '../../domain/ports/lm-studio-chat.port';
 
 const mockWord = new VocabularyWord(
   'v1', 'beautiful', 'word', 'красивый', 'en', 'ru',
@@ -19,7 +19,7 @@ const mockAttempt = new ExerciseAttempt(
 
 describe('LMStudioVocabularyService', () => {
   let service: LMStudioVocabularyService;
-  let client: jest.Mocked<LMStudioClient>;
+  let client: jest.Mocked<ILmStudioChatPort>;
 
   beforeEach(() => {
     client = {
@@ -47,9 +47,11 @@ describe('LMStudioVocabularyService', () => {
       const result = await service.generateExercises([mockWord], 2);
 
       expect(client.chatCompletion).toHaveBeenCalledTimes(1);
-      const callArgs = client.chatCompletion.mock.calls[0][0];
-      expect(callArgs.model).toBe('qwen/qwen3.5-9b');
-      expect(callArgs.temperature).toBe(0.7);
+      expect(client.chatCompletion.mock.calls[0][1]).toBe('qwen/qwen3.5-9b');
+      expect(client.chatCompletion.mock.calls[0][2]).toEqual({
+        temperature: 0.7,
+        maxTokens: 4096,
+      });
       expect(result).toEqual(exercises);
     });
 
@@ -67,9 +69,9 @@ describe('LMStudioVocabularyService', () => {
 
       await service.generateExercises([], 1);
 
-      const callArgs = client.chatCompletion.mock.calls[0][0];
-      expect(callArgs.messages[1].content).toContain('target language: en');
-      expect(callArgs.messages[1].content).toContain('native language: ru');
+      const messages = client.chatCompletion.mock.calls[0][0];
+      expect(messages[1].content).toContain('target language: en');
+      expect(messages[1].content).toContain('native language: ru');
     });
   });
 
@@ -92,8 +94,10 @@ describe('LMStudioVocabularyService', () => {
       const result = await service.analyzeSession([mockWord], [mockAttempt]);
 
       expect(client.chatCompletion).toHaveBeenCalledTimes(1);
-      const callArgs = client.chatCompletion.mock.calls[0][0];
-      expect(callArgs.temperature).toBe(0.3);
+      expect(client.chatCompletion.mock.calls[0][2]).toEqual({
+        temperature: 0.3,
+        maxTokens: 4096,
+      });
       expect(result.overallScore).toBe(50);
       expect(result.wordAnalyses).toHaveLength(1);
     });
@@ -123,8 +127,8 @@ describe('LMStudioVocabularyService', () => {
 
       await service.analyzeSession([mockWord], [correctAttempt]);
 
-      const callArgs = client.chatCompletion.mock.calls[0][0];
-      expect(callArgs.messages[1].content).toContain('| Yes | N/A |');
+      const messages = client.chatCompletion.mock.calls[0][0];
+      expect(messages[1].content).toContain('| Yes | N/A |');
     });
   });
 });

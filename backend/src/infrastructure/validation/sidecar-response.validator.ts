@@ -24,9 +24,12 @@ export interface F5HealthBody {
   device: 'gpu' | 'cpu' | null;
 }
 
-export function validateF5HealthResponse(body: unknown): F5HealthBody {
+function validateTtsHealthResponse(
+  body: unknown,
+  label: string,
+): F5HealthBody {
   if (body === null || typeof body !== 'object') {
-    throw new Error('F5 health response is not an object');
+    throw new Error(`${label} health response is not an object`);
   }
   const obj = body as Record<string, unknown>;
   return {
@@ -34,4 +37,16 @@ export function validateF5HealthResponse(body: unknown): F5HealthBody {
     device:
       obj.device === 'gpu' || obj.device === 'cpu' ? obj.device : null,
   };
+}
+
+export function validateF5HealthResponse(body: unknown): F5HealthBody {
+  return validateTtsHealthResponse(body, 'F5');
+}
+
+export interface VoxtralHealthBody extends F5HealthBody {}
+
+export function validateVoxtralHealthResponse(
+  body: unknown,
+): VoxtralHealthBody {
+  return validateTtsHealthResponse(body, 'Voxtral');
 }

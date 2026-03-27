@@ -4,6 +4,7 @@ import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port'
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
 import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
+import { IVoxtralTtsPort } from '../../domain/ports/voxtral-tts.port';
 
 describe('HealthCheckUseCase', () => {
   let useCase: HealthCheckUseCase;
@@ -12,6 +13,7 @@ describe('HealthCheckUseCase', () => {
   let mockSupertone: jest.Mocked<ISupertonePort>;
   let mockKokoro: jest.Mocked<IKokoroPort>;
   let mockF5Tts: jest.Mocked<IF5TtsPort>;
+  let mockVoxtralTts: jest.Mocked<IVoxtralTtsPort>;
 
   beforeEach(() => {
     mockLmStudioHealth = {
@@ -35,6 +37,10 @@ describe('HealthCheckUseCase', () => {
       getHealth: jest.fn().mockResolvedValue({ reachable: false, device: null }),
       synthesize: jest.fn(),
     } as unknown as jest.Mocked<IF5TtsPort>;
+    mockVoxtralTts = {
+      getHealth: jest.fn().mockResolvedValue({ reachable: false, device: null }),
+      synthesize: jest.fn(),
+    } as unknown as jest.Mocked<IVoxtralTtsPort>;
 
     useCase = new HealthCheckUseCase(
       mockLmStudioHealth,
@@ -42,6 +48,7 @@ describe('HealthCheckUseCase', () => {
       mockSupertone,
       mockKokoro,
       mockF5Tts,
+      mockVoxtralTts,
     );
   });
 
@@ -61,6 +68,10 @@ describe('HealthCheckUseCase', () => {
       reachable: true,
       device: 'gpu',
     });
+    mockVoxtralTts.getHealth.mockResolvedValue({
+      reachable: true,
+      device: 'gpu',
+    });
 
     const result = await useCase.execute();
 
@@ -73,6 +84,8 @@ describe('HealthCheckUseCase', () => {
     expect(result.kokoroReachable).toBe(true);
     expect(result.f5TtsReachable).toBe(true);
     expect(result.f5TtsDevice).toBe('gpu');
+    expect(result.voxtralReachable).toBe(true);
+    expect(result.voxtralDevice).toBe('gpu');
   });
 
   it('should return empty model lists for services that are not reachable', async () => {
@@ -88,6 +101,7 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioModels).toEqual(['qwen/qwen3.5-9b']);
     expect(result.kokoroReachable).toBe(false);
     expect(result.f5TtsReachable).toBe(false);
+    expect(result.voxtralReachable).toBe(false);
     expect(mockPaddleOcrHealth.listModels).not.toHaveBeenCalled();
   });
 
@@ -106,6 +120,8 @@ describe('HealthCheckUseCase', () => {
     expect(result.kokoroReachable).toBe(false);
     expect(result.f5TtsReachable).toBe(false);
     expect(result.f5TtsDevice).toBeNull();
+    expect(result.voxtralReachable).toBe(false);
+    expect(result.voxtralDevice).toBeNull();
   });
 
   it('should keep reachability true even when listModels throws', async () => {
@@ -123,6 +139,7 @@ describe('HealthCheckUseCase', () => {
     expect(result.lmStudioModels).toEqual([]);
     expect(result.kokoroReachable).toBe(false);
     expect(result.f5TtsReachable).toBe(false);
+    expect(result.voxtralReachable).toBe(false);
   });
 
   it('returns the cached result while the TTL is still valid', async () => {
@@ -144,5 +161,6 @@ describe('HealthCheckUseCase', () => {
     expect(mockPaddleOcrHealth.isReachable).toHaveBeenCalledTimes(1);
     expect(mockLmStudioHealth.isReachable).toHaveBeenCalledTimes(1);
     expect(mockF5Tts.getHealth).toHaveBeenCalledTimes(1);
+    expect(mockVoxtralTts.getHealth).toHaveBeenCalledTimes(1);
   });
 });

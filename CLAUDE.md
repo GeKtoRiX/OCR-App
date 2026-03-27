@@ -1,493 +1,280 @@
-# OCR Web App — Claude Code Guide
+# OCR Web App - Claude Code Guide
 
 ## Project Overview
 
-Full-stack monorepo OCR web application. Accepts image uploads, extracts raw text via a local PaddleOCR sidecar, then structures that text into Markdown via LM Studio. Users can save OCR results as documents, build a vocabulary list with spaced repetition (SM-2), and practice vocabulary through interactive exercises. Also contains an `agentic` bounded context that provides multi-phase autonomous architecture planning and deployment workflows via the OpenAI Agents SDK.
+OCR Web App is a local-first OCR and study workflow:
 
-## Companion Docs
+- OCR extraction from images through PaddleOCR
+- Markdown structuring through LM Studio
+- saved documents in SQLite
+- vocabulary capture with SM-2 scheduling
+- practice sessions generated through LM Studio
+- TTS through Supertone/Piper, Kokoro, F5, and Voxtral
+- optional agentic planning/deployment endpoints backed by the OpenAI Agents SDK
 
-- `agents.md` — agent roles, handoff protocol, working rules. Read before making architectural changes.
-- `structure.md` — normative repo structure contract. Update together with code when the tree changes.
+The current backend runtime is no longer a single NestJS process. It is split into an HTTP gateway plus multiple TCP services.
+
+## Read First
+
+- `agents.md` - agent roles, handoff rules, working constraints
+- `structure.md` - repository structure contract
+- `docs/agents/architecture.md` - detailed architecture
+- `docs/agents/runbook.md` - current commands and endpoint examples
 
 ## Tech Stack
 
-- **Backend:** NestJS 10 (TypeScript, CommonJS)
-- **Frontend:** React 18 + Vite 6 (TypeScript, ESM)
-- **OCR Engine:** PaddleOCR sidecar service (Python FastAPI, ROCm GPU support, port 8000)
-- **TTS Engines:** `services/tts/` — Supertone + Piper (shared sidecar, port 8100), Kokoro (port 8200), F5 TTS (port 8300); Python FastAPI, GPU support
-- **LLM:** LM Studio (local, OpenAI-compatible API — text structuring + vocabulary exercise generation)
-- **Persistence:** SQLite via `better-sqlite3` — saved documents, vocabulary words (SRS), practice sessions
-- **Agentic:** OpenAI Agents SDK (`@openai/agents`) — architecture planning & deployment
-- **Testing:** Jest (backend), Vitest + Testing Library (frontend)
-- **Deployment:** Direct Node.js process (`npm run build` + `node backend/dist/main.js`)
+- Backend: NestJS 10, CommonJS, monorepo mode
+- Frontend: React 18 + Vite 6 + TypeScript
+- Frontend state: Zustand stores plus local orchestration hooks
+- OCR: PaddleOCR Python FastAPI sidecar on `:8000`
+- TTS:
+  - Supertone + Piper sidecar on `:8100`
+  - Kokoro sidecar on `:8200`
+  - F5 sidecar on `:8300`
+  - Voxtral adapter on `:8400`
+- LLM: LM Studio OpenAI-compatible API on `:1234`
+- Persistence: SQLite via `better-sqlite3`
+- Agentic: `@openai/agents`
 
-## Architecture
+## Backend Topology
 
-### Backend — Clean/Hexagonal Architecture
-
+```text
+backend/
+├── gateway/          HTTP API + static frontend hosting
+├── services/
+│   ├── ocr/          TCP 3901
+│   ├── tts/          TCP 3902
+│   ├── document/     TCP 3903
+│   ├── vocabulary/   TCP 3904
+│   └── agentic/      TCP 3905
+├── shared/           @ocr-app/shared workspace package
+└── src/              reusable clean-architecture implementation reused by services
 ```
+
+### Gateway
+
+`backend/gateway` is the HTTP entrypoint:
+
+- serves `frontend/dist`
+- applies throttling
+- exposes `/api/*`
+- maps upstream microservice failures to HTTP responses
+
+Main files:
+
+- `backend/gateway/src/main.ts`
+- `backend/gateway/src/app.module.ts`
+- `backend/gateway/src/*/gateway-*.controller.ts`
+
+### Services
+
+Each TCP service is a thin Nest app that reuses the implementation under `backend/src`:
+
+- OCR service binds OCR + LM Studio structuring
+- TTS service binds all TTS ports including Voxtral
+- document service binds saved document persistence
+- vocabulary service binds vocabulary + practice persistence and LM Studio exercise generation
+- agentic service binds `backend/src/agentic/*`
+
+### Shared Package
+
+`backend/shared` exports:
+
+- shared domain entities
+- shared domain ports
+- shared value objects
+- shared TCP contracts
+
+This package is the process boundary contract between gateway and services.
+
+## Reusable Implementation Layout
+
+`backend/src` is still the source of truth for domain/application/infrastructure/presentation logic reused by the service apps.
+
+```text
 backend/src/
-├── domain/           # Entities + Ports (no dependencies)
-│   ├── entities/     # ImageData, OCRResult, SavedDocument, VocabularyWord,
-│   │                 # PracticeSession, ExerciseAttempt
-│   ├── ports/        # 11 abstract class ports (see port table below)
-│   └── constants.ts  # NO_TEXT_DETECTED fallback constant
-├── application/      # Use cases + DTOs (depends on domain only)
-│   ├── dto/          # ProcessImageInput/Output, HealthCheckOutput,
-│   │                 # SynthesizeSpeechInput/Output, SavedDocumentOutput,
-│   │                 # VocabularyOutput, PracticeDTO types
-│   ├── use-cases/    # ProcessImageUseCase, HealthCheckUseCase,
-│   │                 # SynthesizeSpeechUseCase, SavedDocumentUseCase,
-│   │                 # VocabularyUseCase, PracticeUseCase
-│   └── utils/        # sm2.ts (SM-2 spaced repetition algorithm)
-├── infrastructure/   # External integrations (implements ports)
-│   ├── config/       # LMStudioConfig, PaddleOCRConfig, SupertoneConfig,
-│   │                 # KokoroConfig, F5TtsConfig, SqliteConfig (env vars)
-│   ├── lm-studio/    # LMStudioClient (ILmStudioHealthPort),
-│   │                 # LMStudioOCRService (fallback), LMStudioStructuringService,
-│   │                 # LMStudioVocabularyService (IVocabularyLlmService)
-│   ├── paddleocr/    # PaddleOCRService (primary IOCRService),
-│   │                 # PaddleOCRHealthService (IPaddleOcrHealthPort)
-│   ├── supertone/    # SupertoneService (ISupertonePort)
-│   ├── kokoro/       # KokoroService (IKokoroPort)
-│   ├── f5/           # F5TtsService (IF5TtsPort)
-│   └── sqlite/       # SqliteConnectionProvider, SqliteSavedDocumentRepository,
-│                     # SqliteVocabularyRepository, SqlitePracticeSessionRepository
-├── presentation/     # NestJS layer (controllers, modules, DTOs)
-│   ├── controllers/  # OcrController, HealthController, TtsController,
-│   │                 # DocumentController, VocabularyController, PracticeController
-│   ├── dto/          # OcrResponseDto, HealthResponseDto, DocumentDto,
-│   │                 # VocabularyDto, PracticeDto
-│   ├── modules/      # DatabaseModule, OcrModule, HealthModule, TtsModule,
-│   │                 # DocumentModule, VocabularyModule
-│   └── app.module.ts # Root module
-├── agentic/          # Autonomous agent bounded context (isolated from OCR layers)
-│   ├── core/         # Zod schemas, runtime types, env-driven model/tracing config
-│   ├── agents/       # Agent factory: Analyze/Scaffold/Initialization/Deployment coordinators
-│   ├── guardrails/   # Phase-level and deployment output validation guardrails
-│   ├── tools/        # architecture-tools, deployment-tools (SDK function tools)
-│   ├── application/  # AgentEcosystemService — phase orchestration via withTrace
-│   └── presentation/ # AgentEcosystemController, DTOs, AgentEcosystemModule
-└── main.ts           # Bootstrap (port 3000)
+├── domain/
+├── application/
+├── infrastructure/
+├── presentation/
+└── agentic/
 ```
 
-**DI Pattern:** Abstract class ports as NestJS injection tokens → concrete infrastructure implementations bound via `useExisting` in the appropriate module. Controllers inject only use cases — never infrastructure services directly.
+Dependency direction:
 
-**Dependency rule:** `domain` ← `application` ← `infrastructure`/`presentation`. `agentic` is isolated and does not import from OCR layers.
-
-### Domain Ports
-
-| Port | Methods | Bound in |
-|------|---------|----------|
-| `IOCRService` | `extractText(image)` | OcrModule |
-| `ITextStructuringService` | `structure(text)` | OcrModule |
-| `IPaddleOcrHealthPort` | `isReachable()`, `listModels()`, `getDevice()` | OcrModule |
-| `ILmStudioHealthPort` | `isReachable()`, `listModels()` | OcrModule |
-| `ISupertonePort` | `synthesize(input)`, `checkHealth()` | TtsModule |
-| `IKokoroPort` | `synthesize(input)`, `checkHealth()` | TtsModule |
-| `IF5TtsPort` | `synthesize(input)`, `getHealth()` | TtsModule |
-| `ISavedDocumentRepository` | `create`, `findAll`, `findById`, `update`, `delete` | DocumentModule |
-| `IVocabularyRepository` | `create`, `findAll`, `findByWord`, `findDueForReview`, `updateSrs`, `update`, `delete` | VocabularyModule |
-| `IPracticeSessionRepository` | sessions + attempts CRUD | VocabularyModule |
-| `IVocabularyLlmService` | `generateExercises`, `analyzeSession` | VocabularyModule |
-
-### NestJS Module Map
-
-```
-AppModule
-├── DatabaseModule          # SqliteConfig + SqliteConnectionProvider (singleton)
-├── LmStudioModule          # LMStudioConfig + LMStudioClient + ILmStudioHealthPort (shared)
-├── OcrModule               # imports LmStudioModule; provides/exports IPaddleOcrHealthPort,
-│                           #   IOCRService, ITextStructuringService
-├── HealthModule            # imports OcrModule + TtsModule + LmStudioModule for port tokens
-├── TtsModule               # provides/exports ISupertonePort, IKokoroPort, IF5TtsPort;
-│                           #   provides SynthesizeSpeechUseCase
-├── DocumentModule          # imports DatabaseModule; provides ISavedDocumentRepository,
-│                           #   SavedDocumentUseCase
-├── VocabularyModule        # imports DatabaseModule + LmStudioModule; provides IVocabularyRepository,
-│                           #   IPracticeSessionRepository, IVocabularyLlmService,
-│                           #   VocabularyUseCase, PracticeUseCase
-└── AgentEcosystemModule    # agentic bounded context (optional; without API key the endpoints return 5xx)
+```text
+domain <- application <- infrastructure / presentation
 ```
 
-### Sidecar Architecture
+The `agentic` bounded context remains isolated from the OCR/TTS/document/vocabulary layers.
 
-```
-┌─────────────────┐    HTTP    ┌──────────────────┐    HTTP    ┌─────────────────────┐
-│   Frontend      │◄──────────►│  Backend (NestJS) │◄──────────►│  PaddleOCR Sidecar  │
-│   React App     │            │  port 3000        │            │  Python FastAPI     │
-└─────────────────┘            └──────────────────┘            │  port 8000          │
-                                   │   │   │   │               └─────────────────────┘
-                              HTTP │   │   │   │               ┌─────────────────────┐
-                                   │   │   │   └──────────────►│  Supertone Sidecar  │
-                                   │   │   │                   │  port 8100          │
-                                   │   │   │                   └─────────────────────┘
-                                   │   │   │                   ┌─────────────────────┐
-                                   │   │   └──────────────────►│  Kokoro Sidecar     │
-                                   │   │                       │  port 8200          │
-                                   │   │                       └─────────────────────┘
-                                   │   │                       ┌─────────────────────┐
-                                   │   └──────────────────────►│  F5 TTS Sidecar     │
-                                   │                           │  port 8300          │
-                              ┌────▼─────┐                     └─────────────────────┘
-                              │ LM Studio │
-                              │ port 1234 │
-                              └──────────┘
-```
-
-**PaddleOCR Sidecar Endpoints:**
-
-- `GET /health` — Health check (returns `{ status, model_loaded, device }`)
-- `POST /api/extract/base64` — Extract text from base64-encoded image
-- `GET /models` — List loaded OCR models
-
-### Pipelines
-
-#### OCR Pipeline
-
-1. Frontend uploads image → `POST /api/ocr` (multipart)
-2. `OcrController` validates MIME type and size, creates `ImageData` entity
-3. `ProcessImageUseCase` calls `IOCRService` → `PaddleOCRService` → sidecar `/api/extract/base64`
-4. PaddleOCR returns raw text; empty result triggers `NO_TEXT_DETECTED` fallback
-5. `ITextStructuringService` → `LMStudioStructuringService` sends raw text to LM Studio
-6. LM Studio returns structured Markdown; controller responds `{ rawText, markdown, filename }`
-
-#### TTS Pipeline
-
-1. Frontend sends `POST /api/tts` with `{ text, engine?, voice?, lang?, speed?, ... }`
-2. `TtsController` validates text (non-empty, ≤ 5000 chars), passes to `SynthesizeSpeechUseCase`
-3. `SynthesizeSpeechUseCase` routes by `engine`: `supertone`/`piper` → `ISupertonePort`, `kokoro` → `IKokoroPort`, `f5` → `IF5TtsPort` (default: supertone)
-4. Sidecar returns `Buffer`; controller responds with `audio/wav`
-
-#### Health Pipeline
-
-1. `GET /api/health` → `HealthController` → `HealthCheckUseCase`
-2. Use case calls all 5 health ports concurrently, aggregates into `HealthCheckOutput`
-3. Returns `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, f5TtsReachable, f5TtsDevice }`
-
-#### Document Pipeline
-
-1. OCR result → `POST /api/documents` → `DocumentController` → `SavedDocumentUseCase`
-2. `ISavedDocumentRepository` → `SqliteSavedDocumentRepository` → SQLite (WAL mode)
-3. CRUD at `/api/documents/:id`
-
-#### Vocabulary + Practice Pipeline
-
-1. Text selection → `POST /api/vocabulary` → `VocabularyUseCase` → `IVocabularyRepository`
-2. `GET /api/vocabulary/review/due` returns words due for review (SM-2 `nextReviewAt` index)
-3. `POST /api/practice/start` → `PracticeUseCase` picks due words, calls `IVocabularyLlmService.generateExercises`
-4. `POST /api/practice/answer` → SM-2 update on `IVocabularyRepository.updateSrs`
-5. `POST /api/practice/complete` → `IVocabularyLlmService.analyzeSession` → `IPracticeSessionRepository`
-
-### Frontend — Zustand + FSD-like Layout
-
-```
-frontend/src/
-├── features/         # Domain-specific code; each folder owns its store, hooks, and components
-│   ├── ocr/          # ocr.store.ts, useImageUpload.ts, DropZone.tsx
-│   ├── tts/          # useTts.ts
-│   ├── documents/    # documents.store.ts
-│   ├── vocabulary/   # vocabulary.store.ts, useVocabContextMenu.ts,
-│   │                 # VocabularyPanel.tsx, VocabContextMenu.tsx, VocabAddForm.tsx
-│   ├── practice/     # practice.store.ts, PracticeView.tsx
-│   └── health/       # health.store.ts (POLL_INTERVAL_MS = 30 s)
-├── shared/           # Cross-feature utilities; no upward imports
-│   ├── api.ts        # processImage(), checkHealth(), generateSpeech(),
-│   │                 # document/vocabulary/practice fetch wrappers
-│   ├── types.ts      # OcrResponse, HealthResponse, TtsSettings (4 engines),
-│   │                 # SavedDocument, VocabularyWord, Exercise, AnswerResult,
-│   │                 # SessionAnalysis, HistoryEntry, LanguagePair + constants
-│   └── lib/          # health-status.ts (computeStatus, HEALTH_LABELS),
-│                     # text-utils.ts, clipboard.ts
-├── ui/               # Stateless shared primitives
-│   ├── StatusBar.tsx       # Loading spinner, success/error messages
-│   └── StatusLight.tsx     # 4-color health lamp (blue/green/yellow/red)
-├── view/             # Cross-feature composite components
-│   ├── HistoryPanel.tsx    # 3-tab panel; zero props — reads all stores directly
-│   ├── ResultPanel.tsx     # tabs/edit/save/TTS panel; receives result + callbacks as props
-│   └── useResultPanel.ts   # Local hook: copy/edit/tabs/TTS/vocab-menu state
-├── styles/           # base.css (CSS variables, dark theme), layout.css (app shell, panels)
-├── App.tsx           # Layout + health polling useEffect + cross-feature handlers
-└── main.tsx          # React DOM entry
-```
-
-**State management:** Five Zustand stores (singletons). `HistoryPanel` has zero props — it reads
-stores directly, eliminating all prop drilling. `App.tsx` orchestrates health polling and
-cross-feature coordination (e.g. `practice.reset()` + `vocab.refresh()` on session end).
-
-**Store summary:**
-
-| Store | Key state | Notes |
-|-------|-----------|-------|
-| `ocr.store.ts` | `status`, `result`, `entries`, `activeHistoryId` | Merges OCR + session history; AbortController is a closure var inside `create()` |
-| `documents.store.ts` | `documents`, `activeSavedId`, `saveStatus` | Save-status timer is a closure var inside `create()` |
-| `vocabulary.store.ts` | `words`, `langPair`, `dueCount`, `existingWordsSet` | `setLangPair()` triggers reload internally |
-| `practice.store.ts` | `phase`, `exercises`, `currentIndex`, `currentExercise` | 8-phase state machine; derived `currentExercise`/`isLastExercise` in store |
-| `health.store.ts` | `color`, `tooltip` | Minimal store; polling runs in `useEffect` in `App.tsx` |
-
-**Local hooks** (component-scoped, not stores): `useImageUpload`, `useTts`, `useVocabContextMenu`,
-`useResultPanel`.
-
-**No path aliases** — all imports use relative paths.
-
-## API Endpoints
+## Key Runtime Flows
 
 ### OCR
 
-| Method | Path | Description | Body | Response |
-|--------|------|-------------|------|----------|
-| POST | `/api/ocr` | Process image → OCR + Markdown | `multipart/form-data` field `image` | `{ rawText, markdown, filename }` |
-| GET | `/api/health` | Backend + sidecar health check | — | `{ paddleOcrReachable, paddleOcrModels, paddleOcrDevice, lmStudioReachable, lmStudioModels, superToneReachable, kokoroReachable, f5TtsReachable, f5TtsDevice }` |
-| POST | `/api/tts` | Synthesize text → WAV audio | JSON for `supertone`/`piper`/`kokoro`, multipart for `f5` (`text`, `refText`, `refAudio`, `removeSilence`) | `audio/wav` binary |
+1. Gateway receives `POST /api/ocr`.
+2. OCR TCP service validates and routes to PaddleOCR.
+3. PaddleOCR returns raw text.
+4. LM Studio structures raw text into Markdown.
+5. Gateway returns `{ rawText, markdown, filename }`.
 
-**Validation:** PNG/JPEG/WebP/BMP/TIFF only, max 10 MB. Unsupported MIME → 400. Service failure → 502. TTS text empty or > 5000 chars → 400.
+### Health
 
-**TTS engines:** `supertone` (default) — voice M1–M5/F1–F5, lang en/ko/es/pt/fr; `piper` — curated downloadable voices via the same sidecar; `kokoro` — voices such as `af_heart`, `af_bella`, `am_fenrir`, `bm_fable`; `f5` — upload reference audio + transcript.
+1. Gateway receives `GET /api/health`.
+2. Gateway asks OCR service and TTS service over TCP.
+3. OCR service reports PaddleOCR + LM Studio health.
+4. TTS service reports Supertone, Kokoro, F5, and Voxtral health.
+5. Gateway merges the payloads.
 
-### Documents
+Current response fields:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/documents` | Save OCR result as document |
-| GET | `/api/documents` | List all saved documents |
-| GET | `/api/documents/:id` | Get document by ID |
-| PUT | `/api/documents/:id` | Update document markdown |
-| DELETE | `/api/documents/:id` | Delete document |
+- `paddleOcrReachable`
+- `paddleOcrModels`
+- `paddleOcrDevice`
+- `lmStudioReachable`
+- `lmStudioModels`
+- `superToneReachable`
+- `kokoroReachable`
+- `f5TtsReachable`
+- `f5TtsDevice`
+- `voxtralReachable`
+- `voxtralDevice`
 
-### Vocabulary
+### TTS
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/vocabulary` | Add vocabulary word |
-| GET | `/api/vocabulary` | List words (filter: `?targetLang=en&nativeLang=ru`) |
-| GET | `/api/vocabulary/review/due` | Words due for review (`?limit=20`) |
-| PUT | `/api/vocabulary/:id` | Update translation/context |
-| DELETE | `/api/vocabulary/:id` | Delete word |
+Gateway `POST /api/tts` accepts:
 
-### Practice
+- JSON for `supertone`, `piper`, `kokoro`, `voxtral`
+- multipart for `f5`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/practice/start` | Start practice session |
-| POST | `/api/practice/answer` | Submit exercise answer |
-| POST | `/api/practice/complete` | Complete session + get LLM analysis |
-| GET | `/api/practice/sessions` | Recent sessions |
-| GET | `/api/practice/stats/:vocabularyId` | Attempt history for a word |
+`SynthesizeSpeechUseCase` routes by engine:
 
-### PaddleOCR Sidecar
+- `voxtral` -> `IVoxtralTtsPort`
+- `f5` -> `IF5TtsPort`
+- `kokoro` -> `IKokoroPort`
+- default / `supertone` / `piper` -> `ISupertonePort`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/extract/base64` | Extract text from base64-encoded img |
-| GET | `/models` | List loaded OCR models |
+TTS validation at the gateway:
+
+- `text` required
+- max text length `5000`
+- F5 `refAudio` limited to `50 MB`
+
+### Document / Vocabulary / Practice
+
+- documents and vocabulary/practice are split into separate services
+- document DB defaults to `data/documents.sqlite`
+- vocabulary/practice DB defaults to `data/vocabulary.sqlite`
 
 ### Agentic
 
-| Method | Path | Description | Body |
-|--------|------|-------------|------|
-| POST | `/api/agents/architecture` | Run 3-phase planning (analyze/scaffold/init) | `{ request: string }` |
-| POST | `/api/agents/deploy` | Plan + materialize agent ecosystem on disk | `{ request: string, workspaceName?: string }` |
+Gateway routes:
 
-Agentic endpoints require `OPENAI_API_KEY` and `@openai/agents` runtime. Without the key, these endpoints currently return a server error but do not break the OCR/TTS runtime.
+- `POST /api/agents/architecture`
+- `POST /api/agents/deploy`
 
-## Key Paths & Aliases
+Agentic execution still lives in `backend/src/agentic/*`, but is hosted by a dedicated TCP service. It requires `OPENAI_API_KEY`.
 
-Backend tsconfig path aliases (also mirrored in `jest.config.js`):
+## Frontend Structure
 
-- `@domain/*` → `src/domain/*`
-- `@application/*` → `src/application/*`
-- `@infrastructure/*` → `src/infrastructure/*`
-- `@presentation/*` → `src/presentation/*`
-
-## Commands
-
-```bash
-# Development
-npm run dev:backend          # NestJS watch mode (port 3000)
-npm run dev:frontend         # Vite dev server (port 5173, proxies /api → :3000)
-npm run dev:paddleocr        # Start PaddleOCR sidecar locally (port 8000)
-npm run smoke:paddleocr      # Smoke test sidecar startup
-npm run dev:supertone        # Start Supertone + Piper sidecar locally (port 8100)
-npm run smoke:supertone      # Smoke test Supertone + Piper sidecar (must be running)
-npm run dev:kokoro           # Start Kokoro TTS sidecar locally (port 8200)
-npm run smoke:kokoro         # Smoke test Kokoro sidecar
-npm run dev:f5               # Start F5 TTS sidecar locally (port 8300)
-npm run smoke:f5             # Smoke test F5 sidecar
-npm run smoke:lmstudio       # Backend LM Studio structuring smoke
-npm run smoke:all            # All sidecar smokes
-
-# Dedicated launchers
-bash scripts/linux/ocr.sh         # start OCR mode, Ctrl+C to stop all project services
-bash scripts/linux/tts.sh         # start TTS mode
-bash scripts/linux/ocr-tts.sh     # start full stack
-bash scripts/linux/stack.sh       # interactive stack menu
-bash scripts/linux/ocr-tts.sh stop    # stop all services
-bash scripts/linux/ocr-tts.sh status  # show lamp + health
-bash scripts/linux/ocr-tts.sh wipe    # stop + remove build artifacts
-
-# Build
-npm run build                # Build frontend then backend
-npm run start:prod           # Run production build
-
-# Testing
-npm test --workspace=backend               # Jest (backend unit + integration)
-npm run test:cov --workspace=backend       # Jest with coverage
-npm test --workspace=frontend              # Vitest (frontend unit)
-npm run test:cov --workspace=frontend      # Frontend coverage
-npm run test:cov                           # Both frontend + backend coverage
-npm run test:e2e:api                       # Backend API e2e
-npm run test:e2e:integration               # Backend integration tests against live deps
-npm run test:e2e:browser                   # Playwright browser e2e on production-like stack
-
-# Performance
-npm run perf:api                           # API latency benchmark
-npm run perf:browser                       # Browser workflow benchmark
-npm run perf:phase4                        # Full Phase 4 benchmark harness
+```text
+frontend/src/
+├── features/
+│   ├── ocr/
+│   ├── tts/
+│   ├── documents/
+│   ├── vocabulary/
+│   ├── practice/
+│   └── health/
+├── shared/
+│   ├── api.ts
+│   ├── types.ts
+│   └── lib/
+├── ui/
+├── view/
+├── styles/
+├── App.tsx
+└── main.tsx
 ```
 
-`test:e2e:browser` and `perf:phase4` rebuild the app, use `tmp/test-db/browser-e2e.sqlite`, and set `LM_STUDIO_SMOKE_ONLY=true` so those harnesses do not make real LM Studio content-generation calls.
+Current frontend architecture is not MVVM anymore. It is a feature-oriented layout with:
 
-## Environment Variables
+- Zustand stores in `features/*/*.store.ts`
+- local hooks for orchestration (`useImageUpload`, `useTts`, `useResultPanel`, `useVocabContextMenu`)
+- stateless shared UI primitives in `ui/`
+- cross-feature composite surfaces in `view/`
 
-### OCR Runtime
+### Frontend Stores
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | Backend server port |
-| `LM_STUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio API base URL |
-| `STRUCTURING_MODEL` | `qwen/qwen3.5-9b` | Text structuring model (Markdown output) |
-| `VOCABULARY_MODEL` | falls back to `STRUCTURING_MODEL` | Model for vocabulary exercises and session analysis |
-| `LM_STUDIO_TIMEOUT` | `120000` | LM Studio request timeout (ms) |
-| `PADDLEOCR_HOST` | `localhost` | PaddleOCR sidecar host |
-| `PADDLEOCR_PORT` | `8000` | PaddleOCR sidecar port |
-| `PADDLEOCR_TIMEOUT` | `30000` | PaddleOCR request timeout (ms) |
+- `ocr.store.ts`: OCR request state + session history
+- `documents.store.ts`: saved documents + active saved selection
+- `vocabulary.store.ts`: words, due count, language pair
+- `practice.store.ts`: current session and exercise flow
+- `health.store.ts`: lamp color and tooltip
 
-### Supertone TTS
+### Frontend TTS Notes
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SUPERTONE_HOST` | `localhost` | Supertone TTS sidecar host |
-| `SUPERTONE_PORT` | `8100` | Supertone TTS sidecar port |
-| `SUPERTONE_TIMEOUT` | `120000` | Supertone request timeout (ms) |
-| `SUPERTONE_MODEL` | `supertonic-2` | supertonic model name (auto-downloaded) |
+- Voxtral is available as a frontend engine
+- the frontend currently exposes only English Voxtral preset voices
+- Kokoro is blocked client-side for Cyrillic input
 
-### Kokoro TTS
+## Launcher Notes
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KOKORO_HOST` | `localhost` | Kokoro TTS sidecar host |
-| `KOKORO_PORT` | `8200` | Kokoro TTS sidecar port |
-| `KOKORO_TIMEOUT` | `120000` | Kokoro request timeout (ms) |
-| `KOKORO_ONNX_MODEL_PATH` | `services/tts/kokoro-service/models/kokoro-v1.0.onnx` | Local ONNX model path |
-| `KOKORO_ONNX_VOICES_PATH` | `services/tts/kokoro-service/models/voices-v1.0.bin` | Local ONNX voices blob path |
-| `KOKORO_ONNX_MODEL_URL` | upstream release URL | Download source for `kokoro-v1.0.onnx` if missing |
-| `KOKORO_ONNX_VOICES_URL` | upstream release URL | Download source for `voices-v1.0.bin` if missing |
+Launcher entry scripts:
 
-### F5 TTS
+- `scripts/linux/ocr.sh`
+- `scripts/linux/tts.sh`
+- `scripts/linux/ocr-tts.sh`
+- `scripts/linux/stack.sh`
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `F5_TTS_HOST` | `localhost` | F5 TTS sidecar host |
-| `F5_TTS_PORT` | `8300` | F5 TTS sidecar port |
-| `F5_TTS_TIMEOUT` | `180000` | F5 TTS request timeout (ms) |
+Shared logic:
 
-### SQLite
+- `scripts/linux/ocr-common.sh`
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SQLITE_DB_PATH` | `./data/ocr-app.db` | SQLite database file path |
+Launcher-side TTS defaults:
 
-### Agentic Runtime (optional — only needed for `/api/agents/*`)
+- configured in `scripts/linux/tts-models.conf`
+- current default is Voxtral only
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | — | Required for OpenAI Agents SDK |
-| `OPENAI_AGENT_SUPERVISOR_MODEL` | `gpt-5` | Model for supervisor/coordinator roles |
-| `OPENAI_AGENT_PLANNER_MODEL` | `gpt-5` | Model for planner roles |
-| `OPENAI_AGENT_SCAFFOLD_MODEL` | `gpt-5-mini` | Model for scaffold/deploy specialists |
-| `OPENAI_AGENT_MAPPER_MODEL` | `gpt-5-nano` | Model for dependency mapper |
-| `AGENT_TRACE_WORKFLOW_NAME` | `autonomous-agent-ecosystem` | Tracing workflow name |
-| `AGENT_DEPLOY_ROOT` | `generated-agent-ecosystems` | Output directory for generated bundles |
-
-## Testing Conventions
-
-- Test files: `*.spec.ts` / `*.spec.tsx` — colocated alongside source files
-- Backend: mocks via `jest.fn()`, e2e uses `@nestjs/testing` with `overrideProvider`
-- Frontend store tests: use `useXxxStore.setState(initialState)` in `beforeEach` to reset;
-  call actions via `useXxxStore.getState().action()` — no `renderHook` needed.
-- Frontend component tests: mock stores with `vi.mock('../features/xxx/xxx.store')`;
-  mock shared API with `vi.mock('../shared/api')`.
-- E2E test (`app.e2e.spec.ts`): bootstraps full NestJS app with mocked providers, tests real HTTP
-- Integration test (`integration.spec.ts`): backend-level integration scenarios (requires live sidecars; skips gracefully)
-
-## Important Patterns
-
-- **Dependency Inversion:** Domain ports are abstract classes used as NestJS provider tokens. Never import infrastructure from domain/application layers. Controllers inject only use cases — never infrastructure services or repositories directly.
-- **Port binding:** Each module binds concrete services to ports via `useExisting` and exports the port token. Cross-module consumers import the module and inject the port token.
-- **Error handling:** `ProcessImageUseCase` returns fallback `NO_TEXT_DETECTED` when OCR returns empty. `OcrController` wraps processing errors as HTTP 502.
-- **Static serving:** Backend serves built frontend via `@nestjs/serve-static` from `frontend/dist/`.
-- **Sidecar Pattern:** All Python sidecars live under `services/` and communicate with the NestJS backend via HTTP API.
-- **Text Structuring:** LM Studio is used (1) after OCR to convert raw text into Markdown, and (2) to generate vocabulary exercises and analyze practice sessions.
-- **LmStudioModule singleton:** `LMStudioConfig`, `LMStudioClient`, and `ILmStudioHealthPort` are owned by `LmStudioModule`; `OcrModule`, `VocabularyModule`, and `HealthModule` import it. Never provide these outside `LmStudioModule`.
-- **DatabaseModule singleton:** `SqliteConnectionProvider` is owned by `DatabaseModule`; `DocumentModule` and `VocabularyModule` import it. Never provide `SqliteConnectionProvider` outside `DatabaseModule`.
-- **SM-2 Algorithm:** `application/utils/sm2.ts` implements `calculateSm2`, `computeErrorPosition`, `computeQualityRating`. Used by `PracticeUseCase` on answer submission.
-- **Zustand closure vars:** AbortController (`ocr.store`) and save-status timer (`documents.store`) are closure variables inside `create()`, not Zustand state. This prevents dangling references when store state is reset between tests.
-- **Zero-prop HistoryPanel:** `HistoryPanel` imports stores directly — do not add props to it for data that is already in a store.
-- **Agentic Isolation:** `agentic` bounded context must not break local OCR runtime. Without `OPENAI_API_KEY`, `/api/agents/*` currently returns 5xx while the rest of the app stays available.
-- **Schema-driven Handoffs:** Agentic phase payloads are validated by Zod schemas and output guardrails. Change schema + docs together.
-
-## Supertone TTS Sidecar
+## Important Commands
 
 ```bash
-# Start sidecar locally (requires Python + supertonic + onnxruntime-rocm)
-cd services/tts/supertone-service
-source .venv/bin/activate
-SUPERTONE_USE_GPU=true python -m uvicorn main:app --host 0.0.0.0 --port 8100
-
-# On AMD ROCm systems, torch lib dir must be in LD_LIBRARY_PATH:
-# export LD_LIBRARY_PATH=$(python -c "import torch; print(torch.__path__[0])")/lib:$LD_LIBRARY_PATH
-
-# Model supertonic-2 auto-downloads on first run (~300 MB)
-# - Supertone TTS Sidecar: http://localhost:8100/health
+npm run build
+npm run test:frontend
+npm run test:backend
+npm run test:e2e:api
+npm run test:e2e:integration
+npm run test:e2e:launcher
+npm run test:e2e:browser
 ```
 
-**Important:** GPU provider list must be mutated in-place (`.clear()` + `.extend()`), not reassigned — `supertonic/loader.py` holds a reference to the original list object.
-
-**Frontend integration:** ResultPanel has a collapsible TTS panel. Settings: voice (M1–M5, F1–F5), language (en/ko/es/pt/fr), speed (0.5–2.0×), quality (total_steps 1–20). Audio is returned as WAV (44100 Hz) and auto-downloaded.
-
-## Kokoro TTS Sidecar
+Manual prod-style boot:
 
 ```bash
-cd services/tts/kokoro-service
-source .venv/bin/activate
-pip uninstall -y onnxruntime
-pip install onnxruntime-rocm==1.22.2.post1
-python -m uvicorn main:app --host 0.0.0.0 --port 8200
-# - Kokoro TTS Sidecar: http://localhost:8200/health
+npm run build
+node backend/dist/services/ocr/src/main.js
+node backend/dist/services/tts/src/main.js
+node backend/dist/services/document/src/main.js
+node backend/dist/services/vocabulary/src/main.js
+node backend/dist/services/agentic/src/main.js
+node backend/dist/gateway/main.js
 ```
 
-**Runtime:** The sidecar uses `kokoro-onnx` + ONNX Runtime. It downloads `kokoro-v1.0.onnx` and `voices-v1.0.bin` into `services/tts/kokoro-service/models/` if they are missing, tries `ROCMExecutionProvider` first, and falls back to `CPUExecutionProvider` if ROCm init or probe inference fails.
+## Key Entry Points
 
-## F5 TTS Sidecar
+- Gateway bootstrap: `backend/gateway/src/main.ts`
+- Gateway root module: `backend/gateway/src/app.module.ts`
+- OCR service root: `backend/services/ocr/src/app.module.ts`
+- TTS service root: `backend/services/tts/src/app.module.ts`
+- Document service root: `backend/services/document/src/app.module.ts`
+- Vocabulary service root: `backend/services/vocabulary/src/app.module.ts`
+- Agentic service root: `backend/services/agentic/src/app.module.ts`
+- Frontend root: `frontend/src/App.tsx`
 
-```bash
-cd services/tts/f5-service
-source .venv/bin/activate
-python -m uvicorn main:app --host 0.0.0.0 --port 8300
-# - F5 TTS Sidecar: http://localhost:8300/health
-# GPU-only by design. Sidecar stays unavailable if device != gpu.
-# Requests must include text + refText + refAudio.
-```
+## Current Constraints
 
-## PaddleOCR Sidecar
-
-```bash
-# Start sidecar locally (requires Python + dependencies)
-cd services/ocr/paddleocr-service
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-
-# Access services:
-# - Backend API: http://localhost:3000/api/ocr
-# - PaddleOCR Sidecar: http://localhost:8000/health
-```
+- Base OCR/TTS/document/vocabulary flows are local-first.
+- `agentic` still requires `OPENAI_API_KEY`; there is no graceful degraded HTTP response yet.
+- Build artifacts are not source of truth.
+- LM Studio smoke-only mode exists for browser/perf automation via `LM_STUDIO_SMOKE_ONLY=true`.
+- Voxtral remains optional and may stay unavailable on some AMD/ROCm setups.

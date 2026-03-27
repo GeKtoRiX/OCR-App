@@ -1,25 +1,38 @@
 # Runbook
 
-Release baseline: `v0.1.0-alpha.1` (alpha)
+Release baseline: `v0.1.0-alpha.1`
 
-## Development
+## Install
 
 ```bash
-npm run dev:paddleocr    # Start PaddleOCR sidecar (port 8000)
-npm run smoke:paddleocr  # Smoke-test PaddleOCR
+npm install
+```
 
-npm run dev:supertone    # Start Supertone + Piper sidecar (port 8100)
-npm run smoke:supertone  # Smoke-test Supertone + Piper
+Set up the required Python sidecars manually under:
 
-npm run dev:kokoro       # Start Kokoro TTS sidecar (port 8200, ONNX Runtime with ROCm->CPU fallback)
-npm run smoke:kokoro     # Smoke-test Kokoro TTS
-npm run dev:f5           # Start F5 TTS sidecar (port 8300, GPU enabled)
-npm run smoke:f5         # Smoke-test F5 TTS
-npm run smoke:lmstudio   # Backend LM Studio structuring smoke
-npm run smoke:all        # Run all sidecar smokes
+- `services/ocr/paddleocr-service/.venv`
+- `services/tts/supertone-service/.venv`
+- `services/tts/kokoro-service/.venv`
+- `services/tts/f5-service/.venv`
+- `services/tts/voxtral-service/.venv`
 
-npm run dev:backend      # NestJS watch mode (port 3000)
-npm run dev:frontend     # Vite dev server (port 5173)
+## Development Commands
+
+```bash
+npm run dev:frontend
+npm run dev:paddleocr
+npm run dev:supertone
+npm run dev:kokoro
+npm run dev:f5
+npm run dev:voxtral
+
+npm run smoke:paddleocr
+npm run smoke:supertone
+npm run smoke:kokoro
+npm run smoke:f5
+npm run smoke:voxtral
+npm run smoke:lmstudio
+npm run smoke:all
 ```
 
 ## Build
@@ -28,52 +41,70 @@ npm run dev:frontend     # Vite dev server (port 5173)
 npm run build
 ```
 
-## Backend Tests
+## Tests
 
 ```bash
-npm test --workspace=backend
-npm run test:cov --workspace=backend
+npm run test:frontend
+npm run test:backend
+npm run test:cov:frontend
+npm run test:cov:backend
 npm run test:e2e:api
 npm run test:e2e:integration
-```
-
-## Frontend Tests
-
-```bash
-npm test --workspace=frontend
-npm run test:cov --workspace=frontend
-```
-
-## Browser E2E And Perf
-
-```bash
+npm run test:e2e:launcher
 npm run test:e2e:browser
+```
+
+## Perf
+
+```bash
 npm run perf:api
 npm run perf:browser
 npm run perf:phase4
 ```
 
-`test:e2e:browser` and `perf:phase4` rebuild frontend/backend, reset `tmp/test-db/browser-e2e.sqlite`, and run with `LM_STUDIO_SMOKE_ONLY=true`.
+`test:e2e:browser` and `perf:phase4` may run with `LM_STUDIO_SMOKE_ONLY=true`.
 
-## Production
+## Production-Style Start
 
 ```bash
 npm run build
-node backend/dist/main.js
+node backend/dist/services/ocr/src/main.js
+node backend/dist/services/tts/src/main.js
+node backend/dist/services/document/src/main.js
+node backend/dist/services/vocabulary/src/main.js
+node backend/dist/services/agentic/src/main.js
+node backend/dist/gateway/main.js
 ```
 
-## Lifecycle Script (Linux/macOS)
+## Launcher Scripts
 
 ```bash
-./scripts/linux/ocr.sh              # start OCR mode (PaddleOCR + Kokoro + LM Studio + backend) + live lamp
-./scripts/linux/tts.sh              # start TTS mode (PaddleOCR + Supertone/Piper + Kokoro + F5 + backend) + live lamp
-./scripts/linux/ocr-tts.sh          # start full stack + live lamp
-./scripts/linux/ocr-tts.sh stop     # stop all services gracefully
-./scripts/linux/ocr-tts.sh wipe     # stop + remove all build artifacts
-./scripts/linux/ocr-tts.sh status   # env, service health, process state
+./scripts/linux/ocr.sh
+./scripts/linux/tts.sh
+./scripts/linux/ocr-tts.sh
+./scripts/linux/stack.sh
 ```
 
-The script writes service logs to `.logs/` and PID files to `.pids/`. A live status lamp (🔵🟢🟡🔴) polls `/api/health` every 5 seconds while running.
+Lifecycle:
+
+```bash
+./scripts/linux/ocr.sh stop
+./scripts/linux/tts.sh stop
+./scripts/linux/ocr-tts.sh stop
+
+./scripts/linux/ocr.sh status
+./scripts/linux/tts.sh status
+./scripts/linux/ocr-tts.sh status
+
+./scripts/linux/ocr-tts.sh wipe
+```
+
+Notes:
+
+- launcher defaults are controlled in `scripts/linux/tts-models.conf`
+- current default is Voxtral only
+- logs go to `logs/`
+- pid files go to `.pids/`
 
 ## Public Endpoints
 
@@ -82,39 +113,33 @@ The script writes service logs to `.logs/` and PID files to `.pids/`. A live sta
 ```bash
 curl -X POST http://localhost:3000/api/ocr \
   -F "image=@image_test.jpg"
-# → { rawText, markdown, filename }
 ```
 
 ### Health
 
 ```bash
 curl http://localhost:3000/api/health
-# → { paddleOcrReachable, paddleOcrModels, paddleOcrDevice,
-#      lmStudioReachable, lmStudioModels,
-#      superToneReachable, kokoroReachable,
-#      f5TtsReachable, f5TtsDevice }
 ```
 
-### TTS — Supertone (default)
+### TTS - Supertone
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","voice":"M1","lang":"en","speed":1.05,"totalSteps":5}' \
+  -d '{"text":"Hello world","engine":"supertone","voice":"M1","lang":"en","speed":1.05,"totalSteps":5}' \
   --output speech.wav
-# Voices: M1–M5, F1–F5. Languages: en, ko, es, pt, fr. Returns audio/wav (44100 Hz).
 ```
 
-### TTS — Piper
+### TTS - Piper
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"piper","voice":"en_US-hfc_female-medium","speed":1.05}' \
+  -d '{"text":"Hello world","engine":"piper","voice":"en_US-amy-medium","speed":1.05}' \
   --output speech.wav
 ```
 
-### TTS — Kokoro
+### TTS - Kokoro
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
@@ -123,95 +148,86 @@ curl -X POST http://localhost:3000/api/tts \
   --output speech.wav
 ```
 
-### TTS — F5
+### TTS - F5
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
   -F "text=Hello world" \
+  -F "engine=f5" \
   -F "refText=Reference transcript" \
   -F "refAudio=@reference.wav" \
+  --output speech.wav
+```
+
+### TTS - Voxtral
+
+```bash
+curl -X POST http://localhost:3000/api/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Hello world","engine":"voxtral","voice":"casual_female","format":"wav"}' \
   --output speech.wav
 ```
 
 ### Documents
 
 ```bash
-# Save document
 curl -X POST http://localhost:3000/api/documents \
   -H "Content-Type: application/json" \
-  -d '{"markdown":"# Hello\nWorld","filename":"scan.png"}'
+  -d '{"markdown":"# Hello","filename":"scan.png"}'
 
-# List documents
 curl http://localhost:3000/api/documents
+curl http://localhost:3000/api/documents/<id>
 
-# Update document
 curl -X PUT http://localhost:3000/api/documents/<id> \
   -H "Content-Type: application/json" \
   -d '{"markdown":"# Updated"}'
 
-# Delete document
 curl -X DELETE http://localhost:3000/api/documents/<id>
 ```
 
 ### Vocabulary
 
 ```bash
-# Add word
 curl -X POST http://localhost:3000/api/vocabulary \
   -H "Content-Type: application/json" \
-  -d '{"word":"beautiful","vocabType":"word","translation":"красивый","targetLang":"en","nativeLang":"ru","contextSentence":"The sunset was beautiful."}'
+  -d '{"word":"beautiful","vocabType":"word","translation":"krasivyy","targetLang":"en","nativeLang":"ru","contextSentence":"The sunset was beautiful."}'
 
-# List vocabulary (with optional language filter)
 curl "http://localhost:3000/api/vocabulary?targetLang=en&nativeLang=ru"
-
-# Words due for review
 curl "http://localhost:3000/api/vocabulary/review/due?limit=20"
 
-# Update word
 curl -X PUT http://localhost:3000/api/vocabulary/<id> \
   -H "Content-Type: application/json" \
-  -d '{"translation":"красивый","contextSentence":"updated context"}'
+  -d '{"translation":"krasivyy","contextSentence":"updated context"}'
 
-# Delete word
 curl -X DELETE http://localhost:3000/api/vocabulary/<id>
 ```
 
 ### Practice
 
 ```bash
-# Start session
 curl -X POST http://localhost:3000/api/practice/start \
   -H "Content-Type: application/json" \
   -d '{"targetLang":"en","nativeLang":"ru","wordLimit":10}'
 
-# Submit answer
 curl -X POST http://localhost:3000/api/practice/answer \
   -H "Content-Type: application/json" \
-  -d '{"sessionId":"<id>","vocabularyId":"<id>","exerciseType":"spelling","prompt":"Spell: красивый","correctAnswer":"beautiful","userAnswer":"beatiful"}'
+  -d '{"sessionId":"<id>","vocabularyId":"<id>","exerciseType":"spelling","prompt":"Spell: krasivyy","correctAnswer":"beautiful","userAnswer":"beatiful"}'
 
-# Complete session
 curl -X POST http://localhost:3000/api/practice/complete \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"<id>"}'
 
-# Recent sessions
 curl http://localhost:3000/api/practice/sessions
-
-# Word attempt history
 curl http://localhost:3000/api/practice/stats/<vocabularyId>
 ```
 
-### Agentic Architecture
+### Agentic
 
 ```bash
 curl -X POST http://localhost:3000/api/agents/architecture \
   -H "Content-Type: application/json" \
   -d '{"request":"Design an autonomous agent ecosystem"}'
-```
 
-### Agentic Deploy
-
-```bash
 curl -X POST http://localhost:3000/api/agents/deploy \
   -H "Content-Type: application/json" \
   -d '{"request":"Design an autonomous agent ecosystem","workspaceName":"demo-workspace"}'
@@ -219,14 +235,10 @@ curl -X POST http://localhost:3000/api/agents/deploy \
 
 ## Operational Notes
 
-- The base OCR runtime must go through the local PaddleOCR sidecar; LM Studio is needed for structuring text after OCR.
-- Vocabulary capture from the result panel is supported only in the normal rendered Markdown view. It is intentionally disabled in edit mode.
-- Session-history screenshots and saved documents are both removable from their sidebar tabs via the hover trash control.
-- PaddleOCR must be running on the host at `http://localhost:8000` before starting the app.
-- TTS sidecars are optional — the OCR pipeline works without them.
-- Supertone requires `onnxruntime-rocm` for GPU; falls back to CPU automatically if GPU provider fails real inference.
-- Piper shares the Supertone sidecar and downloads voices on first use.
-- `LD_LIBRARY_PATH` must include the PyTorch ROCm lib dir for GPU sidecars (the launcher scripts set this automatically).
-- SQLite database file location defaults to `./data/ocr-app.db` (configurable via `SQLITE_DB_PATH` env var).
-- `agentic` endpoints depend on `@openai/agents` and require `OPENAI_API_KEY` to be set; without it they currently return 5xx while the main app remains alive.
-- Build artifacts are present in the workspace but are not the source of truth; look only at source files during audits.
+- base OCR requires PaddleOCR and LM Studio
+- TTS is optional for OCR, but the TTS service process still starts in backend-enabled stacks
+- Voxtral is optional and may remain unavailable on unsupported ROCm setups
+- F5 is treated as GPU-only in this project
+- Piper is served through the Supertone sidecar
+- frontend currently exposes only English Voxtral presets
+- Kokoro rejects Cyrillic text on the frontend

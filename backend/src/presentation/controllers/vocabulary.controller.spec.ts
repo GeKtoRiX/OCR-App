@@ -87,7 +87,7 @@ describe('VocabularyController', () => {
     });
 
     it('returns 409 if word already exists', async () => {
-      useCase.findByWord.mockResolvedValue(mockOutput);
+      useCase.add.mockRejectedValue(new Error('Word already exists in vocabulary'));
 
       try {
         await controller.create({

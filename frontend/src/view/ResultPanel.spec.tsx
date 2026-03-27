@@ -109,6 +109,23 @@ describe('ResultPanel', () => {
     expect(screen.getByPlaceholderText('Enter the transcript of the reference audio')).toBeInTheDocument();
   });
 
+  it('should expose voxtral as a TTS engine option with preset voices only', async () => {
+    const user = userEvent.setup();
+    render(<ResultPanel result={result} />);
+
+    await user.click(screen.getByText('🔊 TTS'));
+    await user.click(screen.getByRole('button', { name: 'Voxtral' }));
+
+    expect(screen.getByTitle('Casual — casual_female')).toBeInTheDocument();
+    expect(screen.getByTitle('Casual — casual_male')).toBeInTheDocument();
+    expect(screen.getByTitle('Cheerful — cheerful_female')).toBeInTheDocument();
+    expect(screen.getByTitle('Neutral — neutral_female')).toBeInTheDocument();
+    expect(screen.getByTitle('Neutral — neutral_male')).toBeInTheDocument();
+    expect(screen.queryByTitle('German — de_female')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Spanish — es_female')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Reference Audio')).not.toBeInTheDocument();
+  });
+
   it('should reset to original content when result prop changes', () => {
     const { rerender } = render(<ResultPanel result={result} />);
 

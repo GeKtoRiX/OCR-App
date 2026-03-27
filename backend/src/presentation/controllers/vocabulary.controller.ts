@@ -12,7 +12,10 @@ import {
   BadRequestException,
   UseInterceptors,
 } from '@nestjs/common';
-import { VocabularyUseCase } from '../../application/use-cases/vocabulary.use-case';
+import {
+  VOCABULARY_DUPLICATE_ERROR,
+  VocabularyUseCase,
+} from '../../application/use-cases/vocabulary.use-case';
 import { AddVocabularyDto, UpdateVocabularyDto } from '../dto/vocabulary.dto';
 import type { VocabType } from '../../domain/entities/vocabulary-word.entity';
 import { ETagInterceptor } from '../interceptors/etag.interceptor';
@@ -43,29 +46,28 @@ export class VocabularyController {
     if (!body.targetLang || !body.nativeLang) {
       throw new BadRequestException('targetLang and nativeLang are required');
     }
-
-    // Check for duplicate
-    const existing = await this.vocabularyUseCase.findByWord(
-      body.word.trim(),
-      body.targetLang,
-      body.nativeLang,
-    );
-    if (existing) {
-      throw new HttpException(
-        'Word already exists in vocabulary',
-        HttpStatus.CONFLICT,
-      );
+    try {
+      return await this.vocabularyUseCase.add({
+        word: body.word.trim(),
+        vocabType: body.vocabType as VocabType,
+        translation: body.translation ?? '',
+        targetLang: body.targetLang,
+        nativeLang: body.nativeLang,
+        contextSentence: body.contextSentence ?? '',
+        sourceDocumentId: body.sourceDocumentId,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === VOCABULARY_DUPLICATE_ERROR
+      ) {
+        throw new HttpException(
+          VOCABULARY_DUPLICATE_ERROR,
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw error;
     }
-
-    return this.vocabularyUseCase.add({
-      word: body.word.trim(),
-      vocabType: body.vocabType as VocabType,
-      translation: body.translation ?? '',
-      targetLang: body.targetLang,
-      nativeLang: body.nativeLang,
-      contextSentence: body.contextSentence ?? '',
-      sourceDocumentId: body.sourceDocumentId,
-    });
   }
 
   @Post('batch')

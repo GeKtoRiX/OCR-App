@@ -28,6 +28,9 @@ interface VocabularyRow {
   next_review_at: string;
 }
 
+const DUPLICATE_VOCABULARY_ERROR =
+  'Vocabulary word already exists for this language pair';
+
 @Injectable()
 export class SqliteVocabularyRepository
   extends IVocabularyRepository
@@ -133,12 +136,31 @@ export class SqliteVocabularyRepository
     contextSentence: string,
     sourceDocumentId: string | null,
   ): Promise<VocabularyWord> {
+    const existing = this.stmts.selectByWord.get(
+      word,
+      targetLang,
+      nativeLang,
+    ) as VocabularyRow | undefined;
+    if (existing) {
+      throw new Error(DUPLICATE_VOCABULARY_ERROR);
+    }
+
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    this.stmts.insert.run(
-      id, word, vocabType, translation, targetLang, nativeLang,
-      contextSentence, sourceDocumentId, now, now, now,
-    );
+    try {
+      this.stmts.insert.run(
+        id, word, vocabType, translation, targetLang, nativeLang,
+        contextSentence, sourceDocumentId, now, now, now,
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed')
+      ) {
+        throw new Error(DUPLICATE_VOCABULARY_ERROR);
+      }
+      throw error;
+    }
     return new VocabularyWord(
       id, word, vocabType, translation, targetLang, nativeLang,
       contextSentence, sourceDocumentId, now, now, 0, 2.5, 0, now,

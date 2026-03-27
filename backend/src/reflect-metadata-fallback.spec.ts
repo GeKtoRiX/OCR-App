@@ -26,6 +26,7 @@ describe('decorator metadata fallbacks', () => {
         require('./infrastructure/lm-studio/lm-studio-ocr.service');
         require('./infrastructure/lm-studio/lm-studio-structuring.service');
         require('./infrastructure/lm-studio/lm-studio-vocabulary.service');
+        require('./infrastructure/voxtral/voxtral-tts.service');
         require('./infrastructure/paddleocr/paddleocr-health.service');
         require('./infrastructure/paddleocr/paddleocr-ocr.service');
         require('./infrastructure/sqlite/sqlite-connection.provider');

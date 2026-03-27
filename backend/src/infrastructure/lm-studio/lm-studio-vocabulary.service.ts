@@ -4,9 +4,9 @@ import {
   GeneratedExercise,
   SessionAnalysis,
 } from '../../domain/ports/vocabulary-llm-service.port';
+import { ILmStudioChatPort } from '../../domain/ports/lm-studio-chat.port';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { ExerciseAttempt } from '../../domain/entities/exercise-attempt.entity';
-import { LMStudioClient } from './lm-studio.client';
 import { LMStudioConfig } from '../config/lm-studio.config';
 
 const EXERCISE_SYSTEM_PROMPT = `You are a vocabulary exercise generator for language learners. Given a list of vocabulary words with their translations and context, generate diverse exercises.
@@ -84,7 +84,7 @@ You receive:
 @Injectable()
 export class LMStudioVocabularyService extends IVocabularyLlmService {
   constructor(
-    private readonly client: LMStudioClient,
+    private readonly client: ILmStudioChatPort,
     private readonly config: LMStudioConfig,
   ) {
     super();
@@ -111,15 +111,17 @@ ${wordsTable}
 
 Generate ${count} exercises total, mixing all four exercise types. Each word must appear at least once.`;
 
-    const response = await this.client.chatCompletion({
-      model: this.config.vocabularyModel,
-      messages: [
+    const response = await this.client.chatCompletion(
+      [
         { role: 'system', content: EXERCISE_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.7,
-      max_tokens: 4096,
-    });
+      this.config.vocabularyModel,
+      {
+        temperature: 0.7,
+        maxTokens: 4096,
+      },
+    );
 
     return parseJsonResponse<GeneratedExercise[]>(response);
   }
@@ -156,15 +158,17 @@ ${attemptsTable}
 
 Provide your analysis.`;
 
-    const response = await this.client.chatCompletion({
-      model: this.config.vocabularyModel,
-      messages: [
+    const response = await this.client.chatCompletion(
+      [
         { role: 'system', content: SESSION_ANALYSIS_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.3,
-      max_tokens: 4096,
-    });
+      this.config.vocabularyModel,
+      {
+        temperature: 0.3,
+        maxTokens: 4096,
+      },
+    );
 
     return parseJsonResponse<SessionAnalysis>(response);
   }

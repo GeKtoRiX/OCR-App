@@ -1,0 +1,1 @@
+{"version":3,"file":"image-data.entity.d.ts","sourceRoot":"","sources":["image-data.entity.ts"],"names":[],"mappings":"AAAA,qBAAa,SAAS;aAEF,MAAM,EAAE,MAAM;aACd,QAAQ,EAAE,MAAM;aAChB,YAAY,EAAE,MAAM;gBAFpB,MAAM,EAAE,MAAM,EACd,QAAQ,EAAE,MAAM,EAChB,YAAY,EAAE,MAAM;IAGtC,eAAe,IAAI,MAAM;CAG1B"}

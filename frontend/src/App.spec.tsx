@@ -167,6 +167,8 @@ describe('App', () => {
       kokoroReachable: true,
       f5TtsReachable: true,
       f5TtsDevice: 'gpu',
+      voxtralReachable: false,
+      voxtralDevice: null,
     });
   });
 

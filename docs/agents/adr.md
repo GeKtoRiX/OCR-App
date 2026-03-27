@@ -68,3 +68,24 @@
 - Context: `VocabularyModule` imported `DocumentModule` solely to reuse `SqliteConnectionProvider` and `SqliteConfig`, creating semantic cross-module coupling (document business concerns mixing with vocabulary DI needs).
 - Decision: create `DatabaseModule` in `presentation/modules/` that provides and exports `SqliteConfig` and `SqliteConnectionProvider`. Both `DocumentModule` and `VocabularyModule` import `DatabaseModule`. `AppModule` also imports `DatabaseModule` at the root to guarantee a single shared SQLite connection singleton across all feature modules.
 - Consequence: `DocumentModule` no longer exports the SQLite providers. `VocabularyModule` no longer imports `DocumentModule`.
+
+## ADR-010: Split The Backend Runtime Into HTTP Gateway Plus Dedicated TCP Services
+
+- Status: accepted
+- Context: the previous single-process Nest runtime coupled unrelated workloads too tightly and made it harder to isolate OCR, TTS, persistence, and agentic behavior operationally.
+- Decision: move to a split runtime with `backend/gateway` as the HTTP/static entrypoint and dedicated TCP apps under `backend/services/{ocr,tts,document,vocabulary,agentic}`.
+- Consequence: public HTTP routes now live only in the gateway, inter-process contracts must be explicit, and service apps must bind both local and shared abstractions where needed.
+
+## ADR-011: Introduce `@ocr-app/shared` As The Cross-Process Contract Package
+
+- Status: accepted
+- Context: after the gateway/services split, controllers and service apps needed one stable place for TCP patterns, payloads, shared entities, and shared DI abstractions.
+- Decision: create `backend/shared` as workspace package `@ocr-app/shared` and move process-boundary exports there.
+- Consequence: gateway and services communicate only through shared contracts; contract changes now require synchronized updates across gateway, services, frontend wrappers, and documentation.
+
+## ADR-012: Keep Voxtral Optional And Non-Blocking For The Baseline Stack
+
+- Status: accepted
+- Context: Voxtral adds significant capability, but its local ROCm path is still more fragile than the baseline OCR and non-Voxtral TTS flows.
+- Decision: integrate Voxtral as a separate optional adapter sidecar and expose its health independently without making it block baseline stack readiness.
+- Consequence: health payloads include `voxtralReachable` and `voxtralDevice`, the frontend can expose Voxtral separately, and launcher defaults can enable or disable it without redefining the baseline OCR path.

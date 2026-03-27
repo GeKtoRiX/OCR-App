@@ -19,7 +19,7 @@ describe('VocabularyUseCase', () => {
       createMany: jest.fn().mockResolvedValue([mockWord]),
       findAll: jest.fn().mockResolvedValue([mockWord]),
       findById: jest.fn().mockResolvedValue(mockWord),
-      findByWord: jest.fn().mockResolvedValue(mockWord),
+      findByWord: jest.fn().mockResolvedValue(null),
       findDueForReview: jest.fn().mockResolvedValue([mockWord]),
       updateSrs: jest.fn().mockResolvedValue(mockWord),
       update: jest.fn().mockResolvedValue(mockWord),
@@ -44,6 +44,23 @@ describe('VocabularyUseCase', () => {
     );
     expect(result.id).toBe('id-1');
     expect(result.vocabType).toBe('word');
+  });
+
+  it('add rejects duplicate words before creating them', async () => {
+    repo.findByWord.mockResolvedValue(mockWord);
+
+    await expect(
+      useCase.add({
+        word: 'beautiful',
+        vocabType: 'word',
+        translation: 'красивый',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'The sunset was beautiful.',
+      }),
+    ).rejects.toThrow('Word already exists in vocabulary');
+
+    expect(repo.create).not.toHaveBeenCalled();
   });
 
   it('add propagates a non-null source document id', async () => {
@@ -115,6 +132,7 @@ describe('VocabularyUseCase', () => {
   });
 
   it('findByWord delegates to repository', async () => {
+    repo.findByWord.mockResolvedValue(mockWord);
     const result = await useCase.findByWord('beautiful', 'en', 'ru');
 
     expect(result).not.toBeNull();

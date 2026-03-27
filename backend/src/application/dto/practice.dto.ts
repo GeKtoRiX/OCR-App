@@ -18,7 +18,7 @@ export interface SubmitAnswerInput {
 export interface ExerciseOutput {
   vocabularyId: string;
   word: string;
-  exerciseType: string;
+  exerciseType: ExerciseType;
   prompt: string;
   correctAnswer: string;
   options?: string[];
