@@ -10,7 +10,7 @@ Frontend
        |                               Kokoro          :8200
        |                               F5              :8300
        |                               Voxtral         :8400
-       -> Document service   :3903 -> SQLite
+       -> Document service   :3903 -> SQLite + optional Stanza :8501
        -> Vocabulary service :3904 -> SQLite + LM Studio
        -> Agentic service    :3905 -> OpenAI Agents SDK
 
@@ -96,6 +96,9 @@ Examples:
 
 - port `3903`
 - reuses saved document use cases and SQLite repository
+- owns document-scoped vocabulary candidate preparation
+- prefers the Stanza sidecar for extraction and falls back to heuristics when the sidecar is unavailable
+- can run in `LM_STUDIO_SMOKE_ONLY=true` during lightweight automation
 
 ### Vocabulary Service
 
@@ -120,6 +123,7 @@ Current key ports:
 - `IF5TtsPort`
 - `IVoxtralTtsPort`
 - `ISavedDocumentRepository`
+- `IDocumentVocabularyExtractor`
 - `IVocabularyRepository`
 - `IPracticeSessionRepository`
 - `IVocabularyLlmService`
@@ -190,6 +194,24 @@ Returned health fields:
   -> SQLite document repository
 ```
 
+### Save Vocabulary
+
+```text
+POST /api/documents/:id/vocabulary/prepare
+  -> gateway
+  -> document TCP service
+  -> Stanza sidecar or heuristic extractor
+  -> optional LLM review enrichment
+  -> document-scoped candidate storage
+  -> frontend review overlay editor
+
+POST /api/documents/:id/vocabulary/confirm
+  -> gateway
+  -> document TCP service
+  -> vocabulary TCP service
+  -> shared vocabulary store
+```
+
 ### Vocabulary / Practice
 
 ```text
@@ -254,6 +276,11 @@ frontend/src/
 - `features/tts/useTts.ts`
 - `features/vocabulary/useVocabContextMenu.ts`
 - `view/useResultPanel.ts`
+
+### Vocabulary Review UI
+
+- `ResultPanel` exposes separate `Save Document` and `Save Vocabulary` actions
+- `SaveVocabularyOverlay` owns review, editor, and confirm-before-save behavior
 
 ### Health Lamp Semantics
 

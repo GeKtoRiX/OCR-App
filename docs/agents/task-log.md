@@ -6,6 +6,17 @@ Short memory of recent significant changes so the next session does not need a f
 
 ## Latest Significant Update
 
+### 2026-03-28 - Save Vocabulary Review Flow, Stanza Sidecar, And Lightweight Browser E2E
+
+- Added document-scoped vocabulary candidate preparation and confirm-before-save endpoints under `/api/documents/:id/vocabulary/*`.
+- Frontend now splits `Save Document` and `Save Vocabulary`; the vocabulary path opens a review overlay with an embedded editor and optional LLM review.
+- Added optional `services/nlp/stanza-service/` for document vocabulary extraction with heuristic fallback in the document service.
+- Added lightweight browser automation for this flow:
+  - `playwright.save-vocabulary.config.ts`
+  - `e2e/save-vocabulary.spec.ts`
+  - `scripts/e2e/prepare-save-vocabulary-env.sh`
+  - `npm run test:e2e:browser:vocab`
+
 ### 2026-03-27 - Full Documentation Refresh For Gateway/Services/Voxtral Stage
 
 - Rewrote `README.md` to match the current runtime: HTTP gateway, TCP services, shared contract package, launcher defaults, and current TTS behavior.

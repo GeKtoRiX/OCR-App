@@ -3,6 +3,9 @@ import type {
   HealthResponse,
   TtsSettings,
   SavedDocument,
+  DocumentVocabCandidate,
+  PreparedDocumentVocabularyResponse,
+  ConfirmDocumentVocabularyResult,
   VocabularyWord,
   VocabType,
   Exercise,
@@ -136,6 +139,50 @@ export async function updateDocument(
 export async function deleteDocument(id: string): Promise<void> {
   const res = await fetch(`${BASE}/documents/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(await getErrorMessage(res));
+}
+
+export async function prepareDocumentVocabulary(input: {
+  id: string;
+  llmReview: boolean;
+  targetLang: string;
+  nativeLang: string;
+}): Promise<PreparedDocumentVocabularyResponse> {
+  const res = await fetch(`${BASE}/documents/${input.id}/vocabulary/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      llmReview: input.llmReview,
+      targetLang: input.targetLang,
+      nativeLang: input.nativeLang,
+    }),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
+}
+
+export async function confirmDocumentVocabulary(input: {
+  id: string;
+  targetLang: string;
+  nativeLang: string;
+  items: Array<{
+    candidateId: string;
+    word: string;
+    vocabType: VocabType;
+    translation: string;
+    contextSentence: string;
+  }>;
+}): Promise<ConfirmDocumentVocabularyResult> {
+  const res = await fetch(`${BASE}/documents/${input.id}/vocabulary/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      targetLang: input.targetLang,
+      nativeLang: input.nativeLang,
+      items: input.items,
+    }),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
 }
 
 // ── Vocabulary API ──

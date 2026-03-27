@@ -11,6 +11,7 @@ Permitted top-level paths:
 - `services/`
 - `scripts/`
 - `docs/`
+- `e2e/`
 - `data/`
 - `logs/`
 - `.pids/`
@@ -22,6 +23,8 @@ Permitted top-level paths:
 - `structure.md`
 - `package.json`
 - `package-lock.json`
+- `playwright.config.ts`
+- `playwright.save-vocabulary.config.ts`
 - `tsconfig.base.json`
 - `.gitignore`
 - `.env`
@@ -139,6 +142,11 @@ Frontend source lives under `frontend/src/`.
 - `services/ocr/paddleocr-service/requirements.txt`
 - `services/ocr/paddleocr-service/models/`
 
+### NLP
+
+- `services/nlp/stanza-service/main.py`
+- `services/nlp/stanza-service/requirements.txt`
+
 ### TTS
 
 Supertone + Piper:
@@ -187,6 +195,7 @@ Launcher scripts:
 Automation:
 
 - `scripts/e2e/prepare-browser-env.sh`
+- `scripts/e2e/prepare-save-vocabulary-env.sh`
 - `scripts/e2e/stop-browser-env.sh`
 - `scripts/perf/api-benchmark.mjs`
 - `scripts/perf/browser-benchmark.mjs`
@@ -230,4 +239,6 @@ These paths may exist at runtime but are not source of truth:
 - Gateway/services/shared split is present and active.
 - Frontend uses feature-oriented folders with Zustand stores, not MVVM.
 - Voxtral is present as an optional TTS adapter sidecar.
+- Stanza is present as an optional NLP sidecar for document vocabulary extraction.
 - Launcher-side TTS defaults are controlled through `scripts/linux/tts-models.conf`.
+- `Save Vocabulary` uses document-scoped candidate preparation plus a confirm-before-save review overlay.

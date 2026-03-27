@@ -7,12 +7,18 @@ class SavedDocument {
     filename;
     createdAt;
     updatedAt;
-    constructor(id, markdown, filename, createdAt, updatedAt) {
+    analysisStatus;
+    analysisError;
+    analysisUpdatedAt;
+    constructor(id, markdown, filename, createdAt, updatedAt, analysisStatus, analysisError, analysisUpdatedAt) {
         this.id = id;
         this.markdown = markdown;
         this.filename = filename;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.analysisStatus = analysisStatus;
+        this.analysisError = analysisError;
+        this.analysisUpdatedAt = analysisUpdatedAt;
     }
 }
 exports.SavedDocument = SavedDocument;

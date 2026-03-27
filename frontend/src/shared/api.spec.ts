@@ -272,7 +272,16 @@ describe('API service', () => {
 
   describe('createDocument', () => {
     it('should POST to /api/documents and return saved document', async () => {
-      const mockDoc = { id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await createDocument('# Hi', 'a.png');
@@ -300,7 +309,16 @@ describe('API service', () => {
 
   describe('fetchDocuments', () => {
     it('should GET /api/documents and return list', async () => {
-      const mockDocs = [{ id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' }];
+      const mockDocs = [{
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      }];
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDocs });
 
       const result = await fetchDocuments();
@@ -312,7 +330,16 @@ describe('API service', () => {
 
   describe('fetchDocument', () => {
     it('should GET /api/documents/:id and return document', async () => {
-      const mockDoc = { id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await fetchDocument('1');
@@ -333,7 +360,16 @@ describe('API service', () => {
 
   describe('updateDocument', () => {
     it('should PUT to /api/documents/:id and return updated document', async () => {
-      const mockDoc = { id: '1', markdown: '# Updated', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Updated',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await updateDocument('1', '# Updated');

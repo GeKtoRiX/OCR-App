@@ -17,9 +17,11 @@ import './TtsPanel.css';
 interface Props {
   result: OcrResponse;
   onSave?: (markdown: string) => void;
+  onSaveVocabulary?: () => void;
   saveStatus?: SaveStatus;
   onUpdate?: (markdown: string) => void;
   isSavedDocument?: boolean;
+  vocabularyDisabled?: boolean;
   existingWordsSet?: Set<string>;
   onAddVocabulary?: (
     word: string,
@@ -32,9 +34,11 @@ interface Props {
 export function ResultPanel({
   result,
   onSave,
+  onSaveVocabulary,
   saveStatus,
   onUpdate,
   isSavedDocument,
+  vocabularyDisabled,
   existingWordsSet,
   onAddVocabulary,
 }: Props) {
@@ -112,19 +116,30 @@ export function ResultPanel({
               Update
             </button>
           )}
+          {isSavedDocument && onSaveVocabulary && (
+            <button
+              className="result__action-btn result__action-btn--save"
+              onClick={onSaveVocabulary}
+              disabled={vocabularyDisabled || panel.isEditing}
+              title="Prepare vocabulary candidates"
+              data-testid="result-save-vocabulary-button"
+            >
+              Save Vocabulary
+            </button>
+          )}
           {!isSavedDocument && onSave && (
             <button
               className="result__action-btn result__action-btn--save"
               onClick={() => onSave(panel.editedMarkdown)}
               disabled={saveStatus === 'saving'}
-              title="Save to database"
+              title="Save Document"
               data-testid="result-save-button"
             >
               {saveStatus === 'saving'
                 ? 'Saving…'
                 : saveStatus === 'saved'
                   ? 'Saved ✓'
-                  : '💾 Save'}
+                  : 'Save Document'}
             </button>
           )}
         </div>

@@ -7,6 +7,7 @@ OCR Web App is a local-first OCR and study workflow:
 - OCR extraction from images through PaddleOCR
 - Markdown structuring through LM Studio
 - saved documents in SQLite
+- document-scoped vocabulary candidate review before DB writes
 - vocabulary capture with SM-2 scheduling
 - practice sessions generated through LM Studio
 - TTS through Supertone/Piper, Kokoro, F5, and Voxtral
@@ -27,6 +28,7 @@ The current backend runtime is no longer a single NestJS process. It is split in
 - Frontend: React 18 + Vite 6 + TypeScript
 - Frontend state: Zustand stores plus local orchestration hooks
 - OCR: PaddleOCR Python FastAPI sidecar on `:8000`
+- NLP: optional Stanza FastAPI sidecar on `:8501` with heuristic fallback in the document service
 - TTS:
   - Supertone + Piper sidecar on `:8100`
   - Kokoro sidecar on `:8200`
@@ -72,7 +74,7 @@ Each TCP service is a thin Nest app that reuses the implementation under `backen
 
 - OCR service binds OCR + LM Studio structuring
 - TTS service binds all TTS ports including Voxtral
-- document service binds saved document persistence
+- document service binds saved document persistence plus document-scoped vocabulary candidate preparation
 - vocabulary service binds vocabulary + practice persistence and LM Studio exercise generation
 - agentic service binds `backend/src/agentic/*`
 
@@ -165,6 +167,16 @@ TTS validation at the gateway:
 - documents and vocabulary/practice are split into separate services
 - document DB defaults to `data/documents.sqlite`
 - vocabulary/practice DB defaults to `data/vocabulary.sqlite`
+- document vocabulary extraction prefers the Stanza sidecar and falls back to heuristics when it is unavailable
+
+### Save Vocabulary
+
+1. `Save Document` persists OCR/Markdown output.
+2. `Save Vocabulary` is available only for saved documents.
+3. document service prepares vocabulary candidates.
+4. optional LLM review refines the prepared list.
+5. frontend opens a review overlay with an embedded editor.
+6. only confirmed items are written into the shared vocabulary store.
 
 ### Agentic
 
@@ -207,10 +219,12 @@ Current frontend architecture is not MVVM anymore. It is a feature-oriented layo
 ### Frontend Stores
 
 - `ocr.store.ts`: OCR request state + session history
-- `documents.store.ts`: saved documents + active saved selection
+- `documents.store.ts`: saved documents + active saved selection + vocabulary review state
 - `vocabulary.store.ts`: words, due count, language pair
 - `practice.store.ts`: current session and exercise flow
 - `health.store.ts`: lamp color and tooltip
+
+The result panel now exposes separate `Save Document` and `Save Vocabulary` actions.
 
 ### Frontend TTS Notes
 
@@ -240,12 +254,15 @@ Launcher-side TTS defaults:
 
 ```bash
 npm run build
+npm run dev:stanza
+npm run smoke:stanza
 npm run test:frontend
 npm run test:backend
 npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 ```
 
 Manual prod-style boot:

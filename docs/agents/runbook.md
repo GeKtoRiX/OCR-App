@@ -11,6 +11,7 @@ npm install
 Set up the required Python sidecars manually under:
 
 - `services/ocr/paddleocr-service/.venv`
+- `services/nlp/stanza-service/.venv`
 - `services/tts/supertone-service/.venv`
 - `services/tts/kokoro-service/.venv`
 - `services/tts/f5-service/.venv`
@@ -21,12 +22,14 @@ Set up the required Python sidecars manually under:
 ```bash
 npm run dev:frontend
 npm run dev:paddleocr
+npm run dev:stanza
 npm run dev:supertone
 npm run dev:kokoro
 npm run dev:f5
 npm run dev:voxtral
 
 npm run smoke:paddleocr
+npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
 npm run smoke:f5
@@ -52,6 +55,7 @@ npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 ```
 
 ## Perf
@@ -63,6 +67,8 @@ npm run perf:phase4
 ```
 
 `test:e2e:browser` and `perf:phase4` may run with `LM_STUDIO_SMOKE_ONLY=true`.
+
+`test:e2e:browser:vocab` is the lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`.
 
 ## Production-Style Start
 
@@ -183,6 +189,14 @@ curl -X PUT http://localhost:3000/api/documents/<id> \
   -d '{"markdown":"# Updated"}'
 
 curl -X DELETE http://localhost:3000/api/documents/<id>
+
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/prepare \
+  -H "Content-Type: application/json" \
+  -d '{"llmReview":true,"targetLang":"en","nativeLang":"ru"}'
+
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"targetLang":"en","nativeLang":"ru","items":[{"candidateId":"<candidate-id>","word":"give up","vocabType":"phrasal_verb","translation":"сдаваться","contextSentence":"She gave up too early."}]}'
 ```
 
 ### Vocabulary

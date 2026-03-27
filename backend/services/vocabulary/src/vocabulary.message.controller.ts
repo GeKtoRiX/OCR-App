@@ -6,6 +6,7 @@ import {
   CompletePracticeResponse,
   DeleteVocabularyPayload,
   FindAllVocabularyPayload,
+  FindVocabularyByWordPayload,
   FindDueVocabularyPayload,
   FindVocabularyByIdPayload,
   PracticeSessionsPayload,
@@ -74,6 +75,17 @@ export class VocabularyMessageController {
       throw new RpcException({ statusCode: 404, message: 'Word not found' });
     }
     return word;
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_WORD)
+  async findByWord(
+    payload: FindVocabularyByWordPayload,
+  ): Promise<VocabularyItemDto | null> {
+    return this.vocabularyUseCase.findByWord(
+      payload.word,
+      payload.targetLang,
+      payload.nativeLang,
+    );
   }
 
   @MessagePattern(VOCABULARY_PATTERNS.UPDATE)

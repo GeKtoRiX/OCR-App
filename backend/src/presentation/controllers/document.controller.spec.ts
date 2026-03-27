@@ -13,6 +13,9 @@ describe('DocumentController', () => {
     filename: 'test.png',
     createdAt: now,
     updatedAt: now,
+    analysisStatus: 'idle' as const,
+    analysisError: null,
+    analysisUpdatedAt: null,
   };
 
   beforeEach(() => {
@@ -22,6 +25,8 @@ describe('DocumentController', () => {
       findById: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      prepareVocabulary: jest.fn(),
+      confirmVocabulary: jest.fn(),
     } as any;
     controller = new DocumentController(mockUseCase);
   });

@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useDocumentsStore } from './features/documents/documents.store';
 import { POLL_INTERVAL_MS, useHealthStore } from './features/health/health.store';
 import { DropZone } from './features/ocr/DropZone';
 import { useImageUpload } from './features/ocr/useImageUpload';
 import { useOcrStore } from './features/ocr/ocr.store';
 import { usePracticeStore } from './features/practice/practice.store';
+import { SaveVocabularyOverlay } from './features/vocabulary/SaveVocabularyOverlay';
 import { useVocabularyStore } from './features/vocabulary/vocabulary.store';
 import { checkHealth } from './shared/api';
 import { computeStatus } from './shared/lib/health-status';
@@ -28,6 +29,7 @@ function formatFileSize(size: number) {
 }
 
 export default function App() {
+  const [saveVocabularyDocumentId, setSaveVocabularyDocumentId] = useState<string | null>(null);
   const upload = useImageUpload();
   const ocr = useOcrStore();
   const docs = useDocumentsStore();
@@ -110,6 +112,14 @@ export default function App() {
     void docs.save(markdown, filename);
   };
 
+  const handleSaveVocabulary = () => {
+    if (!activeSavedDoc) {
+      return;
+    }
+    docs.clearVocabularyReview();
+    setSaveVocabularyDocumentId(activeSavedDoc.id);
+  };
+
   const handleUpdate = docs.activeSavedId
     ? (markdown: string) => {
         void docs.update(docs.activeSavedId!, markdown);
@@ -122,7 +132,13 @@ export default function App() {
     translation: string,
     contextSentence: string,
   ) => {
-    void vocab.addWord(word, vocabType, translation, contextSentence);
+    void vocab.addWord(
+      word,
+      vocabType,
+      translation,
+      contextSentence,
+      activeSavedDoc?.id,
+    );
   };
 
   const handlePracticeReset = () => {
@@ -192,9 +208,16 @@ export default function App() {
             <ResultPanel
               result={displayedResult}
               onSave={(markdown) => handleSave(markdown, displayedResult.filename)}
+              onSaveVocabulary={activeSavedDoc ? handleSaveVocabulary : undefined}
               saveStatus={docs.saveStatus}
               onUpdate={handleUpdate}
               isSavedDocument={activeSavedDoc !== null}
+              vocabularyDisabled={
+                activeSavedDoc === null ||
+                docs.vocabularyReviewStatus === 'preparing' ||
+                docs.vocabularyReviewStatus === 'reviewing' ||
+                docs.vocabularyReviewStatus === 'saving'
+              }
               existingWordsSet={vocab.existingWordsSet}
               onAddVocabulary={handleAddVocabulary}
             />
@@ -227,6 +250,39 @@ export default function App() {
             onReset={handlePracticeReset}
           />
         </Suspense>
+      )}
+
+      {activeSavedDoc && saveVocabularyDocumentId === activeSavedDoc.id && (
+        <SaveVocabularyOverlay
+          document={activeSavedDoc}
+          langPair={vocab.langPair}
+          status={docs.vocabularyReviewStatus}
+          candidates={docs.vocabularyReviewCandidates}
+          error={docs.vocabularyReviewError}
+          llmReviewApplied={docs.vocabularyReviewLlmApplied}
+          confirmResult={docs.vocabularyConfirmResult}
+          onPrepare={(llmReview) =>
+            docs.prepareVocabulary(activeSavedDoc.id, {
+              llmReview,
+              targetLang: vocab.langPair.targetLang,
+              nativeLang: vocab.langPair.nativeLang,
+            })
+          }
+          onConfirm={async (items) => {
+            const result = await docs.confirmVocabulary(activeSavedDoc.id, {
+              targetLang: vocab.langPair.targetLang,
+              nativeLang: vocab.langPair.nativeLang,
+              items,
+            });
+            if (result) {
+              await vocab.refresh();
+            }
+          }}
+          onClose={() => {
+            docs.clearVocabularyReview();
+            setSaveVocabularyDocumentId(null);
+          }}
+        />
       )}
     </div>
   );

@@ -100,7 +100,7 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
       <div className="history-item__body">
         <span className="history-item__name">{doc.filename}</span>
         <span className="history-item__stats">
-          {doc.markdown.length.toLocaleString('en-US')} chars · {date}
+          {doc.markdown.length.toLocaleString('en-US')} chars · {doc.analysisStatus} · {date}
         </span>
       </div>
       <button
@@ -214,7 +214,7 @@ export function HistoryPanel() {
         ) : docs.documents.length === 0 ? (
           <div className="history-empty">
             <p>No saved documents yet.</p>
-            <p>Use 💾 Save to keep OCR results.</p>
+            <p>Use Save Document to keep OCR results.</p>
           </div>
         ) : (
           <ul className="history-list">

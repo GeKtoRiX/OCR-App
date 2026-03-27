@@ -124,7 +124,16 @@ export interface SavedDocument {
   filename: string;
   createdAt: string;
   updatedAt: string;
+  analysisStatus: 'idle' | 'pending' | 'ready' | 'failed';
+  analysisError: string | null;
+  analysisUpdatedAt: string | null;
 }
+
+export type DocumentCandidatePos = 'noun' | 'verb' | 'adjective' | 'adverb' | null;
+export type DocumentCandidateReviewSource =
+  | 'base_nlp'
+  | 'llm_added'
+  | 'llm_reclassified';
 
 export interface HistoryEntry {
   id: string;
@@ -164,6 +173,50 @@ export interface VocabularyWord {
   nextReviewAt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DocumentVocabCandidate {
+  id: string;
+  surface: string;
+  normalized: string;
+  lemma: string;
+  vocabType: VocabType;
+  pos: DocumentCandidatePos;
+  translation: string;
+  contextSentence: string;
+  sentenceIndex: number;
+  startOffset: number;
+  endOffset: number;
+  selectedByDefault: boolean;
+  isDuplicate: boolean;
+  reviewSource: DocumentCandidateReviewSource;
+}
+
+export interface PreparedDocumentVocabularyResponse {
+  document: SavedDocument;
+  candidates: DocumentVocabCandidate[];
+  llmReviewApplied: boolean;
+}
+
+export interface ConfirmDocumentVocabularyResult {
+  savedCount: number;
+  skippedDuplicateCount: number;
+  failedCount: number;
+  savedItems: Array<{
+    candidateId: string;
+    vocabularyId: string;
+    word: string;
+  }>;
+  skippedItems: Array<{
+    candidateId: string;
+    word: string;
+    reason: 'duplicate' | 'missing_candidate';
+  }>;
+  failedItems: Array<{
+    candidateId: string;
+    word: string;
+    reason: string;
+  }>;
 }
 
 export interface Exercise {

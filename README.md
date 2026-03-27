@@ -4,6 +4,11 @@ Alpha baseline: `v0.1.0-alpha.1`
 
 OCR-App is a local-first OCR and study workflow. It extracts text from images, structures the result with LM Studio, lets you save documents, collect vocabulary with SM-2 scheduling, run practice sessions, and synthesize speech through several local TTS engines.
 
+The saved-document flow is split into:
+
+- `Save Document` for persisting OCR/Markdown output
+- `Save Vocabulary` for preparing document-scoped vocabulary candidates, optionally running LLM review, editing the final list in a confirmation overlay, and only then writing confirmed items into the shared vocabulary store
+
 The only cloud-dependent area is the optional `agentic` API under `/api/agents/*`, which requires `OPENAI_API_KEY`.
 
 ## Runtime Topology
@@ -19,7 +24,7 @@ HTTP Gateway :3000
         |                              Kokoro          :8200
         |                              F5 TTS          :8300
         |                              Voxtral         :8400
-        +--> Document service  :3903 --> SQLite
+        +--> Document service  :3903 --> SQLite + optional Stanza :8501
         +--> Vocabulary service:3904 --> SQLite + LM Studio
         +--> Agentic service   :3905 --> OpenAI Agents SDK
 
@@ -32,6 +37,7 @@ OCR + vocabulary structuring/generation use LM Studio :1234
 - `backend/services/*`: TCP microservices for OCR, TTS, documents, vocabulary/practice, and agentic workflows.
 - `backend/shared/`: shared contracts and domain abstractions used across processes.
 - `services/ocr/paddleocr-service/`: PaddleOCR FastAPI sidecar.
+- `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar for document vocabulary extraction.
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar.
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar.
 - `services/tts/f5-service/`: F5 TTS FastAPI sidecar.
@@ -146,6 +152,18 @@ Notes:
 - F5 is treated as GPU-only in this project.
 - Piper voices are served through the Supertone sidecar.
 
+### 4b. Set up the optional Stanza sidecar
+
+`Save Vocabulary` can use a lightweight heuristic fallback, but the preferred extractor is the Stanza sidecar.
+
+```bash
+cd services/nlp/stanza-service
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
 ### 5. Start a stack
 
 ```bash
@@ -185,11 +203,13 @@ http://localhost:3000
 ```bash
 npm run dev:frontend
 npm run dev:paddleocr
+npm run dev:stanza
 npm run dev:supertone
 npm run dev:kokoro
 npm run dev:f5
 npm run dev:voxtral
 npm run smoke:paddleocr
+npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
 npm run smoke:f5
@@ -207,12 +227,15 @@ npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 npm run perf:api
 npm run perf:browser
 npm run perf:phase4
 ```
 
 `test:e2e:browser` and `perf:phase4` rebuild the app and run with `LM_STUDIO_SMOKE_ONLY=true`, so they do not hit real LM Studio generation paths during automation.
+
+`test:e2e:browser:vocab` is a lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`, seeds a real saved document, and does not require OCR or TTS sidecars.
 
 ## Public API
 
@@ -284,6 +307,24 @@ Gateway validation:
 - `GET /api/documents/:id`
 - `PUT /api/documents/:id`
 - `DELETE /api/documents/:id`
+- `POST /api/documents/:id/vocabulary/prepare`
+- `POST /api/documents/:id/vocabulary/confirm`
+
+`POST /api/documents/:id/vocabulary/prepare` runs document-scoped candidate extraction and optional LLM review.
+
+```bash
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/prepare \
+  -H "Content-Type: application/json" \
+  -d '{"llmReview":true,"targetLang":"en","nativeLang":"ru"}'
+```
+
+`POST /api/documents/:id/vocabulary/confirm` writes the confirmed items into the normal vocabulary store.
+
+```bash
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"targetLang":"en","nativeLang":"ru","items":[{"candidateId":"<id>","word":"give up","vocabType":"phrasal_verb","translation":"сдаваться","contextSentence":"She gave up too early."}]}'
+```
 
 ### Vocabulary
 
@@ -312,6 +353,8 @@ These routes require `OPENAI_API_KEY`.
 
 - OCR results are stored in a session history store.
 - Saved documents, vocabulary, practice state, and health state each have their own Zustand store.
+- Saved results expose separate `Save Document` and `Save Vocabulary` actions.
+- `Save Vocabulary` always opens a review overlay with an embedded editor before writing anything to the DB.
 - TTS engines exposed in the UI: `supertone`, `piper`, `kokoro`, `f5`, `voxtral`.
 - The frontend currently exposes only English Voxtral preset voices, even though the backend/runtime supports a wider multilingual preset set.
 - Kokoro is blocked in the frontend for Cyrillic input and will throw a client-side error for that text path.

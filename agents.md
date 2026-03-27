@@ -21,6 +21,7 @@ Read this file before changing architecture, launchers, contracts, or documentat
 - local-first OCR application with study workflows
 - gateway + TCP service backend
 - SQLite-backed documents, vocabulary, and practice sessions
+- document-scoped `Save Vocabulary` review flow with confirm-before-save semantics
 - multi-engine TTS including Voxtral
 - optional agentic planning/deployment features
 
@@ -34,6 +35,7 @@ Read this file before changing architecture, launchers, contracts, or documentat
 - Do not treat `dist/`, `node_modules/`, `*.tsbuildinfo`, caches, or runtime logs as source of truth.
 - When changing the file tree, update `structure.md` and `docs/agents/file-map.md`.
 - When changing contracts, update gateway DTO assumptions, shared contracts, frontend API wrappers, and docs together.
+- When changing `Save Vocabulary` or review/editor behavior, update browser e2e coverage and automation docs together.
 
 ## Architecture Guardrails
 
@@ -75,6 +77,7 @@ Do not reintroduce the removed `model/` / `viewmodel/` structure.
 - Protects the gateway/services/shared split.
 - Ensures new cross-process payloads are defined in `backend/shared/src/contracts/*`.
 - Ensures local and shared DI tokens stay aligned where both are used.
+- Owns the document-vocabulary prepare/confirm contract surface across document and vocabulary services.
 
 ### Gateway Owner
 
@@ -101,6 +104,7 @@ Do not reintroduce the removed `model/` / `viewmodel/` structure.
 - Preserves the feature/store/view split.
 - Keeps orchestration in hooks and stores, not in shared UI primitives.
 - Updates docs whenever store layout or result-panel flows change.
+- Preserves the explicit `Save Document` / `Save Vocabulary` split and the review overlay editor workflow.
 
 ### OCR Integration Owner
 
@@ -117,6 +121,7 @@ Do not reintroduce the removed `model/` / `viewmodel/` structure.
 
 - Owns `README.md`, `CLAUDE.md`, `agents.md`, `structure.md`, `docs/agents/*`, and `docs/agent-ecosystem.md`.
 - Maintains current-state accuracy, not aspirational descriptions.
+- Must keep `playwright*.config.ts` and `scripts/e2e/*` references aligned with the current automation entrypoints.
 
 ## Handoff Protocol
 
@@ -138,6 +143,7 @@ Verify all applicable items before implementation:
   - `/api/health`
   - `/api/tts`
   - `/api/documents/*`
+  - `/api/documents/:id/vocabulary/*`
   - `/api/vocabulary/*`
   - `/api/practice/*`
   - `/api/agents/*`
@@ -165,6 +171,10 @@ Verify all applicable items before implementation:
 - frontend shows only English Voxtral voices
 - Kokoro is blocked client-side for Cyrillic text
 - browser/perf automation may run with `LM_STUDIO_SMOKE_ONLY=true`
+- `Save Vocabulary` prepares document-scoped candidates before writing to the shared vocabulary store
+- the review overlay contains an embedded editor and optional LLM review toggle
+- lightweight browser e2e exists for this flow via `test:e2e:browser:vocab`
+- document vocabulary extraction prefers the optional Stanza sidecar on `:8501`
 
 ## Related Docs
 

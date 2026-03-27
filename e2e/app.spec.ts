@@ -104,6 +104,16 @@ async function openSavedDocument(page: Page, filename: string) {
   mark(`saved:opened:${filename}`);
 }
 
+async function saveCurrentResultAsDocument(page: Page) {
+  mark('document:save:start');
+  await page.getByTestId('result-tab-markdown').click();
+  await page.getByTestId('result-save-button').click();
+  await expect(page.getByTestId('result-save-button')).toContainText('Saved', {
+    timeout: 30_000,
+  });
+  mark('document:save:done');
+}
+
 async function openSessionDocument(page: Page, filename: string) {
   mark(`session:open:${filename}`);
   await page.getByTestId('history-tab-session').click();
@@ -263,6 +273,39 @@ async function generateTts(
   mark(`tts:${engine}:done`);
 }
 
+async function saveVocabularyFromOverlay(page: Page) {
+  const overlay = page.getByTestId('save-vocabulary-overlay');
+  const editedWord = `playwright-vocab-${Date.now()}`;
+  const editedTranslation = 'проверено через playwright';
+  const editedContext = 'Playwright updated this context before saving.';
+
+  mark('vocab-overlay:open');
+  await page.getByTestId('result-save-vocabulary-button').click();
+  await expect(overlay).toBeVisible({ timeout: 120_000 });
+
+  const listItems = overlay.getByTestId('save-vocab-list-item');
+  await expect(listItems.first()).toBeVisible({ timeout: 120_000 });
+  await expect(overlay.getByTestId('save-vocab-editor')).toBeVisible();
+
+  mark('vocab-overlay:edit');
+  await overlay.getByTestId('save-vocab-editor-word').fill(editedWord);
+  await overlay.getByTestId('save-vocab-editor-type').selectOption('expression');
+  await overlay.getByTestId('save-vocab-editor-translation').fill(editedTranslation);
+  await overlay.getByTestId('save-vocab-editor-context').fill(editedContext);
+
+  mark('vocab-overlay:confirm');
+  await overlay.getByRole('button', { name: 'Confirm Save' }).click();
+  await expect(overlay.getByText('Saved:')).toBeVisible({ timeout: 120_000 });
+  await overlay.getByRole('button', { name: 'Done' }).click();
+  await expect(overlay).toBeHidden({ timeout: 30_000 });
+  mark('vocab-overlay:saved');
+
+  return {
+    editedWord,
+    editedTranslation,
+  };
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test('rejects unsupported upload types in the browser', async ({ page }) => {
@@ -362,6 +405,26 @@ test('adds vocabulary via context menu and completes practice flow', async ({
   });
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('practice-view')).toBeHidden();
+});
+
+test('saves edited vocabulary from the review overlay into the real vocabulary list', async ({
+  page,
+}) => {
+  await uploadAndRecognize(page);
+  await saveCurrentResultAsDocument(page);
+  await openSavedDocument(page, 'image_test.jpg');
+
+  const { editedWord, editedTranslation } = await saveVocabularyFromOverlay(page);
+  const vocabularyPanel = page.getByTestId('vocabulary-panel');
+
+  await page.getByTestId('history-tab-vocab').click();
+  await expect(
+    vocabularyPanel.getByText(editedWord, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    vocabularyPanel.getByText(editedTranslation, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(vocabularyPanel.getByText('Expression', { exact: true })).toBeVisible();
 });
 
 test('generates TTS audio for all engines from the OCR result', async ({ page }) => {

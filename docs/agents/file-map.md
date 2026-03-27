@@ -69,9 +69,13 @@ Important files:
 - `backend/src/application/use-cases/saved-document.use-case.ts`
 - `backend/src/application/use-cases/vocabulary.use-case.ts`
 - `backend/src/application/use-cases/practice.use-case.ts`
+- `backend/src/domain/entities/document-vocab-candidate.entity.ts`
+- `backend/src/domain/ports/document-vocabulary-extractor.port.ts`
+- `backend/src/infrastructure/document/document-vocabulary-extractor.service.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio.client.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio-structuring.service.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio-vocabulary.service.ts`
+- `backend/src/infrastructure/vocabulary/tcp-vocabulary.repository.ts`
 - `backend/src/infrastructure/paddleocr/paddleocr-ocr.service.ts`
 - `backend/src/infrastructure/paddleocr/paddleocr-health.service.ts`
 - `backend/src/infrastructure/supertone/supertone.service.ts`
@@ -102,6 +106,7 @@ Important files:
 - `frontend/src/view/HistoryPanel.tsx`
 - `frontend/src/features/practice/PracticeView.tsx`
 - `frontend/src/features/vocabulary/VocabularyPanel.tsx`
+- `frontend/src/features/vocabulary/SaveVocabularyOverlay.tsx`
 
 ### Shared frontend files
 
@@ -115,6 +120,8 @@ Important files:
 
 - `services/ocr/paddleocr-service/main.py`
 - `services/ocr/paddleocr-service/smoke_test.py`
+- `services/nlp/stanza-service/main.py`
+- `services/nlp/stanza-service/requirements.txt`
 - `services/tts/supertone-service/main.py`
 - `services/tts/supertone-service/smoke_test.py`
 - `services/tts/kokoro-service/main.py`
@@ -135,6 +142,7 @@ Important files:
 - `scripts/linux/stack.sh`
 - `scripts/linux/tts-models.conf`
 - `scripts/e2e/prepare-browser-env.sh`
+- `scripts/e2e/prepare-save-vocabulary-env.sh`
 - `scripts/e2e/stop-browser-env.sh`
 - `scripts/perf/api-benchmark.mjs`
 - `scripts/perf/browser-benchmark.mjs`
@@ -150,3 +158,10 @@ Important files:
 - `docs/agents/context.md`
 - `docs/agents/adr.md`
 - `docs/agents/task-log.md`
+
+## Browser E2E
+
+- `playwright.config.ts`
+- `playwright.save-vocabulary.config.ts`
+- `e2e/app.spec.ts`
+- `e2e/save-vocabulary.spec.ts`

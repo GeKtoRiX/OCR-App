@@ -1,10 +1,14 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, RpcException } from '@nestjs/microservices';
 import {
+  ConfirmDocumentVocabularyPayload,
+  ConfirmDocumentVocabularyResultDto,
   CreateDocumentPayload,
   DOCUMENT_PATTERNS,
   DeleteDocumentPayload,
   FindDocumentByIdPayload,
+  PrepareDocumentVocabularyPayload,
+  PreparedDocumentVocabularyDto,
   SavedDocumentDto,
   UpdateDocumentPayload,
 } from '@ocr-app/shared';
@@ -63,5 +67,41 @@ export class DocumentMessageController {
     if (!deleted) {
       throw new RpcException({ statusCode: 404, message: 'Document not found' });
     }
+  }
+
+  @MessagePattern(DOCUMENT_PATTERNS.PREPARE_VOCABULARY)
+  async prepareVocabulary(
+    payload: PrepareDocumentVocabularyPayload,
+  ): Promise<PreparedDocumentVocabularyDto> {
+    const prepared = await this.savedDocumentUseCase.prepareVocabulary(payload.id, {
+      llmReview: payload.llmReview,
+      targetLang: payload.targetLang,
+      nativeLang: payload.nativeLang,
+    });
+    if (!prepared) {
+      throw new RpcException({ statusCode: 404, message: 'Document not found' });
+    }
+    return prepared;
+  }
+
+  @MessagePattern(DOCUMENT_PATTERNS.CONFIRM_VOCABULARY)
+  async confirmVocabulary(
+    payload: ConfirmDocumentVocabularyPayload,
+  ): Promise<ConfirmDocumentVocabularyResultDto> {
+    const confirmed = await this.savedDocumentUseCase.confirmVocabulary(payload.id, {
+      targetLang: payload.targetLang,
+      nativeLang: payload.nativeLang,
+      items: payload.items.map((item) => ({
+        candidateId: item.candidateId,
+        word: item.word,
+        vocabType: item.vocabType,
+        translation: item.translation,
+        contextSentence: item.contextSentence,
+      })),
+    });
+    if (!confirmed) {
+      throw new RpcException({ statusCode: 404, message: 'Document not found' });
+    }
+    return confirmed;
   }
 }

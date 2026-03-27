@@ -1,13 +1,21 @@
 import { create } from 'zustand';
 import {
+  confirmDocumentVocabulary,
   createDocument,
   deleteDocument,
   fetchDocuments,
+  prepareDocumentVocabulary,
   updateDocument,
 } from '../../shared/api';
-import type { SavedDocument } from '../../shared/types';
+import type {
+  ConfirmDocumentVocabularyResult,
+  DocumentVocabCandidate,
+  SavedDocument,
+  VocabType,
+} from '../../shared/types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type VocabularyReviewStatus = 'idle' | 'preparing' | 'reviewing' | 'ready' | 'saving' | 'saved' | 'error';
 
 interface DocumentsState {
   documents: SavedDocument[];
@@ -15,6 +23,12 @@ interface DocumentsState {
   saveStatus: SaveStatus;
   error: string | null;
   activeSavedId: string | null;
+  vocabularyReviewStatus: VocabularyReviewStatus;
+  vocabularyReviewDocumentId: string | null;
+  vocabularyReviewCandidates: DocumentVocabCandidate[];
+  vocabularyReviewError: string | null;
+  vocabularyReviewLlmApplied: boolean;
+  vocabularyConfirmResult: ConfirmDocumentVocabularyResult | null;
 }
 
 interface DocumentsActions {
@@ -24,6 +38,25 @@ interface DocumentsActions {
   remove(id: string): Promise<boolean>;
   selectDocument(id: string): void;
   clearSelection(): void;
+  prepareVocabulary(
+    id: string,
+    options: { llmReview: boolean; targetLang: string; nativeLang: string },
+  ): Promise<DocumentVocabCandidate[]>;
+  confirmVocabulary(
+    id: string,
+    options: {
+      targetLang: string;
+      nativeLang: string;
+      items: Array<{
+        candidateId: string;
+        word: string;
+        vocabType: VocabType;
+        translation: string;
+        contextSentence: string;
+      }>;
+    },
+  ): Promise<ConfirmDocumentVocabularyResult | null>;
+  clearVocabularyReview(): void;
 }
 
 export type DocumentsStore = DocumentsState & DocumentsActions;
@@ -34,6 +67,12 @@ const initialState: DocumentsState = {
   saveStatus: 'idle',
   error: null,
   activeSavedId: null,
+  vocabularyReviewStatus: 'idle',
+  vocabularyReviewDocumentId: null,
+  vocabularyReviewCandidates: [],
+  vocabularyReviewError: null,
+  vocabularyReviewLlmApplied: false,
+  vocabularyConfirmResult: null,
 };
 
 export const useDocumentsStore = create<DocumentsStore>((set, get) => {
@@ -77,6 +116,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
           documents: [document, ...state.documents],
           saveStatus: 'saved',
           error: null,
+          activeSavedId: document.id,
         }));
         scheduleSaveStatusReset();
         return document;
@@ -125,6 +165,106 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
 
     clearSelection() {
       set({ activeSavedId: null });
+    },
+
+    async prepareVocabulary(id, options) {
+      set({
+        vocabularyReviewStatus: 'preparing',
+        vocabularyReviewDocumentId: id,
+        vocabularyReviewError: null,
+        vocabularyConfirmResult: null,
+      });
+
+      try {
+        const base = await prepareDocumentVocabulary({
+          id,
+          llmReview: false,
+          targetLang: options.targetLang,
+          nativeLang: options.nativeLang,
+        });
+
+        set((state) => ({
+          documents: state.documents.map((document) =>
+            document.id === id ? base.document : document,
+          ),
+          vocabularyReviewCandidates: base.candidates,
+          vocabularyReviewStatus: options.llmReview ? 'reviewing' : 'ready',
+          vocabularyReviewLlmApplied: false,
+          vocabularyReviewError: null,
+        }));
+
+        if (!options.llmReview) {
+          return base.candidates;
+        }
+
+        const reviewed = await prepareDocumentVocabulary({
+          id,
+          llmReview: true,
+          targetLang: options.targetLang,
+          nativeLang: options.nativeLang,
+        });
+
+        set((state) => ({
+          documents: state.documents.map((document) =>
+            document.id === id ? reviewed.document : document,
+          ),
+          vocabularyReviewCandidates: reviewed.candidates,
+          vocabularyReviewStatus: 'ready',
+          vocabularyReviewLlmApplied: reviewed.llmReviewApplied,
+          vocabularyReviewError: null,
+        }));
+
+        return reviewed.candidates;
+      } catch (error) {
+        set({
+          vocabularyReviewStatus: 'error',
+          vocabularyReviewError:
+            error instanceof Error ? error.message : 'Failed to prepare vocabulary',
+        });
+        return [];
+      }
+    },
+
+    async confirmVocabulary(id, options) {
+      set({
+        vocabularyReviewStatus: 'saving',
+        vocabularyReviewError: null,
+      });
+
+      try {
+        const result = await confirmDocumentVocabulary({
+          id,
+          targetLang: options.targetLang,
+          nativeLang: options.nativeLang,
+          items: options.items,
+        });
+
+        set({
+          vocabularyReviewStatus: 'saved',
+          vocabularyConfirmResult: result,
+          vocabularyReviewError: null,
+        });
+
+        return result;
+      } catch (error) {
+        set({
+          vocabularyReviewStatus: 'error',
+          vocabularyReviewError:
+            error instanceof Error ? error.message : 'Failed to save vocabulary',
+        });
+        return null;
+      }
+    },
+
+    clearVocabularyReview() {
+      set({
+        vocabularyReviewStatus: 'idle',
+        vocabularyReviewDocumentId: null,
+        vocabularyReviewCandidates: [],
+        vocabularyReviewError: null,
+        vocabularyReviewLlmApplied: false,
+        vocabularyConfirmResult: null,
+      });
     },
   };
 });

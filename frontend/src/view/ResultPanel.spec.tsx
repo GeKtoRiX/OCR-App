@@ -137,14 +137,14 @@ describe('ResultPanel', () => {
   it('should render save button when onSave is provided', () => {
     render(<ResultPanel result={result} onSave={vi.fn()} saveStatus="idle" />);
 
-    expect(screen.getByTitle('Save to database')).toBeInTheDocument();
+    expect(screen.getByText('Save Document')).toBeInTheDocument();
   });
 
   it('should call onSave with markdown content when save button is clicked', () => {
     const onSave = vi.fn();
     render(<ResultPanel result={result} onSave={onSave} saveStatus="idle" />);
 
-    fireEvent.click(screen.getByTitle('Save to database'));
+    fireEvent.click(screen.getByText('Save Document'));
 
     expect(onSave).toHaveBeenCalledWith('# Markdown content');
   });
@@ -158,7 +158,7 @@ describe('ResultPanel', () => {
   it('should not show save button when isSavedDocument is true', () => {
     render(<ResultPanel result={result} onSave={vi.fn()} saveStatus="idle" isSavedDocument />);
 
-    expect(screen.queryByTitle('Save to database')).not.toBeInTheDocument();
+    expect(screen.queryByText('Save Document')).not.toBeInTheDocument();
   });
 
   it('should hide Raw Text tab when isSavedDocument is true', () => {

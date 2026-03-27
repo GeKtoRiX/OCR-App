@@ -13,9 +13,13 @@ import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import {
   CreateDocumentPayload,
+  ConfirmDocumentVocabularyPayload,
+  ConfirmDocumentVocabularyResultDto,
   DeleteDocumentPayload,
   DOCUMENT_PATTERNS,
   FindDocumentByIdPayload,
+  PrepareDocumentVocabularyPayload,
+  PreparedDocumentVocabularyDto,
   SavedDocumentDto,
   UpdateDocumentPayload,
 } from '@ocr-app/shared';
@@ -75,6 +79,49 @@ export class GatewayDocumentController {
     await this.send<DeleteDocumentPayload, void>(DOCUMENT_PATTERNS.DELETE, {
       id,
     });
+  }
+
+  @Post(':id/vocabulary/prepare')
+  async prepareVocabulary(
+    @Param('id') id: string,
+    @Body() body: Omit<PrepareDocumentVocabularyPayload, 'id'>,
+  ): Promise<PreparedDocumentVocabularyDto> {
+    if (!body.targetLang?.trim() || !body.nativeLang?.trim()) {
+      throw new BadRequestException('targetLang and nativeLang are required');
+    }
+    const payload: PrepareDocumentVocabularyPayload = {
+      id,
+      llmReview: Boolean(body.llmReview),
+      targetLang: body.targetLang.trim(),
+      nativeLang: body.nativeLang.trim(),
+    };
+    return this.send<PrepareDocumentVocabularyPayload, PreparedDocumentVocabularyDto>(
+      DOCUMENT_PATTERNS.PREPARE_VOCABULARY,
+      payload,
+    );
+  }
+
+  @Post(':id/vocabulary/confirm')
+  async confirmVocabulary(
+    @Param('id') id: string,
+    @Body() body: Omit<ConfirmDocumentVocabularyPayload, 'id'>,
+  ): Promise<ConfirmDocumentVocabularyResultDto> {
+    if (!body.targetLang?.trim() || !body.nativeLang?.trim()) {
+      throw new BadRequestException('targetLang and nativeLang are required');
+    }
+    if (!Array.isArray(body.items)) {
+      throw new BadRequestException('items must be an array');
+    }
+    const payload: ConfirmDocumentVocabularyPayload = {
+      id,
+      targetLang: body.targetLang.trim(),
+      nativeLang: body.nativeLang.trim(),
+      items: body.items,
+    };
+    return this.send<ConfirmDocumentVocabularyPayload, ConfirmDocumentVocabularyResultDto>(
+      DOCUMENT_PATTERNS.CONFIRM_VOCABULARY,
+      payload,
+    );
   }
 
   private async send<TPayload, TResult>(

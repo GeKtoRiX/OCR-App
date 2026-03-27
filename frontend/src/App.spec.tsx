@@ -93,12 +93,21 @@ function defaultStores() {
       saveStatus: 'idle' as const,
       error: null,
       activeSavedId: null,
+      vocabularyReviewStatus: 'idle' as const,
+      vocabularyReviewDocumentId: null,
+      vocabularyReviewCandidates: [],
+      vocabularyReviewError: null,
+      vocabularyReviewLlmApplied: false,
+      vocabularyConfirmResult: null,
       load: vi.fn().mockResolvedValue(undefined),
       save: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue(null),
       remove: vi.fn().mockResolvedValue(true),
       selectDocument: vi.fn(),
       clearSelection: vi.fn(),
+      prepareVocabulary: vi.fn().mockResolvedValue([]),
+      confirmVocabulary: vi.fn().mockResolvedValue(null),
+      clearVocabularyReview: vi.fn(),
     },
     vocab: {
       words: [],
@@ -250,6 +259,7 @@ describe('App', () => {
       'word',
       'привет',
       'Hello there.',
+      undefined,
     );
   });
 
@@ -261,6 +271,9 @@ describe('App', () => {
         filename: 'saved.md',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
       },
     ];
     mocks.mockDocs.activeSavedId = 'saved-1';
