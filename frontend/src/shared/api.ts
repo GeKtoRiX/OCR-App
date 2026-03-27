@@ -14,7 +14,6 @@ import type {
 } from './types';
 
 const BASE = '/api';
-const CYRILLIC_RE = /[\u0400-\u04FF]/;
 
 async function getErrorMessage(response: Response): Promise<string> {
   const body = await response
@@ -58,12 +57,6 @@ export async function generateSpeech(
   settings: TtsSettings,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  if (settings.engine === 'kokoro' && CYRILLIC_RE.test(text)) {
-    throw new Error(
-      'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
-    );
-  }
-
   const request =
     settings.engine === 'f5'
       ? (() => {

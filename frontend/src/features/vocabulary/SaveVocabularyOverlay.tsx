@@ -7,7 +7,7 @@ import type {
   VocabType,
 } from '../../shared/types';
 import { VOCAB_TYPE_LABELS } from '../../shared/types';
-import type { VocabularyReviewStatus } from '../documents/documents.store';
+import type { VocabularyReviewStatus } from '../documents';
 import './SaveVocabularyOverlay.css';
 
 const LLM_REVIEW_STORAGE_KEY = 'ocr-app.save-vocabulary.llm-review.enabled';

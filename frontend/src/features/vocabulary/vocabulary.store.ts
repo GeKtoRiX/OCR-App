@@ -6,6 +6,7 @@ import {
   fetchVocabulary,
   updateVocabularyWord,
 } from '../../shared/api';
+import { toErrorMessage } from '../../shared/lib/errors';
 import type { LanguagePair, VocabularyWord, VocabType } from '../../shared/types';
 
 interface VocabularyState {
@@ -76,7 +77,7 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
     } catch (error) {
       set({
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to load vocabulary',
+        error: toErrorMessage(error, 'Failed to load vocabulary'),
       });
     }
   };
@@ -117,7 +118,7 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
         return created;
       } catch (error) {
         set({
-          error: error instanceof Error ? error.message : 'Failed to add word',
+          error: toErrorMessage(error, 'Failed to add word'),
         });
         return null;
       }
@@ -138,7 +139,7 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
         return true;
       } catch (error) {
         set({
-          error: error instanceof Error ? error.message : 'Failed to delete word',
+          error: toErrorMessage(error, 'Failed to delete word'),
         });
         return false;
       }
@@ -159,7 +160,7 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
         return updated;
       } catch (error) {
         set({
-          error: error instanceof Error ? error.message : 'Failed to update word',
+          error: toErrorMessage(error, 'Failed to update word'),
         });
         return null;
       }

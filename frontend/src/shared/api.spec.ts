@@ -188,22 +188,6 @@ describe('API service', () => {
       await expect(generateSpeech('text', settings)).rejects.toThrow('TTS sidecar down');
     });
 
-    it('should reject kokoro requests with Cyrillic text before fetch', async () => {
-      global.fetch = vi.fn();
-
-      await expect(
-        generateSpeech('Привет мир', {
-          engine: 'kokoro',
-          voice: 'af_heart',
-          speed: 1.0,
-        }),
-      ).rejects.toThrow(
-        'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
-      );
-
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
     it('should fall back to statusText when json parsing fails', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,

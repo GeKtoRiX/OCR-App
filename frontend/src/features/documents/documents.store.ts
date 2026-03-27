@@ -7,6 +7,8 @@ import {
   prepareDocumentVocabulary,
   updateDocument,
 } from '../../shared/api';
+import { removeAndReselect } from '../../shared/lib/collection';
+import { toErrorMessage } from '../../shared/lib/errors';
 import type {
   ConfirmDocumentVocabularyResult,
   DocumentVocabCandidate,
@@ -102,7 +104,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       } catch (error) {
         set({
           loading: false,
-          error: error instanceof Error ? error.message : 'Failed to load documents',
+          error: toErrorMessage(error, 'Failed to load documents'),
         });
       }
     },
@@ -123,7 +125,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       } catch (error) {
         set({
           saveStatus: 'error',
-          error: error instanceof Error ? error.message : 'Failed to save',
+          error: toErrorMessage(error, 'Failed to save'),
         });
         return null;
       }
@@ -138,7 +140,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
         }));
         return document;
       } catch (error) {
-        set({ error: error instanceof Error ? error.message : 'Failed to update' });
+        set({ error: toErrorMessage(error, 'Failed to update') });
         return null;
       }
     },
@@ -146,14 +148,22 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
     async remove(id) {
       try {
         await deleteDocument(id);
-        set((state) => ({
-          documents: state.documents.filter((item) => item.id !== id),
-          activeSavedId: state.activeSavedId === id ? null : state.activeSavedId,
-          error: null,
-        }));
+        set((state) => {
+          const { items: documents, activeId: activeSavedId } = removeAndReselect(
+            state.documents,
+            id,
+            state.activeSavedId,
+          );
+
+          return {
+            documents,
+            activeSavedId,
+            error: null,
+          };
+        });
         return true;
       } catch (error) {
-        set({ error: error instanceof Error ? error.message : 'Failed to delete' });
+        set({ error: toErrorMessage(error, 'Failed to delete') });
         return false;
       }
     },
@@ -218,8 +228,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       } catch (error) {
         set({
           vocabularyReviewStatus: 'error',
-          vocabularyReviewError:
-            error instanceof Error ? error.message : 'Failed to prepare vocabulary',
+          vocabularyReviewError: toErrorMessage(error, 'Failed to prepare vocabulary'),
         });
         return [];
       }
@@ -249,8 +258,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       } catch (error) {
         set({
           vocabularyReviewStatus: 'error',
-          vocabularyReviewError:
-            error instanceof Error ? error.message : 'Failed to save vocabulary',
+          vocabularyReviewError: toErrorMessage(error, 'Failed to save vocabulary'),
         });
         return null;
       }

@@ -221,6 +221,22 @@ describe('useTts', () => {
     );
   });
 
+  it('should reject Kokoro generation for Cyrillic text before calling the API', async () => {
+    const { result } = renderHook(() => useTts('Привет мир', 'file.png'));
+
+    act(() => {
+      result.current.setEngine('kokoro');
+    });
+
+    await act(async () => {
+      await result.current.handleGenerate();
+    });
+
+    expect(result.current.ttsStatus).toBe('error');
+    expect(result.current.ttsError).toContain('Kokoro');
+    expect(mockGenerateSpeech).not.toHaveBeenCalled();
+  });
+
   it('should send f5 settings to the API call', async () => {
     mockGenerateSpeech.mockResolvedValue(new Blob());
     const refAudioFile = new File(['wav'], 'reference.wav', { type: 'audio/wav' });

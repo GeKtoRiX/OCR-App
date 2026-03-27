@@ -1,0 +1,349 @@
+import type { TtsState } from '../features/tts';
+import {
+  TTS_VOICES,
+  TTS_LANGS,
+  TTS_LANG_LABELS,
+  PIPER_VOICES,
+  KOKORO_VOICES,
+  VOXTRAL_EN_VOICES,
+} from '../shared/types';
+import './TtsPanel.css';
+
+interface Props {
+  tts: TtsState;
+}
+
+export function TtsSettingsPanel({ tts }: Props) {
+  const { ttsSettings } = tts;
+
+  return (
+    <div className="tts-panel">
+      <div className="tts-panel__engine-row">
+        {(['supertone', 'piper', 'kokoro', 'f5', 'voxtral'] as const).map((engine) => (
+          <button
+            key={engine}
+            className={`tts-panel__engine-btn ${ttsSettings.engine === engine ? 'tts-panel__engine-btn--active' : ''}`}
+            onClick={() => tts.setEngine(engine)}
+            data-testid={`tts-engine-${engine}`}
+          >
+            {engine.charAt(0).toUpperCase() + engine.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {ttsSettings.engine === 'kokoro' ? (
+        <div className="tts-panel__settings">
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Voice</label>
+            <div className="tts-panel__chips tts-panel__chips--wrap">
+              {KOKORO_VOICES.map((voice) => (
+                <button
+                  key={voice.id}
+                  className={`tts-panel__chip ${tts.kokoroVoice === voice.id ? 'tts-panel__chip--active' : ''}`}
+                  onClick={() => tts.setKokoroVoice(voice.id)}
+                  title={`${voice.lang} — ${voice.id}`}
+                >
+                  <span className="tts-panel__chip-label">{voice.label}</span>
+                  <span className="tts-panel__chip-lang">{voice.lang}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="tts-panel__label">
+            <span>Speed</span>
+            <span className="tts-panel__value">{ttsSettings.speed.toFixed(2)}×</span>
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.05"
+              value={ttsSettings.speed}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) => ({ ...settings, speed: parseFloat(e.target.value) }))
+              }
+              className="tts-panel__slider"
+            />
+          </label>
+        </div>
+      ) : ttsSettings.engine === 'supertone' ? (
+        <div className="tts-panel__settings">
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Voice</label>
+            <div className="tts-panel__chips">
+              {TTS_VOICES.map((voice) => (
+                <button
+                  key={voice}
+                  className={`tts-panel__chip ${ttsSettings.voice === voice ? 'tts-panel__chip--active' : ''}`}
+                  onClick={() => tts.setTtsSettings((settings) => ({ ...settings, voice }))}
+                >
+                  {voice}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Language</label>
+            <div className="tts-panel__chips">
+              {TTS_LANGS.map((lang) => (
+                <button
+                  key={lang}
+                  className={`tts-panel__chip ${ttsSettings.lang === lang ? 'tts-panel__chip--active' : ''}`}
+                  onClick={() => tts.setTtsSettings((settings) => ({ ...settings, lang }))}
+                  title={TTS_LANG_LABELS[lang]}
+                >
+                  {lang.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="tts-panel__label">
+            <span>Speed</span>
+            <span className="tts-panel__value">{ttsSettings.speed.toFixed(2)}×</span>
+            <input
+              type="range"
+              min="0.7"
+              max="2.0"
+              step="0.05"
+              value={ttsSettings.speed}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) => ({ ...settings, speed: parseFloat(e.target.value) }))
+              }
+              className="tts-panel__slider"
+            />
+          </label>
+
+          <label className="tts-panel__label">
+            <span>Quality steps</span>
+            <span className="tts-panel__value">{ttsSettings.totalSteps}</span>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={ttsSettings.totalSteps}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) => ({
+                  ...settings,
+                  totalSteps: parseInt(e.target.value),
+                }))
+              }
+              className="tts-panel__slider"
+            />
+          </label>
+        </div>
+      ) : ttsSettings.engine === 'f5' ? (
+        <div className="tts-panel__settings">
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label" htmlFor="f5-ref-audio">
+              Reference Audio
+            </label>
+            <input
+              id="f5-ref-audio"
+              className="tts-panel__voice-input"
+              type="file"
+              accept=".wav,.mp3,.flac,.ogg,audio/wav,audio/x-wav,audio/mpeg,audio/flac,audio/ogg"
+              onChange={(e) =>
+                tts.setTtsSettings((settings) =>
+                  settings.engine === 'f5'
+                    ? { ...settings, refAudioFile: e.target.files?.[0] ?? null }
+                    : settings,
+                )
+              }
+            />
+          </div>
+
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label" htmlFor="f5-ref-text">
+              Reference Text
+            </label>
+            <textarea
+              id="f5-ref-text"
+              className="tts-panel__voice-input"
+              value={ttsSettings.refText}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) =>
+                  settings.engine === 'f5' ? { ...settings, refText: e.target.value } : settings,
+                )
+              }
+              placeholder={
+                ttsSettings.autoTranscribe
+                  ? 'Reference text will be detected from the uploaded audio'
+                  : 'Enter the transcript of the reference audio'
+              }
+              disabled={ttsSettings.autoTranscribe}
+              spellCheck={false}
+              rows={3}
+            />
+          </div>
+
+          <label className="tts-panel__label">
+            <span>Auto-detect reference text</span>
+            <input
+              type="checkbox"
+              checked={ttsSettings.autoTranscribe}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) =>
+                  settings.engine === 'f5'
+                    ? {
+                        ...settings,
+                        autoTranscribe: e.target.checked,
+                        refText: e.target.checked ? '' : settings.refText,
+                      }
+                    : settings,
+                )
+              }
+            />
+          </label>
+
+          <label className="tts-panel__label">
+            <span>Trim output silence</span>
+            <input
+              type="checkbox"
+              checked={ttsSettings.removeSilence}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) =>
+                  settings.engine === 'f5'
+                    ? { ...settings, removeSilence: e.target.checked }
+                    : settings,
+                )
+              }
+            />
+          </label>
+
+          <p className="tts-panel__hint">
+            F5 uses uploaded reference audio for voice cloning. Keep the clip short. You can provide
+            its transcript manually or let F5 detect it automatically. The first auto-detect run can
+            take much longer because the ASR model may need to download.
+          </p>
+        </div>
+      ) : ttsSettings.engine === 'voxtral' ? (
+        <div className="tts-panel__settings">
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Voice</label>
+            <div className="tts-panel__chips tts-panel__chips--wrap">
+              {VOXTRAL_EN_VOICES.map((voice) => (
+                <button
+                  key={voice.id}
+                  className={`tts-panel__chip ${tts.voxtralVoice === voice.id ? 'tts-panel__chip--active' : ''}`}
+                  onClick={() => tts.setVoxtralVoice(voice.id)}
+                  title={`${voice.label} — ${voice.id}`}
+                >
+                  <span className="tts-panel__chip-label">{voice.label}</span>
+                  <span className="tts-panel__chip-lang">{voice.meta}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="tts-panel__hint">
+            Voxtral in this stack uses the open-weight preset voices exposed by local `vLLM-Omni`.
+            AI Studio demo presets such as `Jane, Curious` or `Paul, Sad` are not part of this local
+            runtime. Output stays fixed to WAV while the AMD/ROCm path is validated.
+          </p>
+        </div>
+      ) : ttsSettings.engine === 'piper' ? (
+        <div className="tts-panel__settings">
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Voice</label>
+            <div className="tts-panel__chips tts-panel__chips--wrap">
+              {PIPER_VOICES.map((voice) => (
+                <button
+                  key={voice.id}
+                  className={`tts-panel__chip ${tts.piperVoice === voice.id ? 'tts-panel__chip--active' : ''}`}
+                  onClick={() => tts.setPiperVoice(voice.id)}
+                  title={`${voice.lang} — ${voice.id}`}
+                >
+                  <span className="tts-panel__chip-label">{voice.label}</span>
+                  <span className="tts-panel__chip-lang">{voice.lang}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="tts-panel__row">
+            <label className="tts-panel__field-label">Custom voice</label>
+            <input
+              className="tts-panel__voice-input"
+              type="text"
+              value={tts.piperVoice}
+              onChange={(e) => tts.setPiperVoice(e.target.value)}
+              placeholder="e.g. en_US-amy-medium"
+              spellCheck={false}
+            />
+          </div>
+
+          <label className="tts-panel__label">
+            <span>Speed</span>
+            <span className="tts-panel__value">{ttsSettings.speed.toFixed(2)}×</span>
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.05"
+              value={ttsSettings.speed}
+              onChange={(e) =>
+                tts.setTtsSettings((settings) => ({ ...settings, speed: parseFloat(e.target.value) }))
+              }
+              className="tts-panel__slider"
+            />
+          </label>
+
+          <p className="tts-panel__hint">
+            First use downloads the voice model (~30-100 MB). Full list:{' '}
+            <a href="https://rhasspy.github.io/piper-samples/" target="_blank" rel="noreferrer">
+              piper-samples
+            </a>
+          </p>
+        </div>
+      ) : null}
+
+      {tts.audioUrl && (
+        <div className="tts-panel__player">
+          <div className="tts-panel__player-main">
+            <audio
+              ref={tts.audioRef}
+              controls
+              src={tts.audioUrl}
+              className="tts-panel__audio"
+              data-testid="tts-audio-player"
+            />
+            <a
+              href={tts.audioUrl}
+              download={tts.audioFilename}
+              className="tts-panel__download"
+              title="Download WAV"
+            >
+              ↓ WAV
+            </a>
+          </div>
+          <div className="tts-panel__playrate">
+            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+              <button
+                key={rate}
+                className={`tts-panel__rate-btn ${tts.playbackRate === rate ? 'tts-panel__rate-btn--active' : ''}`}
+                onClick={() => tts.setPlaybackRate(rate)}
+              >
+                {rate}×
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="tts-panel__footer">
+        {tts.ttsError && <span className="tts-panel__error">{tts.ttsError}</span>}
+        <button
+          className="btn btn--primary tts-panel__generate"
+          onClick={() => void tts.handleGenerate()}
+          disabled={tts.ttsStatus === 'loading' || !tts.canGenerate}
+          data-testid="tts-generate-button"
+        >
+          {tts.ttsStatus === 'loading' ? 'Generating…' : 'Generate'}
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { TtsSettings, TtsEngine } from '../../shared/types';
 import { generateSpeech } from '../../shared/api';
+import { toErrorMessage } from '../../shared/lib/errors';
 
 const DEFAULT_SETTINGS: TtsSettings = {
   engine: 'supertone',
@@ -126,6 +127,14 @@ export function useTts(activeContent: string, filename: string, disabled = false
       return;
     }
 
+    if (settingsToUse.engine === 'kokoro' && /[\u0400-\u04FF]/.test(activeContent)) {
+      setTtsError(
+        'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
+      );
+      setTtsStatus('error');
+      return;
+    }
+
     try {
       const blob = await generateSpeech(activeContent, settingsToUse);
       if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
@@ -134,7 +143,7 @@ export function useTts(activeContent: string, filename: string, disabled = false
       setAudioFilename(`${filename.replace(/\.[^.]+$/, '')}_speech.wav`);
       setTtsStatus('idle');
     } catch (e) {
-      setTtsError(e instanceof Error ? e.message : 'TTS failed');
+      setTtsError(toErrorMessage(e, 'TTS failed'));
       setTtsStatus('error');
     }
   }, [activeContent, ttsSettings, piperVoice, kokoroVoice, voxtralVoice, filename]);
