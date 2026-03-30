@@ -228,17 +228,24 @@ export function HistoryPanel() {
             <p>Use Save Document to keep OCR or pasted text results.</p>
           </div>
         ) : (
-          <ul className="history-list">
-            {docs.documents.map((doc) => (
-              <SavedItem
-                key={doc.id}
-                doc={doc}
-                isActive={doc.id === docs.activeSavedId}
-                onSelect={handleSelectSaved}
-                onDelete={handleDeleteSaved}
-              />
-            ))}
-          </ul>
+          <>
+            {docs.error && (
+              <div className="history-empty" style={{ color: 'var(--error, #f87171)', borderStyle: 'solid' }}>
+                {docs.error}
+              </div>
+            )}
+            <ul className="history-list">
+              {docs.documents.map((doc) => (
+                <SavedItem
+                  key={doc.id}
+                  doc={doc}
+                  isActive={doc.id === docs.activeSavedId}
+                  onSelect={handleSelectSaved}
+                  onDelete={handleDeleteSaved}
+                />
+              ))}
+            </ul>
+          </>
         )
       ) : (
         <VocabularyPanel

@@ -139,6 +139,7 @@ export async function prepareDocumentVocabulary(input: {
   llmReview: boolean;
   targetLang: string;
   nativeLang: string;
+  selectedCandidateIds?: string[];
 }): Promise<PreparedDocumentVocabularyResponse> {
   const res = await fetch(`${BASE}/documents/${input.id}/vocabulary/prepare`, {
     method: 'POST',
@@ -147,6 +148,7 @@ export async function prepareDocumentVocabulary(input: {
       llmReview: input.llmReview,
       targetLang: input.targetLang,
       nativeLang: input.nativeLang,
+      ...(input.selectedCandidateIds ? { selectedCandidateIds: input.selectedCandidateIds } : {}),
     }),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));

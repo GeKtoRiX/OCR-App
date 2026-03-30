@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # OCR App — shared launcher implementation
 #
-#  ./ocr.sh             — start OCR mode (PaddleOCR + selected TTS sidecars + LM Studio + backend)
-#  ./tts.sh             — start TTS mode (PaddleOCR + selected TTS sidecars + backend)
+#  ./ocr.sh             — start OCR mode (LM Studio OCR + selected TTS sidecars + backend)
+#  ./tts.sh             — start TTS mode (LM Studio OCR + selected TTS sidecars + backend)
 #  ./ocr-tts.sh         — start all services (OCR + selected TTS sidecars + LM Studio model + backend)
 #  ./stack.sh           — interactive stack menu (start, stop, switch, status)
 #  ./*.sh stop          — stop all known project services and clear ports
@@ -32,20 +32,13 @@ LAMP_RED='🔴'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-PADDLE_VENV="${ROOT_DIR}/services/ocr/paddleocr-service/.venv"
 SUPERTONE_VENV="${ROOT_DIR}/services/tts/supertone-service/.venv"
 KOKORO_VENV="${ROOT_DIR}/services/tts/kokoro-service/.venv"
 F5_VENV="${ROOT_DIR}/services/tts/f5-service/.venv"
 VOXTRAL_VENV="${ROOT_DIR}/services/tts/voxtral-service/.venv"
-
-SUPERTONE_TORCH_LIB="${SUPERTONE_VENV}/lib/python3.12/site-packages/torch/lib"
-KOKORO_TORCH_LIB="${KOKORO_VENV}/lib/python3.12/site-packages/torch/lib"
-F5_TORCH_LIB="${F5_VENV}/lib/python3.12/site-packages/torch/lib"
-VOXTRAL_TORCH_LIB="${VOXTRAL_VENV}/lib/python3.12/site-packages/torch/lib"
-TORCH_LIB_SYSTEM="/home/cbandy/.local/lib/python3.12/site-packages/torch/lib"
+VOXTRAL_CONTAINER_NAME="${VOXTRAL_DOCKER_CONTAINER_NAME:-ocr-app-voxtral-rocm}"
 
 PID_DIR="${ROOT_DIR}/.pids"
-PID_PADDLE="${PID_DIR}/paddleocr.pid"
 PID_SUPERTONE="${PID_DIR}/supertone.pid"
 PID_KOKORO="${PID_DIR}/kokoro.pid"
 PID_F5="${PID_DIR}/f5.pid"
@@ -59,7 +52,6 @@ PID_SVC_AGENTIC="${PID_DIR}/svc-agentic.pid"
 STATE_FILE="${PID_DIR}/ocr-launcher.state"
 
 LOG_DIR="${ROOT_DIR}/logs"
-LOG_PADDLE="${LOG_DIR}/paddleocr.log"
 LOG_SUPERTONE="${LOG_DIR}/supertone.log"
 LOG_KOKORO="${LOG_DIR}/kokoro.log"
 LOG_F5="${LOG_DIR}/f5.log"
@@ -110,9 +102,6 @@ else
     LM_PORT="80"
 fi
 
-PADDLE_HOST="${PADDLEOCR_HOST:-localhost}"
-PADDLE_PORT="${PADDLEOCR_PORT:-8000}"
-
 SUPERTONE_HOST_CFG="${SUPERTONE_HOST:-localhost}"
 SUPERTONE_PORT_CFG="${SUPERTONE_PORT:-8100}"
 
@@ -131,7 +120,7 @@ VOXTRAL_HOST_CFG="${VOXTRAL_HOST:-localhost}"
 VOXTRAL_PORT_CFG="${VOXTRAL_PORT:-8400}"
 
 VITE_PORT="${VITE_PORT:-5173}"
-PROJECT_PORTS=("${APP_PORT}" "${OCR_SERVICE_PORT}" "${TTS_SERVICE_PORT}" "${DOCUMENT_SERVICE_PORT}" "${VOCABULARY_SERVICE_PORT}" "${AGENTIC_SERVICE_PORT}" "${VITE_PORT}" "${PADDLE_PORT}" "${SUPERTONE_PORT_CFG}" "${KOKORO_PORT_CFG}" "${F5_PORT_CFG}" "${VOXTRAL_PORT_CFG}")
+PROJECT_PORTS=("${APP_PORT}" "${OCR_SERVICE_PORT}" "${TTS_SERVICE_PORT}" "${DOCUMENT_SERVICE_PORT}" "${VOCABULARY_SERVICE_PORT}" "${AGENTIC_SERVICE_PORT}" "${VITE_PORT}" "${SUPERTONE_PORT_CFG}" "${KOKORO_PORT_CFG}" "${F5_PORT_CFG}" "${VOXTRAL_PORT_CFG}")
 
 ACTIVE_MODE=""
 ACTIVE_MODE_LABEL=""
@@ -158,14 +147,26 @@ ensure_dirs() {
 }
 
 resolve_torch_lib() {
-    local preferred="${1:-}"
-    if [[ -n "${preferred}" && -d "${preferred}" ]]; then
-        echo "${preferred}"
-    elif [[ -d "${TORCH_LIB_SYSTEM}" ]]; then
-        echo "${TORCH_LIB_SYSTEM}"
-    else
-        echo ""
+    local preferred_root="${1:-}"
+    local candidate=""
+
+    if [[ -n "${preferred_root}" ]]; then
+        for candidate in "${preferred_root}"/lib/python*/site-packages/torch/lib; do
+            if [[ -d "${candidate}" ]]; then
+                echo "${candidate}"
+                return 0
+            fi
+        done
     fi
+
+    for candidate in "${HOME}"/.local/lib/python*/site-packages/torch/lib; do
+        if [[ -d "${candidate}" ]]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    echo ""
 }
 
 format_gib() {
@@ -401,9 +402,18 @@ clear_port() {
     fi
 }
 
+stop_voxtral_container() {
+    if ! command -v docker &>/dev/null; then
+        return 0
+    fi
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${VOXTRAL_CONTAINER_NAME}"; then
+        log "Stopping Voxtral Docker container (${VOXTRAL_CONTAINER_NAME})..."
+        docker stop "${VOXTRAL_CONTAINER_NAME}" >/dev/null 2>&1 || true
+        ok "Voxtral container stopped."
+    fi
+}
+
 kill_known_project_processes() {
-    kill_by_pattern "PaddleOCR" "${ROOT_DIR}/services/ocr/paddleocr-service"
-    kill_by_pattern "PaddleOCR" "services/ocr/paddleocr-service"
     kill_by_pattern "Supertone" "${ROOT_DIR}/services/tts/supertone-service"
     kill_by_pattern "Supertone" "services/tts/supertone-service"
     kill_by_pattern "Kokoro" "${ROOT_DIR}/services/tts/kokoro-service"
@@ -433,9 +443,9 @@ global_cleanup() {
     stop_service "OCR service" "${PID_SVC_OCR}"
     stop_service "F5 TTS" "${PID_F5}"
     stop_service "Voxtral" "${PID_VOXTRAL}"
+    stop_voxtral_container
     stop_service "Kokoro" "${PID_KOKORO}"
     stop_service "Supertone" "${PID_SUPERTONE}"
-    stop_service "PaddleOCR" "${PID_PADDLE}"
 
     kill_known_project_processes
 
@@ -513,14 +523,12 @@ check_lm_model_loaded() {
     echo "${json}" | python3 -c 'import json,sys; target=sys.argv[1]; data=json.load(sys.stdin).get("data", []); raise SystemExit(0 if any((item.get("id") or item.get("model") or "") == target for item in data) else 1)' "${LM_MODEL_ID}"
 }
 
-check_paddle() {
-    probe_url "http://${PADDLE_HOST}:${PADDLE_PORT}/health"
+check_ocr_engine() {
+    check_lm_studio && check_lm_model_loaded
 }
 
-fetch_paddle_device() {
-    local json
-    json=$(probe_json "http://${PADDLE_HOST}:${PADDLE_PORT}/health") || return 1
-    echo "${json}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("device", "unknown"))'
+fetch_ocr_device() {
+    echo "unknown"
 }
 
 check_supertone() {
@@ -815,38 +823,20 @@ check_vram_guard() {
 }
 
 # ─── Startup helpers ───────────────────────────────────────────────────────────
-start_paddleocr() {
-    if check_paddle; then
-        ok "PaddleOCR already reachable"
+ensure_ocr_engine_ready() {
+    if ! mode_includes_lm; then
+        dim "LM Studio check skipped in ${ACTIVE_MODE_LABEL} mode."
         return 0
     fi
 
-    if is_running "${PID_PADDLE}"; then
-        ok "PaddleOCR already running (PID $(cat "${PID_PADDLE}"))"
-        return 0
-    fi
-
-    if [[ ! -f "${PADDLE_VENV}/bin/python" ]]; then
-        warn "PaddleOCR venv not found at ${PADDLE_VENV}"
-        warn "Run: cd services/ocr/paddleocr-service && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+    if ! check_lm_studio; then
+        warn "LM Studio is not reachable at ${LM_URL}"
+        warn "Start LM Studio manually, then rerun: $0 start ${ACTIVE_MODE}"
         return 1
     fi
 
-    log "Starting PaddleOCR sidecar (port ${PADDLE_PORT})..."
-    "${PADDLE_VENV}/bin/python" -m uvicorn \
-        --app-dir "${ROOT_DIR}/services/ocr/paddleocr-service" main:app \
-        --host 0.0.0.0 --port "${PADDLE_PORT}" \
-        --workers "${PADDLEOCR_WORKERS:-1}" \
-        > "${LOG_PADDLE}" 2>&1 &
-    echo $! > "${PID_PADDLE}"
-
-    if wait_for_check "PaddleOCR" 30 check_paddle; then
-        ok "PaddleOCR ready (PID $(cat "${PID_PADDLE}"))"
-        return 0
-    fi
-
-    warn "PaddleOCR did not respond — check ${LOG_PADDLE}"
-    return 1
+    ok "LM Studio server reachable"
+    return 0
 }
 
 start_supertone() {
@@ -868,11 +858,11 @@ start_supertone() {
         return 1
     fi
 
-    torch_lib=$(resolve_torch_lib "${SUPERTONE_TORCH_LIB}")
+    torch_lib=$(resolve_torch_lib "${SUPERTONE_VENV}")
 
     log "Starting Supertone TTS sidecar (port ${SUPERTONE_PORT_CFG})..."
     env SUPERTONE_USE_GPU=true \
-        LD_LIBRARY_PATH="${torch_lib}:${LD_LIBRARY_PATH:-}" \
+        LD_LIBRARY_PATH="${torch_lib:+${torch_lib}:}${LD_LIBRARY_PATH:-}" \
         "${SUPERTONE_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/tts/supertone-service" main:app \
         --host 0.0.0.0 --port "${SUPERTONE_PORT_CFG}" \
@@ -907,13 +897,13 @@ start_kokoro() {
         return 1
     fi
 
-    torch_lib=$(resolve_torch_lib "${KOKORO_TORCH_LIB}")
+    torch_lib=$(resolve_torch_lib "${KOKORO_VENV}")
 
     log "Starting Kokoro TTS sidecar (port ${KOKORO_PORT_CFG})..."
     dim "Kokoro log file: ${LOG_KOKORO}"
     env KOKORO_USE_GPU=true \
         HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" \
-        LD_LIBRARY_PATH="${torch_lib}:${LD_LIBRARY_PATH:-}" \
+        LD_LIBRARY_PATH="${torch_lib:+${torch_lib}:}${LD_LIBRARY_PATH:-}" \
         "${KOKORO_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/tts/kokoro-service" main:app \
         --host 0.0.0.0 --port "${KOKORO_PORT_CFG}" \
@@ -966,13 +956,13 @@ start_f5() {
         return 1
     fi
 
-    torch_lib=$(resolve_torch_lib "${F5_TORCH_LIB}")
+    torch_lib=$(resolve_torch_lib "${F5_VENV}")
 
     log "Starting F5 TTS sidecar (port ${F5_PORT_CFG})..."
     dim "F5 log file: ${LOG_F5}"
     env F5_TTS_REQUIRE_GPU=true \
         HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" \
-        LD_LIBRARY_PATH="${torch_lib}:${LD_LIBRARY_PATH:-}" \
+        LD_LIBRARY_PATH="${torch_lib:+${torch_lib}:}${LD_LIBRARY_PATH:-}" \
         "${F5_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/tts/f5-service" main:app \
         --host 0.0.0.0 --port "${F5_PORT_CFG}" \
@@ -1029,12 +1019,12 @@ start_voxtral_optional() {
         return 0
     fi
 
-    torch_lib=$(resolve_torch_lib "${VOXTRAL_TORCH_LIB}")
+    torch_lib=$(resolve_torch_lib "${VOXTRAL_VENV}")
 
     log "Starting Voxtral sidecar (port ${VOXTRAL_PORT_CFG})..."
     dim "Voxtral log file: ${LOG_VOXTRAL}"
     env HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" \
-        LD_LIBRARY_PATH="${torch_lib}:${LD_LIBRARY_PATH:-}" \
+        LD_LIBRARY_PATH="${torch_lib:+${torch_lib}:}${LD_LIBRARY_PATH:-}" \
         "${VOXTRAL_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/tts/voxtral-service" main:app \
         --host 0.0.0.0 --port "${VOXTRAL_PORT_CFG}" \
@@ -1077,8 +1067,22 @@ load_lm_model() {
         return 0
     fi
 
-    warn "LM Studio model is not loaded: ${LM_MODEL_ID}"
-    warn "Load the model manually in LM Studio, then rerun: $0 start ${ACTIVE_MODE}"
+    dim "Loading LM Studio model: ${LM_MODEL_ID}"
+    if lms_cli_available; then
+        lms_cmd load "${LM_MODEL_ID}" >/dev/null 2>&1 || true
+    else
+        local encoded
+        encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${LM_MODEL_ID}")
+        curl -sf -X POST "${LM_BASE_URL}/api/v0/models/${encoded}/load" \
+            -H "Content-Type: application/json" -d '{}' >/dev/null 2>&1 || true
+    fi
+
+    if wait_for_check "LM Studio model ${LM_MODEL_ID}" 120 check_lm_model_loaded; then
+        ok "LM Studio model loaded (${LM_MODEL_ID})"
+        return 0
+    fi
+
+    warn "LM Studio model failed to load: ${LM_MODEL_ID}"
     return 1
 }
 
@@ -1318,8 +1322,7 @@ show_process_state() {
 
 compute_mode_lamp() {
     local mode="${1:-${ACTIVE_MODE:-all}}"
-    local paddle_ok=0
-    local paddle_gpu=0
+    local ocr_ok=0
     local lm_ok=0
     local supertone_ok=0
     local piper_ok=0
@@ -1327,7 +1330,6 @@ compute_mode_lamp() {
     local f5_ok=0
     local voxtral_ok=0
     local backend_ok=0
-    local paddle_device="unknown"
     local supertone_enabled=0
     local piper_enabled=0
     local kokoro_enabled=0
@@ -1344,11 +1346,11 @@ compute_mode_lamp() {
     local all_kokoro_ready=1
     local all_f5_ready=1
     local all_voxtral_ready=1
+    local ocr_device="unknown"
 
-    if check_paddle; then
-        paddle_ok=1
-        paddle_device=$(fetch_paddle_device 2>/dev/null || echo "unknown")
-        [[ "${paddle_device}" == "gpu" ]] && paddle_gpu=1
+    if check_ocr_engine; then
+        ocr_ok=1
+        ocr_device=$(fetch_ocr_device 2>/dev/null || echo "unknown")
     fi
 
     check_backend   && backend_ok=1 || true
@@ -1377,37 +1379,31 @@ compute_mode_lamp() {
     [[ ${f5_enabled} -eq 1 ]] && all_f5_ready=${f5_ok}
     [[ ${voxtral_enabled} -eq 1 ]] && all_voxtral_ready=${voxtral_ok}
 
-    if [[ ${paddle_ok} -eq 0 ]]; then
-        echo "${LAMP_RED}  PaddleOCR unreachable"
+    if [[ ${ocr_ok} -eq 0 ]]; then
+        echo "${LAMP_RED}  OCR model unavailable"
         return
     fi
 
     case "${mode}" in
         ocr)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  OCR mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
-            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  OCR mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
+            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  OCR mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  OCR mode partial | PaddleOCR ${paddle_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
+                echo "${LAMP_GREEN}  OCR mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
         tts)
-            if [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 && ${tts_f5_ready} -eq 1 && ${tts_voxtral_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  TTS mode ready | PaddleOCR GPU ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
-            elif [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 && ${tts_f5_ready} -eq 1 && ${tts_voxtral_ready} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  TTS mode ready | PaddleOCR ${paddle_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
+            if [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 && ${tts_f5_ready} -eq 1 && ${tts_voxtral_ready} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  TTS mode ready | OCR model ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  TTS mode partial | PaddleOCR ${paddle_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
+                echo "${LAMP_GREEN}  TTS mode partial | OCR model ${ocr_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
         *)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 && ${all_f5_ready} -eq 1 && ${all_voxtral_ready} -eq 1 && ${paddle_gpu} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  All mode ready | PaddleOCR GPU ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
-            elif [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 && ${all_f5_ready} -eq 1 && ${all_voxtral_ready} -eq 1 ]]; then
-                echo "${LAMP_YELLOW}  All mode ready | PaddleOCR ${paddle_device} | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
+            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 && ${all_f5_ready} -eq 1 && ${all_voxtral_ready} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  All mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  All mode partial | PaddleOCR ${paddle_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
+                echo "${LAMP_GREEN}  All mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | $(service_lamp_part "F5" "${f5_enabled}" "${f5_ok}") | $(service_lamp_part "Voxtral" "${voxtral_enabled}" "${voxtral_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
     esac
@@ -1416,7 +1412,7 @@ compute_mode_lamp() {
 show_health_block() {
     local mode="${1:-${ACTIVE_MODE:-all}}"
 
-    check_paddle && ok "PaddleOCR (${PADDLE_HOST}:${PADDLE_PORT})" || warn "PaddleOCR unreachable"
+    check_ocr_engine && ok "OCR model (${LM_MODEL_ID})" || warn "OCR model unavailable"
 
     case "${mode}" in
         ocr)
@@ -1567,8 +1563,7 @@ show_config_block() {
     echo "  Vocabulary TCP : ${VOCABULARY_SERVICE_PORT}"
     echo "  Agentic TCP    : ${AGENTIC_SERVICE_PORT}"
     echo "  LM Studio      : ${LM_URL}"
-    echo "  LM model       : ${LM_MODEL_ID}"
-    echo "  PaddleOCR      : ${PADDLE_HOST}:${PADDLE_PORT}"
+    echo "  OCR model      : ${LM_MODEL_ID}"
     echo "  Supertone      : ${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG}"
     echo "  Kokoro         : ${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}"
     echo "  Voxtral        : ${VOXTRAL_HOST_CFG}:${VOXTRAL_PORT_CFG}"
@@ -1608,7 +1603,6 @@ show_backend_link_block() {
 
 show_logs_block() {
     echo -e "${BOLD}Logs:${RESET}"
-    dim "  PaddleOCR  → ${LOG_PADDLE}"
     dim "  Supertone  → ${LOG_SUPERTONE}"
     dim "  Kokoro     → ${LOG_KOKORO}"
     dim "  Voxtral    → ${LOG_VOXTRAL}"
@@ -1626,14 +1620,14 @@ show_logs_block() {
 show_lamp_legend() {
     echo -e "${BOLD}Status lamp legend:${RESET}"
     echo "  ${LAMP_BLUE}  Selected mode fully operational"
-    echo "  ${LAMP_GREEN}  PaddleOCR reachable, but one or more required services missing"
-    echo "  ${LAMP_YELLOW}  Selected mode ready, but PaddleOCR is on CPU"
-    echo "  ${LAMP_RED}  PaddleOCR unreachable"
+    echo "  ${LAMP_GREEN}  OCR model ready, but one or more required services missing"
+    echo "  ${LAMP_YELLOW}  Reserved for degraded runtime checks"
+    echo "  ${LAMP_RED}  OCR model unavailable"
     echo
 }
 
 describe_startup_order() {
-    local -a steps=("PaddleOCR")
+    local -a steps=("OCR model")
 
     if supertone_required_in_mode; then
         steps+=("Supertone/Piper")
@@ -1694,9 +1688,9 @@ start_mode_stack() {
     fi
 
     echo -e "${BOLD}[1/3] Sidecars${RESET}"
-    dim "Step 1a: PaddleOCR"
-    if ! start_paddleocr; then
-        rollback_startup "PaddleOCR failed to start."
+    dim "Step 1a: OCR model"
+    if ! ensure_ocr_engine_ready; then
+        rollback_startup "OCR model is not ready."
         return 1
     fi
 
@@ -1819,15 +1813,19 @@ cmd_status() {
     echo
 
     echo -e "${BOLD}Processes:${RESET}"
-    show_process_state "PaddleOCR" "${PID_PADDLE}" "${PADDLE_PORT}"
+    if check_lm_studio; then
+        ok "LM Studio server listening on ${LM_PORT}"
+    else
+        fail "LM Studio server stopped"
+    fi
+    if check_lm_model_loaded; then
+        ok "OCR model loaded (${LM_MODEL_ID})"
+    else
+        fail "OCR model not loaded (${LM_MODEL_ID})"
+    fi
 
     case "${ACTIVE_MODE:-all}" in
         ocr)
-            if port_has_listener "${LM_PORT}"; then
-                ok "LM Studio server listening on ${LM_PORT}"
-            else
-                fail "LM Studio server stopped"
-            fi
             if kokoro_required_in_mode; then
                 show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
             else

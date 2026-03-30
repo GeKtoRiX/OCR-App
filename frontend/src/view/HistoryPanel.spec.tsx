@@ -98,7 +98,7 @@ function defaultStores() {
     },
     health: {
       color: 'blue' as const,
-      tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
+      tooltip: 'OCR GPU ✓ | LM Studio ✓',
     },
     practice: {
       start: vi.fn().mockResolvedValue(undefined),
@@ -168,13 +168,13 @@ describe('HistoryPanel', () => {
   it('renders derived health label and tooltip', () => {
     storeMocks.mockHealth = {
       color: 'red',
-      tooltip: 'PaddleOCR unreachable',
+      tooltip: 'OCR unavailable',
     };
 
     const { container } = render(<HistoryPanel />);
 
     expect(container.querySelector('.status-light--red')).toBeInTheDocument();
-    expect(screen.getByLabelText('Service issue. PaddleOCR unreachable')).toBeInTheDocument();
+    expect(screen.getByLabelText('Service issue. OCR unavailable')).toBeInTheDocument();
   });
 
   it('shows saved documents on the Saved tab and wires select/delete', async () => {

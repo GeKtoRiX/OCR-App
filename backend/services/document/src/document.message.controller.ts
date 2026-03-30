@@ -77,6 +77,7 @@ export class DocumentMessageController {
       llmReview: payload.llmReview,
       targetLang: payload.targetLang,
       nativeLang: payload.nativeLang,
+      selectedCandidateIds: payload.selectedCandidateIds,
     });
     if (!prepared) {
       throw new RpcException({ statusCode: 404, message: 'Document not found' });

@@ -9,7 +9,10 @@ import { LMStudioConfig } from '../config/lm-studio.config';
 
 interface ChatCompletionResponse {
   choices: Array<{
-    message: { content: string };
+    message: {
+      content?: string;
+      reasoning_content?: string;
+    };
   }>;
 }
 
@@ -68,7 +71,18 @@ export class LMStudioClient
     if (!data.choices?.length) {
       throw new Error('LM Studio returned an empty choices array');
     }
-    return data.choices[0].message.content;
+    const message = data.choices[0].message;
+    const content = message.content?.trim();
+    if (content) {
+      return content;
+    }
+
+    const reasoning = message.reasoning_content?.trim();
+    if (reasoning) {
+      return reasoning;
+    }
+
+    throw new Error('LM Studio returned an empty message');
   }
 
   async *chatCompletionStream(

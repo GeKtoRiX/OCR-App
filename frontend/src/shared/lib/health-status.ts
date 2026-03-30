@@ -16,8 +16,8 @@ export const HEALTH_LABELS = {
 
 export function computeStatus(health: HealthResponse): HealthStatus {
   const {
-    paddleOcrReachable,
-    paddleOcrDevice,
+    ocrReachable,
+    ocrDevice,
     lmStudioReachable,
     superToneReachable,
     kokoroReachable,
@@ -37,21 +37,25 @@ export function computeStatus(health: HealthResponse): HealthStatus {
     : voxtralDevice === 'cpu'
       ? 'Voxtral CPU ⚠'
       : 'Voxtral ✓';
+  const ocrLabel = !ocrReachable
+    ? 'OCR ✗'
+    : ocrDevice === 'cpu'
+      ? 'OCR CPU ⚠'
+      : ocrDevice === 'gpu'
+        ? 'OCR GPU ✓'
+        : 'OCR ✓';
 
-  // 🔴 PaddleOCR down — nothing works
-  if (!paddleOcrReachable) {
-    return { color: 'red', tooltip: 'PaddleOCR unreachable' };
+  if (!ocrReachable) {
+    return { color: 'red', tooltip: 'OCR unavailable' };
   }
 
-  // 🟡 PaddleOCR reachable but on CPU
-  if (paddleOcrDevice === 'cpu') {
+  if (ocrDevice === 'cpu') {
     return {
       color: 'yellow',
-      tooltip: `PaddleOCR CPU ⚠ | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${f5Label} | ${voxtralLabel} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
+      tooltip: `${ocrLabel} | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${f5Label} | ${voxtralLabel} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
     };
   }
 
-  // 🔵 All systems fully operational
   if (
     lmStudioReachable &&
     f5TtsReachable &&
@@ -61,12 +65,11 @@ export function computeStatus(health: HealthResponse): HealthStatus {
   ) {
     return {
       color: 'blue',
-      tooltip: `PaddleOCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | ${voxtralLabel} | Kokoro ✓ | Supertone ✓`,
+      tooltip: `${ocrLabel} | LM Studio ✓ | F5 TTS ✓ | ${voxtralLabel} | Kokoro ✓ | Supertone ✓`,
     };
   }
 
-  // 🟢 PaddleOCR GPU OK, but something else missing
-  const parts: string[] = ['PaddleOCR GPU ✓'];
+  const parts: string[] = [ocrLabel];
   parts.push(`LM Studio ${lmStudioReachable ? '✓' : '✗'}`);
   parts.push(f5Label);
   parts.push(voxtralLabel);

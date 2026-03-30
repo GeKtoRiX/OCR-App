@@ -104,9 +104,9 @@ describe('API service', () => {
   describe('checkHealth', () => {
     it('should fetch /api/health and return response', async () => {
       const mockResponse = {
-        paddleOcrReachable: true,
-        paddleOcrModels: ['det', 'rec'],
-        paddleOcrDevice: 'gpu',
+        ocrReachable: true,
+        ocrModels: ['qwen/qwen3.5-9b'],
+        ocrDevice: 'gpu',
         lmStudioReachable: true,
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,

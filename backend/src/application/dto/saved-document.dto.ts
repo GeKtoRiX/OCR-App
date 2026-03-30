@@ -29,6 +29,7 @@ export interface PrepareDocumentVocabularyInput {
   llmReview: boolean;
   targetLang: string;
   nativeLang: string;
+  selectedCandidateIds?: string[];
 }
 
 export interface DocumentVocabCandidateOutput {

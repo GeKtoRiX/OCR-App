@@ -122,48 +122,102 @@ export class SavedDocumentUseCase {
     await this.repository.updateAnalysisStatus(id, 'pending', null);
 
     try {
-      const extractedCandidates = await vocabularyExtractor.extract({
-        documentId: id,
-        markdown: doc.markdown,
-        targetLang: input.targetLang,
-        nativeLang: input.nativeLang,
-      });
+      let candidatesWithDuplicateState: DocumentVocabCandidate[];
 
-      const enrichedCandidates = await vocabularyLlmService.enrichDocumentCandidates({
-        markdown: doc.markdown,
-        candidates: extractedCandidates,
-        targetLang: input.targetLang,
-        nativeLang: input.nativeLang,
-        llmReview: input.llmReview,
-      });
+      if (input.llmReview && input.selectedCandidateIds && input.selectedCandidateIds.length > 0) {
+        // LLM-only pass: load stored candidates, enrich only selected ones
+        const storedCandidates = await this.repository.findVocabularyCandidates(id);
+        const selectedSet = new Set(input.selectedCandidateIds);
+        const selectedCandidates = storedCandidates.filter((c) => selectedSet.has(c.id));
 
-      const candidatesWithDuplicateState = await Promise.all(
-        enrichedCandidates.map(async (candidate: DocumentVocabCandidate) => {
-          const existing = await vocabularyRepository.findByWord(
-            candidate.normalized,
-            input.targetLang,
-            input.nativeLang,
-          );
+        const enrichedSelected = await vocabularyLlmService.enrichDocumentCandidates({
+          markdown: doc.markdown,
+          candidates: selectedCandidates,
+          targetLang: input.targetLang,
+          nativeLang: input.nativeLang,
+          llmReview: true,
+        });
 
-          return new DocumentVocabCandidate(
-            candidate.id,
-            candidate.documentId,
-            candidate.surface,
-            candidate.normalized,
-            candidate.lemma,
-            candidate.vocabType,
-            candidate.pos,
-            candidate.translation,
-            candidate.contextSentence,
-            candidate.sentenceIndex,
-            candidate.startOffset,
-            candidate.endOffset,
-            candidate.selectedByDefault,
-            Boolean(existing),
-            candidate.reviewSource,
-          );
-        }),
-      );
+        const enrichedWithDuplicates = await Promise.all(
+          enrichedSelected.map(async (candidate: DocumentVocabCandidate) => {
+            const existing = await vocabularyRepository.findByWord(
+              candidate.normalized,
+              input.targetLang,
+              input.nativeLang,
+            );
+            return new DocumentVocabCandidate(
+              candidate.id,
+              candidate.documentId,
+              candidate.surface,
+              candidate.normalized,
+              candidate.lemma,
+              candidate.vocabType,
+              candidate.pos,
+              candidate.translation,
+              candidate.contextSentence,
+              candidate.sentenceIndex,
+              candidate.startOffset,
+              candidate.endOffset,
+              candidate.selectedByDefault,
+              Boolean(existing),
+              candidate.reviewSource,
+            );
+          }),
+        );
+
+        const enrichedById = new Map(enrichedWithDuplicates.map((c) => [c.id, c]));
+        const originalIds = new Set(storedCandidates.map((c) => c.id));
+        const llmAdded = enrichedWithDuplicates.filter((c) => !originalIds.has(c.id));
+        // Replace selected with enriched version, keep unselected as-is, append any LLM-added
+        candidatesWithDuplicateState = [
+          ...storedCandidates.map((c) => enrichedById.get(c.id) ?? c),
+          ...llmAdded,
+        ];
+      } else {
+        const extractedCandidates = await vocabularyExtractor.extract({
+          documentId: id,
+          markdown: doc.markdown,
+          targetLang: input.targetLang,
+          nativeLang: input.nativeLang,
+        });
+
+        const enrichedCandidates = input.llmReview
+          ? await vocabularyLlmService.enrichDocumentCandidates({
+              markdown: doc.markdown,
+              candidates: extractedCandidates,
+              targetLang: input.targetLang,
+              nativeLang: input.nativeLang,
+              llmReview: true,
+            })
+          : extractedCandidates;
+
+        candidatesWithDuplicateState = await Promise.all(
+          enrichedCandidates.map(async (candidate: DocumentVocabCandidate) => {
+            const existing = await vocabularyRepository.findByWord(
+              candidate.normalized,
+              input.targetLang,
+              input.nativeLang,
+            );
+            return new DocumentVocabCandidate(
+              candidate.id,
+              candidate.documentId,
+              candidate.surface,
+              candidate.normalized,
+              candidate.lemma,
+              candidate.vocabType,
+              candidate.pos,
+              candidate.translation,
+              candidate.contextSentence,
+              candidate.sentenceIndex,
+              candidate.startOffset,
+              candidate.endOffset,
+              candidate.selectedByDefault,
+              Boolean(existing),
+              candidate.reviewSource,
+            );
+          }),
+        );
+      }
 
       await this.repository.replaceVocabularyCandidates(id, candidatesWithDuplicateState);
       const preparedDocument =

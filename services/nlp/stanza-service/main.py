@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -90,6 +92,10 @@ STOP_WORDS = {
     "your",
 }
 
+# NER entity types whose surface forms are poor vocabulary study candidates
+# (proper nouns: people, places, organisations, nationalities).
+NER_SKIP_TYPES = {"PERSON", "GPE", "LOC", "FAC", "NORP", "ORG"}
+
 
 class ExtractRequest(BaseModel):
     markdown: str
@@ -101,6 +107,9 @@ class ExtractResponse(BaseModel):
 
 app = FastAPI(title=APP_TITLE)
 _pipeline = None
+SERVICE_DIR = Path(__file__).resolve().parent
+DEFAULT_MODELS_DIR = SERVICE_DIR / "models"
+PIPELINE_PROCESSORS = "tokenize,pos,lemma,depparse,ner"
 
 
 def strip_markdown(markdown: str) -> str:
@@ -232,17 +241,45 @@ def get_pipeline():
         return None
     if _pipeline is None:
         try:
+            models_dir = Path(os.getenv("STANZA_MODEL_DIR", str(DEFAULT_MODELS_DIR)))
+            models_dir.mkdir(parents=True, exist_ok=True)
+            use_gpu = os.getenv("STANZA_USE_GPU", "false").strip().lower() in {"1", "true", "yes", "on"}
             _pipeline = stanza.Pipeline(
                 lang="en",
-                processors="tokenize,pos,lemma,depparse",
+                processors=PIPELINE_PROCESSORS,
                 tokenize_no_ssplit=False,
-                use_gpu=False,
-                download_method=None,
+                model_dir=str(models_dir),
+                use_gpu=use_gpu,
             )
         except Exception:
             _pipeline = None
     return _pipeline
 
+
+# ---------------------------------------------------------------------------
+# NER helpers
+# ---------------------------------------------------------------------------
+
+def build_ner_skip_spans(doc: Any) -> set[tuple[int, int]]:
+    """Return character spans of named entities that are poor vocabulary candidates.
+
+    Proper nouns (people, places, organisations) are excluded from default selection
+    because learners study common vocabulary, not proper names.
+    """
+    return {
+        (ent.start_char, ent.end_char)
+        for ent in doc.ents
+        if ent.type in NER_SKIP_TYPES
+    }
+
+
+def overlaps_ner(start: int, end: int, spans: set[tuple[int, int]]) -> bool:
+    return any(s < end and start < e for s, e in spans)
+
+
+# ---------------------------------------------------------------------------
+# Stanza extraction (uses all 5 processors)
+# ---------------------------------------------------------------------------
 
 def stanza_extract(text: str) -> list[dict[str, Any]]:
     pipeline = get_pipeline()
@@ -260,20 +297,24 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
         seen.add(key)
         candidates.append(candidate)
 
+    # ── NER: build character spans to suppress proper-noun candidates ────────
+    ner_skip = build_ner_skip_spans(doc)
+
     text_lower = text.lower()
+
+    # ── Idiom detection ──────────────────────────────────────────────────────
     for idiom in IDIOMS:
         start = text_lower.find(idiom)
         if start != -1:
             sentence_index = 0
             sentence_text = text
             for idx, sentence in enumerate(doc.sentences):
-                sent_text = " ".join(token.text for token in sentence.tokens)
-                sent_start = text_lower.find(sent_text.lower())
-                if sent_start != -1 and sent_start <= start < sent_start + len(sent_text):
+                sent_start = sentence.tokens[0].start_char
+                sent_end = sentence.tokens[-1].end_char
+                if sent_start <= start <= sent_end:
                     sentence_index = idx
-                    sentence_text = sent_text
+                    sentence_text = sentence.text
                     break
-
             add_candidate(
                 {
                     "surface": text[start : start + len(idiom)],
@@ -289,15 +330,33 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                 }
             )
 
+    # ── Per-sentence extraction ──────────────────────────────────────────────
     for sentence_index, sentence in enumerate(doc.sentences):
-        sentence_text = " ".join(token.text for token in sentence.tokens)
-        cursor = text_lower.find(sentence_text.lower())
+        sentence_text = sentence.text
         words = sentence.words
+
+        # Depparse ① — phrasal verbs: map head word.id → particle word
+        # Universal Dependencies uses 'compound:prt' for verb particles.
+        prt_by_head: dict[int, Any] = {
+            w.head: w for w in words if w.deprel == "compound:prt"
+        }
+
+        # Depparse ② — noun compounds: modifier with deprel='compound' + NOUN head
+        compound_pairs: list[tuple[Any, Any]] = [
+            (w, words[w.head - 1])
+            for w in words
+            if w.deprel == "compound"
+            and 0 < w.head <= len(words)
+            and words[w.head - 1].upos in ("NOUN", "PROPN")
+        ]
+
+        # ── Word-level candidates ────────────────────────────────────────────
         for idx, word in enumerate(words):
             normalized = word.text.lower()
             if normalized in STOP_WORDS or len(normalized) < 3:
                 continue
 
+            # POS tagging (from Stanza UPOS)
             if word.upos == "VERB":
                 pos = "verb"
             elif word.upos == "ADV":
@@ -312,11 +371,12 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
             if pos is None:
                 continue
 
-            word_start = cursor if cursor != -1 else text_lower.find(normalized)
-            word_end = word_start + len(word.text) if word_start != -1 else len(word.text)
-            cursor = word_end
-
+            # Lemma (from Stanza lemmatiser)
             lemma = (word.lemma or normalized).lower()
+
+            # NER: named entities are lower-priority study candidates
+            is_ne = overlaps_ner(word.start_char, word.end_char, ner_skip)
+
             add_candidate(
                 {
                     "surface": word.text,
@@ -326,36 +386,93 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                     "pos": pos,
                     "contextSentence": sentence_text,
                     "sentenceIndex": sentence_index,
-                    "startOffset": max(word_start, 0),
-                    "endOffset": max(word_end, 0),
-                    "selectedByDefault": True,
+                    "startOffset": word.start_char,
+                    "endOffset": word.end_char,
+                    "selectedByDefault": not is_ne,
                 }
             )
 
-            if idx + 1 < len(words):
-                next_word = words[idx + 1]
-                if pos == "verb" and next_word.text.lower() in PARTICLES:
+            # Phrasal verb detection (depparse-preferred, adjacency fallback)
+            if pos == "verb":
+                prt = prt_by_head.get(word.id)
+                if prt:
                     add_candidate(
                         {
-                            "surface": f"{word.text} {next_word.text}",
-                            "normalized": f"{lemma} {next_word.text.lower()}",
-                            "lemma": f"{lemma} {next_word.text.lower()}",
+                            "surface": f"{word.text} {prt.text}",
+                            "normalized": f"{lemma} {prt.text.lower()}",
+                            "lemma": f"{lemma} {prt.text.lower()}",
                             "vocabType": "phrasal_verb",
                             "pos": "verb",
                             "contextSentence": sentence_text,
                             "sentenceIndex": sentence_index,
-                            "startOffset": max(word_start, 0),
-                            "endOffset": max(word_end + 1 + len(next_word.text), 0),
+                            "startOffset": min(word.start_char, prt.start_char),
+                            "endOffset": max(word.end_char, prt.end_char),
                             "selectedByDefault": True,
                         }
                     )
+                elif idx + 1 < len(words) and words[idx + 1].text.lower() in PARTICLES:
+                    nxt = words[idx + 1]
+                    add_candidate(
+                        {
+                            "surface": f"{word.text} {nxt.text}",
+                            "normalized": f"{lemma} {nxt.text.lower()}",
+                            "lemma": f"{lemma} {nxt.text.lower()}",
+                            "vocabType": "phrasal_verb",
+                            "pos": "verb",
+                            "contextSentence": sentence_text,
+                            "sentenceIndex": sentence_index,
+                            "startOffset": word.start_char,
+                            "endOffset": nxt.end_char,
+                            "selectedByDefault": True,
+                        }
+                    )
+
+        # ── Noun compound collocations (depparse) ────────────────────────────
+        for mod_word, head_word in compound_pairs:
+            cstart = min(mod_word.start_char, head_word.start_char)
+            cend = max(mod_word.end_char, head_word.end_char)
+
+            # Skip named-entity compounds ("New York", "United States", etc.)
+            if overlaps_ner(cstart, cend, ner_skip):
+                continue
+
+            surface = text[cstart:cend]
+            mod_lemma = (mod_word.lemma or mod_word.text).lower()
+            head_lemma = (head_word.lemma or head_word.text).lower()
+            compound_norm = f"{mod_lemma} {head_lemma}"
+
+            if compound_norm in STOP_WORDS or len(compound_norm) < 4:
+                continue
+
+            add_candidate(
+                {
+                    "surface": surface,
+                    "normalized": compound_norm,
+                    "lemma": compound_norm,
+                    "vocabType": "collocation",
+                    "pos": "noun",
+                    "contextSentence": sentence_text,
+                    "sentenceIndex": sentence_index,
+                    "startOffset": cstart,
+                    "endOffset": cend,
+                    "selectedByDefault": True,
+                }
+            )
 
     return candidates
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "stanzaAvailable": stanza is not None}
+    return {
+        "ok": True,
+        "stanzaAvailable": stanza is not None,
+        "pipelineReady": get_pipeline() is not None,
+        "stanzaProcessors": PIPELINE_PROCESSORS,
+        "activeFeatures": ["tokenize", "pos", "lemma", "ner", "depparse"],
+        "stanzaUseGpu": os.getenv("STANZA_USE_GPU", "false").strip().lower() in {"1", "true", "yes", "on"},
+        "stanzaModelDir": os.getenv("STANZA_MODEL_DIR", str(DEFAULT_MODELS_DIR)),
+    }
 
 
 @app.post("/extract", response_model=ExtractResponse)

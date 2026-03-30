@@ -1,14 +1,11 @@
 /**
- * Full integration test for the production OCR pipeline:
- *   PaddleOCR sidecar -> backend -> LM Studio qwen structuring
+ * Full integration test for the current OCR pipeline:
+ *   LM Studio OCR -> backend -> HTTP API
  *
  * Prerequisites:
- *   - PaddleOCR sidecar running on localhost:8000
  *   - LM Studio running on localhost:1234
- *   - Structuring model loaded in LM Studio
+ *   - OCR_MODEL and STRUCTURING_MODEL loaded in LM Studio
  *   - Test image at project root: image_test.jpg
- *
- * Run:  npm test --workspace=backend -- --testPathPattern=integration
  */
 
 import 'dotenv/config';
@@ -20,6 +17,7 @@ import { AppModule } from './presentation/app.module';
 
 const TEST_IMAGE = path.resolve(__dirname, '..', '..', 'image_test.jpg');
 const LM_STUDIO_URL = process.env.LM_STUDIO_BASE_URL || 'http://localhost:1234/v1';
+const OCR_MODEL = process.env.OCR_MODEL || 'qwen/qwen3.5-9b';
 const STRUCTURING_MODEL = process.env.STRUCTURING_MODEL || 'qwen/qwen3.5-9b';
 
 const SUPERTONE_URL = `http://${process.env.SUPERTONE_HOST || 'localhost'}:${process.env.SUPERTONE_PORT || '8100'}`;
@@ -27,11 +25,11 @@ const KOKORO_URL = `http://${process.env.KOKORO_HOST || 'localhost'}:${process.e
 const F5_TTS_URL = `http://${process.env.F5_TTS_HOST || 'localhost'}:${process.env.F5_TTS_PORT || '8300'}`;
 
 let lmStudioAvailable = false;
-let paddleOcrAvailable = false;
 let supertoneAvailable = false;
 let kokoroAvailable = false;
 let f5TtsAvailable = false;
 let imageExists = false;
+let ocrModelLoaded = false;
 let structuringModelLoaded = false;
 
 function buildReferenceWav(): Buffer {
@@ -80,20 +78,12 @@ beforeAll(async () => {
       const modelIds = Array.isArray(data.data)
         ? data.data.map((model) => model.id)
         : [];
+      ocrModelLoaded = modelIds.includes(OCR_MODEL);
       structuringModelLoaded = modelIds.includes(STRUCTURING_MODEL);
       console.log('LM Studio models:', modelIds.join(', '));
     }
   } catch {
     lmStudioAvailable = false;
-  }
-
-  try {
-    const res = await fetch('http://localhost:8000/health', {
-      signal: AbortSignal.timeout(5000),
-    });
-    paddleOcrAvailable = res.ok;
-  } catch {
-    paddleOcrAvailable = false;
   }
 
   try {
@@ -129,15 +119,14 @@ beforeAll(async () => {
   }
 
   if (!lmStudioAvailable) console.warn('LM Studio not running');
-  if (!paddleOcrAvailable) console.warn('PaddleOCR sidecar not running');
   if (!supertoneAvailable) console.warn(`Supertone sidecar not running (${SUPERTONE_URL})`);
   if (!kokoroAvailable) console.warn(`Kokoro sidecar not running (${KOKORO_URL})`);
   if (!f5TtsAvailable) console.warn(`F5 TTS sidecar not running (${F5_TTS_URL})`);
   if (!imageExists) console.warn(`Test image not found at ${TEST_IMAGE}`);
 });
 
-describe('Integration: LM Studio structuring', () => {
-  it('should reach LM Studio and list the structuring model', async () => {
+describe('Integration: LM Studio OCR', () => {
+  it('should reach LM Studio and list the OCR model', async () => {
     if (!lmStudioAvailable) {
       skipIf('LM Studio not running');
       return;
@@ -147,9 +136,70 @@ describe('Integration: LM Studio structuring', () => {
     expect(res.ok).toBe(true);
     const data: any = await res.json();
     const ids: string[] = data.data.map((m: any) => m.id);
-    expect(ids).toContain(STRUCTURING_MODEL);
+    expect(ids).toContain(OCR_MODEL);
   });
 
+  it('should extract OCR text from the test image', async () => {
+    if (!lmStudioAvailable) {
+      skipIf('LM Studio not running');
+      return;
+    }
+    if (!ocrModelLoaded) {
+      skipIf(`OCR model ${OCR_MODEL} not loaded`);
+      return;
+    }
+    if (!imageExists) {
+      skipIf('Test image unavailable');
+      return;
+    }
+
+    const imageBuffer = fs.readFileSync(TEST_IMAGE);
+    const base64 = imageBuffer.toString('base64');
+
+    const res = await fetch(`${LM_STUDIO_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OCR_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an OCR engine. Return only the visible text with preserved line breaks.',
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64}`,
+                },
+              },
+              {
+                type: 'text',
+                text: 'Extract all visible text only.',
+              },
+            ],
+          },
+        ],
+        temperature: 0.0,
+        max_tokens: 2048,
+      }),
+      signal: AbortSignal.timeout(180000),
+    });
+
+    expect(res.ok).toBe(true);
+    const data: any = await res.json();
+    const text: string = data.choices[0]?.message?.content ?? '';
+
+    expect(text.length).toBeGreaterThan(20);
+    expect(text.toLowerCase()).toContain('new friends');
+    expect(text).not.toContain('<think>');
+  }, 180000);
+});
+
+describe('Integration: LM Studio structuring', () => {
   it('should structure raw OCR text into markdown', async () => {
     if (!lmStudioAvailable) {
       skipIf('LM Studio not running');
@@ -198,54 +248,6 @@ EMEL You too.`;
     expect(markdown.length).toBeGreaterThan(20);
     expect(markdown).toMatch(/#/);
     expect(markdown.toLowerCase()).toContain('stefan');
-  }, 180000);
-});
-
-describe('Integration: PaddleOCR sidecar', () => {
-  it('should be reachable when available', async () => {
-    if (!paddleOcrAvailable) {
-      skipIf('PaddleOCR sidecar not running');
-      return;
-    }
-
-    const res = await fetch('http://localhost:8000/health');
-    expect(res.ok).toBe(true);
-    const data: any = await res.json();
-    expect(data.status).toBe('healthy');
-    expect(data.model_loaded).toBe(true);
-  }, 10000);
-
-  it('should list loaded OCR models when available', async () => {
-    if (!paddleOcrAvailable) {
-      skipIf('PaddleOCR sidecar not running');
-      return;
-    }
-
-    const res = await fetch('http://localhost:8000/models');
-    expect(res.ok).toBe(true);
-    const data: any = await res.json();
-    expect(data.status).toBe('healthy');
-    expect(data.models).toBeTruthy();
-  }, 10000);
-
-  it('PaddleOCRService should extract raw text from image', async () => {
-    if (!paddleOcrAvailable || !imageExists) {
-      skipIf('PaddleOCR sidecar or test image unavailable');
-      return;
-    }
-
-    const { PaddleOCRConfig } = require('./infrastructure/config/paddleocr.config');
-    const { PaddleOCRService } = require('./infrastructure/paddleocr/paddleocr-ocr.service');
-    const { ImageData } = require('./domain/entities/image-data.entity');
-
-    const config = new PaddleOCRConfig();
-    const service = new PaddleOCRService(config);
-
-    const buffer = fs.readFileSync(TEST_IMAGE);
-    const image = new ImageData(buffer, 'image/jpeg', 'image_test.jpg');
-    const text: string = await service.extractText(image);
-
-    expect(text.length).toBeGreaterThan(20);
   }, 180000);
 });
 
@@ -368,10 +370,7 @@ describe('Integration: Full NestJS pipeline', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    if (!lmStudioAvailable || !paddleOcrAvailable || !imageExists) {
-      return;
-    }
-    if (!structuringModelLoaded) {
+    if (!lmStudioAvailable || !ocrModelLoaded || !imageExists) {
       return;
     }
 
@@ -390,13 +389,9 @@ describe('Integration: Full NestJS pipeline', () => {
     }
   });
 
-  it('GET /api/health should report both dependencies as reachable', async () => {
-    if (!lmStudioAvailable || !paddleOcrAvailable || !imageExists) {
+  it('GET /api/health should report OCR and LM Studio as reachable', async () => {
+    if (!lmStudioAvailable || !ocrModelLoaded || !imageExists) {
       skipIf('Pipeline dependencies unavailable');
-      return;
-    }
-    if (!structuringModelLoaded) {
-      skipIf(`Structuring model ${STRUCTURING_MODEL} not loaded`);
       return;
     }
 
@@ -405,19 +400,15 @@ describe('Integration: Full NestJS pipeline', () => {
 
     expect(res.status).toBe(200);
     const body: any = await res.json();
-    expect(body.paddleOcrReachable).toBe(true);
+    expect(body.ocrReachable).toBe(true);
     expect(body.lmStudioReachable).toBe(true);
-    expect(body.paddleOcrModels.length).toBeGreaterThan(0);
+    expect(body.ocrModels.length).toBeGreaterThan(0);
     expect(body.lmStudioModels).toContain(STRUCTURING_MODEL);
   }, 15000);
 
-  it('POST /api/ocr should process image through PaddleOCR and qwen structuring', async () => {
-    if (!lmStudioAvailable || !paddleOcrAvailable || !imageExists) {
+  it('POST /api/ocr should process image through LM Studio OCR', async () => {
+    if (!lmStudioAvailable || !ocrModelLoaded || !imageExists) {
       skipIf('Pipeline dependencies unavailable');
-      return;
-    }
-    if (!structuringModelLoaded) {
-      skipIf(`Structuring model ${STRUCTURING_MODEL} not loaded`);
       return;
     }
 

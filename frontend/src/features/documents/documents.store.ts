@@ -42,7 +42,7 @@ interface DocumentsActions {
   clearSelection(): void;
   prepareVocabulary(
     id: string,
-    options: { llmReview: boolean; targetLang: string; nativeLang: string },
+    options: { llmReview: boolean; targetLang: string; nativeLang: string; selectedIds?: string[] },
   ): Promise<DocumentVocabCandidate[]>;
   confirmVocabulary(
     id: string,
@@ -179,13 +179,35 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
 
     async prepareVocabulary(id, options) {
       set({
-        vocabularyReviewStatus: 'preparing',
+        vocabularyReviewStatus: options.llmReview ? 'reviewing' : 'preparing',
         vocabularyReviewDocumentId: id,
         vocabularyReviewError: null,
         vocabularyConfirmResult: null,
       });
 
       try {
+        if (options.llmReview) {
+          const reviewed = await prepareDocumentVocabulary({
+            id,
+            llmReview: true,
+            targetLang: options.targetLang,
+            nativeLang: options.nativeLang,
+            selectedCandidateIds: options.selectedIds,
+          });
+
+          set((state) => ({
+            documents: state.documents.map((document) =>
+              document.id === id ? reviewed.document : document,
+            ),
+            vocabularyReviewCandidates: reviewed.candidates,
+            vocabularyReviewStatus: 'ready',
+            vocabularyReviewLlmApplied: reviewed.llmReviewApplied,
+            vocabularyReviewError: null,
+          }));
+
+          return reviewed.candidates;
+        }
+
         const base = await prepareDocumentVocabulary({
           id,
           llmReview: false,
@@ -198,33 +220,12 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
             document.id === id ? base.document : document,
           ),
           vocabularyReviewCandidates: base.candidates,
-          vocabularyReviewStatus: options.llmReview ? 'reviewing' : 'ready',
+          vocabularyReviewStatus: 'ready',
           vocabularyReviewLlmApplied: false,
           vocabularyReviewError: null,
         }));
 
-        if (!options.llmReview) {
-          return base.candidates;
-        }
-
-        const reviewed = await prepareDocumentVocabulary({
-          id,
-          llmReview: true,
-          targetLang: options.targetLang,
-          nativeLang: options.nativeLang,
-        });
-
-        set((state) => ({
-          documents: state.documents.map((document) =>
-            document.id === id ? reviewed.document : document,
-          ),
-          vocabularyReviewCandidates: reviewed.candidates,
-          vocabularyReviewStatus: 'ready',
-          vocabularyReviewLlmApplied: reviewed.llmReviewApplied,
-          vocabularyReviewError: null,
-        }));
-
-        return reviewed.candidates;
+        return base.candidates;
       } catch (error) {
         set({
           vocabularyReviewStatus: 'error',

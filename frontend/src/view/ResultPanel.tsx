@@ -180,7 +180,7 @@ export function ResultPanel({
         />
       )}
 
-      {panel.tts.ttsOpen && <TtsSettingsPanel tts={panel.tts} />}
+      {panel.tts.ttsOpen && <TtsSettingsPanel tts={panel.tts} engines={['kokoro']} />}
     </div>
   );
 }

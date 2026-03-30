@@ -21,9 +21,9 @@ describe('StatusLight', () => {
   });
 
   it('should render a single tooltip line as-is', () => {
-    render(<StatusLight color="green" label="OCR" tooltip="PaddleOCR GPU ✓" />);
+    render(<StatusLight color="green" label="OCR" tooltip="OCR GPU ✓" />);
 
-    expect(screen.getByText('PaddleOCR GPU ✓')).toBeInTheDocument();
+    expect(screen.getByText('OCR GPU ✓')).toBeInTheDocument();
   });
 
   it('should split tooltip by " | " into separate row elements', () => {
@@ -31,11 +31,11 @@ describe('StatusLight', () => {
       <StatusLight
         color="blue"
         label="All"
-        tooltip="PaddleOCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | Supertone ✓"
+        tooltip="OCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | Supertone ✓"
       />,
     );
 
-    expect(screen.getByText('PaddleOCR GPU ✓')).toBeInTheDocument();
+    expect(screen.getByText('OCR GPU ✓')).toBeInTheDocument();
     expect(screen.getByText('LM Studio ✓')).toBeInTheDocument();
     expect(screen.getByText('F5 TTS ✓')).toBeInTheDocument();
     expect(screen.getByText('Supertone ✓')).toBeInTheDocument();
@@ -43,12 +43,12 @@ describe('StatusLight', () => {
 
   it('should render each tooltip line in its own .status-light__tooltip-row', () => {
     const { container } = render(
-      <StatusLight color="yellow" label="Warn" tooltip="PaddleOCR CPU ⚠ | LM Studio ✓" />,
+      <StatusLight color="yellow" label="Warn" tooltip="OCR CPU ⚠ | LM Studio ✓" />,
     );
 
     const rows = container.querySelectorAll('.status-light__tooltip-row');
     expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toBe('PaddleOCR CPU ⚠');
+    expect(rows[0].textContent).toBe('OCR CPU ⚠');
     expect(rows[1].textContent).toBe('LM Studio ✓');
   });
 });

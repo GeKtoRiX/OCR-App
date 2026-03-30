@@ -10,8 +10,6 @@ import { VOCAB_TYPE_LABELS } from '../../shared/types';
 import type { VocabularyReviewStatus } from '../documents';
 import './SaveVocabularyOverlay.css';
 
-const LLM_REVIEW_STORAGE_KEY = 'ocr-app.save-vocabulary.llm-review.enabled';
-
 interface EditableCandidate extends DocumentVocabCandidate {
   checked: boolean;
   word: string;
@@ -27,7 +25,7 @@ interface Props {
   error: string | null;
   llmReviewApplied: boolean;
   confirmResult: ConfirmDocumentVocabularyResult | null;
-  onPrepare: (llmReview: boolean) => Promise<DocumentVocabCandidate[]>;
+  onPrepare: (llmReview: boolean, selectedIds?: string[]) => Promise<DocumentVocabCandidate[]>;
   onConfirm: (items: Array<{
     candidateId: string;
     word: string;
@@ -36,13 +34,6 @@ interface Props {
     contextSentence: string;
   }>) => Promise<void>;
   onClose: () => void;
-}
-
-function loadStoredLlmReviewPreference() {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return window.localStorage.getItem(LLM_REVIEW_STORAGE_KEY) === 'true';
 }
 
 export function SaveVocabularyOverlay({
@@ -57,7 +48,6 @@ export function SaveVocabularyOverlay({
   onConfirm,
   onClose,
 }: Props) {
-  const [llmReview, setLlmReview] = useState(loadStoredLlmReviewPreference);
   const [items, setItems] = useState<EditableCandidate[]>([]);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const prepareRef = useRef(onPrepare);
@@ -65,10 +55,6 @@ export function SaveVocabularyOverlay({
   useEffect(() => {
     prepareRef.current = onPrepare;
   }, [onPrepare]);
-
-  useEffect(() => {
-    window.localStorage.setItem(LLM_REVIEW_STORAGE_KEY, String(llmReview));
-  }, [llmReview]);
 
   useEffect(() => {
     const nextItems = candidates.map((candidate) => ({
@@ -89,8 +75,8 @@ export function SaveVocabularyOverlay({
   }, [candidates]);
 
   useEffect(() => {
-    void prepareRef.current(llmReview);
-  }, [document.id, llmReview]);
+    void prepareRef.current(false);
+  }, [document.id]);
 
   const isBusy = BUSY_STATUSES.includes(status);
   const selectedCount = items.filter((item) => item.checked).length;
@@ -119,6 +105,11 @@ export function SaveVocabularyOverlay({
     );
   };
 
+  const handleLlmReview = () => {
+    const selectedIds = items.filter((i) => i.checked).map((i) => i.id);
+    void onPrepare(true, selectedIds);
+  };
+
   return (
     <div className="save-vocab-overlay" data-testid="save-vocabulary-overlay">
       <div className="save-vocab-card">
@@ -134,15 +125,6 @@ export function SaveVocabularyOverlay({
               {langPair.targetLang} {'->'} {langPair.nativeLang}
             </div>
           </div>
-          <label className="save-vocab-card__toggle">
-            <input
-              type="checkbox"
-              checked={llmReview}
-              onChange={(event) => setLlmReview(event.target.checked)}
-              disabled={status === 'preparing' || status === 'reviewing' || status === 'saving'}
-            />
-            <span>LLM review</span>
-          </label>
         </div>
 
         {status === 'preparing' && (
@@ -347,6 +329,13 @@ export function SaveVocabularyOverlay({
             <div className="save-vocab-card__actions">
               <button className="save-vocab-card__secondary" onClick={onClose}>
                 Cancel
+              </button>
+              <button
+                className="save-vocab-card__secondary"
+                onClick={handleLlmReview}
+                disabled={isBusy || llmReviewApplied || selectedCount === 0}
+              >
+                Run LLM review
               </button>
               <button
                 className="save-vocab-card__primary"

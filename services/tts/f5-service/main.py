@@ -18,7 +18,6 @@ _SERVICE_DIR = Path(__file__).resolve().parent
 os.environ.setdefault("HF_HOME", str(_SERVICE_DIR / "models" / "hub"))
 
 import soundfile as sf
-import torchaudio
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
@@ -33,6 +32,10 @@ MAX_TEXT_LENGTH = 5000
 MAX_REF_AUDIO_SIZE = 20 * 1024 * 1024
 MAX_RECOMMENDED_REF_DURATION_MS = 12_000
 ASR_MODEL_NAME = "openai/whisper-large-v3-turbo"
+DEFAULT_VOCAB_URL = (
+    "https://raw.githubusercontent.com/SWivid/F5-TTS/main/"
+    "src/f5_tts/infer/examples/vocab.txt"
+)
 ALLOWED_AUDIO_MIME_TYPES = {
     "audio/wav",
     "audio/x-wav",
@@ -73,10 +76,10 @@ def _detect_audio_duration_ms(payload: bytes, suffix: str) -> Optional[int]:
             tmp.write(payload)
             tmp_path = tmp.name
 
-        metadata = torchaudio.info(tmp_path)
-        if metadata.sample_rate <= 0:
+        metadata = sf.info(tmp_path)
+        if metadata.samplerate <= 0:
             return None
-        return int((metadata.num_frames / metadata.sample_rate) * 1000)
+        return int((metadata.frames / metadata.samplerate) * 1000)
     except Exception:
         logger.warning("Could not determine reference audio duration", exc_info=True)
         return None
@@ -94,9 +97,9 @@ def _normalize_reference_audio_to_wav(payload: bytes, suffix: str) -> bytes:
             src.write(payload)
             src_path = src.name
 
-        waveform, sample_rate = torchaudio.load(src_path)
+        waveform, sample_rate = sf.read(src_path, dtype="float32", always_2d=True)
         buf = io.BytesIO()
-        sf.write(buf, waveform.transpose(0, 1).numpy(), sample_rate, format="WAV", subtype="PCM_16")
+        sf.write(buf, waveform, sample_rate, format="WAV", subtype="PCM_16")
         return buf.getvalue()
     finally:
         if "src_path" in locals():
@@ -110,6 +113,23 @@ def _wav_bytes(wav: object, sample_rate: int) -> bytes:
     buf = io.BytesIO()
     sf.write(buf, wav, sample_rate, format="WAV", subtype="PCM_16")
     return buf.getvalue()
+
+
+def _soundfile_torchaudio_load_compat(audio_path: str):
+    import torch
+
+    waveform, sample_rate = sf.read(audio_path, dtype="float32", always_2d=True)
+    return torch.from_numpy(waveform.T.copy()), sample_rate
+
+
+def _patch_f5_audio_loader() -> None:
+    import f5_tts.infer.utils_infer as utils_infer
+
+    if getattr(utils_infer, "_codex_soundfile_load_patched", False):
+        return
+
+    utils_infer.torchaudio.load = _soundfile_torchaudio_load_compat
+    utils_infer._codex_soundfile_load_patched = True
 
 
 def _ensure_tool_wrapper(tool_name: str, target: str) -> Optional[str]:
@@ -143,6 +163,24 @@ def _ensure_ffmpeg_binaries_on_path() -> tuple[str, Optional[str]]:
         os.environ["PATH"] = os.pathsep.join([tool_dir, *path_parts]) if path_parts else tool_dir
 
     return ffmpeg_wrapper or ffmpeg_exe, ffprobe_wrapper
+
+
+def _ensure_vocab_file(cache_dir: str) -> str:
+    target = Path(cache_dir) / "vocab.txt"
+    if target.is_file():
+        return str(target)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    logger.info("Downloading F5-TTS vocab file to %s", target)
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(DEFAULT_VOCAB_URL) as response:
+            target.write_bytes(response.read())
+    except Exception as exc:
+        raise RuntimeError(f"Could not download F5-TTS vocab file: {exc}") from exc
+
+    return str(target)
 
 
 @dataclass(frozen=True)
@@ -223,8 +261,11 @@ class F5Engine:
             device,
             self._config.cache_dir,
         )
+        _patch_f5_audio_loader()
+        vocab_file = _ensure_vocab_file(self._config.cache_dir)
         self._tts = F5TTS(
             model=self._config.model_name,
+            vocab_file=vocab_file,
             device=device,
             hf_cache_dir=self._config.cache_dir,
         )

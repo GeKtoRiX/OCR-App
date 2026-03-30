@@ -17,9 +17,9 @@ export class GatewayHealthController {
 
   @Get('health')
   async getHealth(): Promise<{
-    paddleOcrReachable: boolean;
-    paddleOcrModels: string[];
-    paddleOcrDevice: 'gpu' | 'cpu' | null;
+    ocrReachable: boolean;
+    ocrModels: string[];
+    ocrDevice: 'gpu' | 'cpu' | null;
     lmStudioReachable: boolean;
     lmStudioModels: string[];
     superToneReachable: boolean;

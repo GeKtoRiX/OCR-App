@@ -1,22 +1,17 @@
 import { NO_TEXT_DETECTED } from '../../domain/constants';
 import { ProcessImageUseCase } from './process-image.use-case';
 import { IOCRService } from '../../domain/ports/ocr-service.port';
-import { ITextStructuringService } from '../../domain/ports/text-structuring-service.port';
 import { ImageData } from '../../domain/entities/image-data.entity';
 
 describe('ProcessImageUseCase', () => {
   let useCase: ProcessImageUseCase;
   let mockOcrService: jest.Mocked<IOCRService>;
-  let mockStructuringService: jest.Mocked<ITextStructuringService>;
 
   beforeEach(() => {
     mockOcrService = {
       extractText: jest.fn(),
     } as jest.Mocked<IOCRService>;
-    mockStructuringService = {
-      structureAsMarkdown: jest.fn(),
-    } as jest.Mocked<ITextStructuringService>;
-    useCase = new ProcessImageUseCase(mockOcrService, mockStructuringService);
+    useCase = new ProcessImageUseCase(mockOcrService);
   });
 
   const input = {
@@ -25,21 +20,18 @@ describe('ProcessImageUseCase', () => {
     originalName: 'test.png',
   };
 
-  it('should extract text and structure it as markdown', async () => {
-    mockOcrService.extractText.mockResolvedValue('Hello World');
-    mockStructuringService.structureAsMarkdown.mockResolvedValue('# Hello World');
+  it('should return rawText as markdown (PP-Structure already structures output)', async () => {
+    mockOcrService.extractText.mockResolvedValue('# Hello\n\nWorld');
 
     const result = await useCase.execute(input);
 
-    expect(result.rawText).toBe('Hello World');
-    expect(result.markdown).toBe('# Hello World');
+    expect(result.rawText).toBe('# Hello\n\nWorld');
+    expect(result.markdown).toBe('# Hello\n\nWorld');
     expect(mockOcrService.extractText).toHaveBeenCalledTimes(1);
-    expect(mockStructuringService.structureAsMarkdown).toHaveBeenCalledWith('Hello World');
   });
 
   it('should pass correct ImageData to OCR service', async () => {
     mockOcrService.extractText.mockResolvedValue('text');
-    mockStructuringService.structureAsMarkdown.mockResolvedValue('md');
 
     await useCase.execute(input);
 
@@ -57,7 +49,6 @@ describe('ProcessImageUseCase', () => {
 
     expect(result.rawText).toBe(NO_TEXT_DETECTED);
     expect(result.markdown).toBe(NO_TEXT_DETECTED);
-    expect(mockStructuringService.structureAsMarkdown).not.toHaveBeenCalled();
   });
 
   it('should return fallback when OCR returns whitespace only', async () => {
@@ -73,17 +64,5 @@ describe('ProcessImageUseCase', () => {
     mockOcrService.extractText.mockRejectedValue(new Error('OCR failed'));
 
     await expect(useCase.execute(input)).rejects.toThrow('OCR failed');
-  });
-
-  it('should fall back to rawText when structuring service fails', async () => {
-    mockOcrService.extractText.mockResolvedValue('text');
-    mockStructuringService.structureAsMarkdown.mockRejectedValue(
-      new Error('Structuring failed'),
-    );
-
-    const result = await useCase.execute(input);
-
-    expect(result.rawText).toBe('text');
-    expect(result.markdown).toBe('text');
   });
 });

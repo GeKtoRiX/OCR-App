@@ -56,14 +56,6 @@
   font-size: 0.92rem;
 }
 
-.save-vocab-card__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text, #edf3fb);
-  font-size: 0.95rem;
-}
-
 .save-vocab-card__loading,
 .save-vocab-card__error,
 .save-vocab-card__empty {

@@ -52,9 +52,9 @@ describe('useHealthStore', () => {
 
   it('startPolling() calls checkHealth immediately and applies computeStatus output', async () => {
     const health = {
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det', 'rec'],
-      paddleOcrDevice: 'gpu' as const,
+      ocrReachable: true,
+      ocrModels: ['qwen/qwen3.5-9b'],
+      ocrDevice: 'gpu' as const,
       lmStudioReachable: true,
       lmStudioModels: ['qwen'],
       superToneReachable: true,
@@ -82,9 +82,9 @@ describe('useHealthStore', () => {
 
   it('startPolling() polls again on the interval', async () => {
     mocks.checkHealth.mockResolvedValue({
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det', 'rec'],
-      paddleOcrDevice: 'gpu' as const,
+      ocrReachable: true,
+      ocrModels: ['qwen/qwen3.5-9b'],
+      ocrDevice: 'gpu' as const,
       lmStudioReachable: true,
       lmStudioModels: ['qwen'],
       superToneReachable: true,
@@ -110,9 +110,9 @@ describe('useHealthStore', () => {
 
   it('startPolling() cleanup stops future interval polling', async () => {
     mocks.checkHealth.mockResolvedValue({
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det', 'rec'],
-      paddleOcrDevice: 'gpu' as const,
+      ocrReachable: true,
+      ocrModels: ['qwen/qwen3.5-9b'],
+      ocrDevice: 'gpu' as const,
       lmStudioReachable: true,
       lmStudioModels: ['qwen'],
       superToneReachable: true,

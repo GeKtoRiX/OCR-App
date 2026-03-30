@@ -29,14 +29,13 @@ start_bg() {
   PIDS+=("$!")
 }
 
-start_bg "${LOG_DIR}/paddleocr.log" bash scripts/linux/run-js-command.sh npm run dev:paddleocr
-start_bg "${LOG_DIR}/supertone.log" bash -lc 'SUPERTONE_USE_GPU=false LD_LIBRARY_PATH=/home/cbandy/.local/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH services/tts/supertone-service/.venv/bin/python -m uvicorn --app-dir services/tts/supertone-service main:app --host 0.0.0.0 --port 8100'
+start_bg "${LOG_DIR}/supertone.log" bash -lc 'SUPERTONE_USE_GPU=false bash scripts/linux/run-python-with-torch.sh services/tts/supertone-service/.venv/bin/python -m uvicorn --app-dir services/tts/supertone-service main:app --host 0.0.0.0 --port 8100'
 start_bg "${LOG_DIR}/kokoro.log" bash scripts/linux/run-js-command.sh npm run dev:kokoro
 start_bg "${LOG_DIR}/f5.log" bash scripts/linux/run-js-command.sh npm run dev:f5
-start_bg "${LOG_DIR}/svc-ocr.log" bash -lc 'export LM_STUDIO_SMOKE_ONLY=true; bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js'
+start_bg "${LOG_DIR}/svc-ocr.log" bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js
 start_bg "${LOG_DIR}/svc-tts.log" bash scripts/linux/run-js-command.sh node backend/dist/services/tts/src/main.js
 start_bg "${LOG_DIR}/svc-doc.log" bash -lc 'export DOCUMENTS_SQLITE_DB_PATH=tmp/test-db/documents.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js'
-start_bg "${LOG_DIR}/svc-vocab.log" bash -lc 'export LM_STUDIO_SMOKE_ONLY=true VOCABULARY_SQLITE_DB_PATH=tmp/test-db/vocabulary.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/vocabulary/src/main.js'
+start_bg "${LOG_DIR}/svc-vocab.log" bash -lc 'export VOCABULARY_SQLITE_DB_PATH=tmp/test-db/vocabulary.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/vocabulary/src/main.js'
 start_bg "${LOG_DIR}/backend.log" bash -lc 'export PORT=3000; bash scripts/linux/run-js-command.sh node backend/dist/gateway/main.js'
 
 wait_for_url() {
@@ -55,7 +54,7 @@ wait_for_url() {
   done
 }
 
-wait_for_url "http://127.0.0.1:8000/health" 60 "PaddleOCR"
+wait_for_url "http://127.0.0.1:1234/v1/models" 60 "LM Studio"
 wait_for_url "http://127.0.0.1:8100/health" 60 "Supertone"
 wait_for_url "http://127.0.0.1:8200/health" 180 "Kokoro"
 wait_for_url "http://127.0.0.1:8300/health" 180 "F5"

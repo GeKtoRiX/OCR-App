@@ -45,6 +45,7 @@ MODELS_DIR = SERVICE_DIR / "models"
 HF_CACHE_DIR = MODELS_DIR / "hub"
 VLLM_CACHE_DIR = MODELS_DIR / "vllm-cache"
 DOCKERFILE_PATH = SERVICE_DIR / "Dockerfile"
+INTXLNK_MAGIC = b"IntxLNK"
 
 
 def _parse_bool(value: str | bool | None, *, default: bool = False) -> bool:
@@ -76,6 +77,42 @@ def _guess_device_kind() -> Literal["gpu", "cpu"] | None:
     except Exception:
         logger.debug("Torch device probe failed", exc_info=True)
     return None
+
+
+def _decode_intxlnk_target(payload: bytes) -> str | None:
+    if not payload.startswith(INTXLNK_MAGIC):
+        return None
+    try:
+        return payload[len(INTXLNK_MAGIC) + 1 :].decode("utf-16le").rstrip("\x00")
+    except Exception:
+        logger.warning("Could not decode IntxLNK payload", exc_info=True)
+        return None
+
+
+def _repair_intxlnk_snapshots(cache_dir: Path) -> int:
+    repaired = 0
+    snapshot_roots = list(cache_dir.glob("hub/models--*/snapshots/*"))
+    for snapshot_root in snapshot_roots:
+        if not snapshot_root.is_dir():
+            continue
+        for path in snapshot_root.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                payload = path.read_bytes()
+            except OSError:
+                logger.warning("Could not read %s while repairing cache", path, exc_info=True)
+                continue
+            target_rel = _decode_intxlnk_target(payload)
+            if target_rel is None:
+                continue
+            target_path = (path.parent / target_rel).resolve()
+            if not target_path.is_file():
+                logger.warning("IntxLNK target missing for %s -> %s", path, target_path)
+                continue
+            path.write_bytes(target_path.read_bytes())
+            repaired += 1
+    return repaired
 
 
 @dataclass(frozen=True)
@@ -463,6 +500,9 @@ class VoxtralBackend:
     def _ensure_runtime_directories(self) -> None:
         self._config.hf_cache_dir.mkdir(parents=True, exist_ok=True)
         self._config.vllm_cache_dir.mkdir(parents=True, exist_ok=True)
+        repaired = _repair_intxlnk_snapshots(self._config.hf_cache_dir)
+        if repaired:
+            logger.info("Repaired %d IntxLNK Hugging Face snapshot files", repaired)
 
     def _docker_bin(self) -> str:
         docker_bin = shutil.which("docker")

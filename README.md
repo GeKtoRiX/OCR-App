@@ -11,6 +11,8 @@ The saved-document flow is split into:
 
 The only cloud-dependent area is the optional `agentic` API under `/api/agents/*`, which requires `OPENAI_API_KEY`.
 
+For Docker-backed Voxtral runs, the project uses your existing Docker daemon configuration. If your Docker data root already lives on another disk, no additional project changes are required.
+
 ## Runtime Topology
 
 ```text
@@ -19,7 +21,7 @@ Frontend (React/Vite)
         v
 HTTP Gateway :3000
         |
-        +--> OCR service       :3901 --> PaddleOCR sidecar :8000
+        +--> OCR service       :3901 --> LM Studio vision OCR :1234
         +--> TTS service       :3902 --> Supertone/Piper :8100
         |                              Kokoro          :8200
         |                              F5 TTS          :8300
@@ -36,7 +38,6 @@ OCR + vocabulary structuring/generation use LM Studio :1234
 - `backend/gateway/`: HTTP entrypoint, static frontend hosting, throttling, upstream error mapping.
 - `backend/services/*`: TCP microservices for OCR, TTS, documents, vocabulary/practice, and agentic workflows.
 - `backend/shared/`: shared contracts and domain abstractions used across processes.
-- `services/ocr/paddleocr-service/`: PaddleOCR FastAPI sidecar.
 - `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar for document vocabulary extraction.
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar.
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar.
@@ -46,7 +47,7 @@ OCR + vocabulary structuring/generation use LM Studio :1234
 
 ## Current Launcher Defaults
 
-Launcher-side TTS defaults live in [scripts/linux/tts-models.conf](/media/cbandy/HDD_Content/llmAgentTest/scripts/linux/tts-models.conf).
+Launcher-side TTS defaults live in `scripts/linux/tts-models.conf`.
 
 Current default:
 
@@ -62,7 +63,7 @@ That means the shell launchers currently start only Voxtral by default unless yo
 - Node.js `20+`
 - Python `3.10+`
 - LM Studio running locally at `http://localhost:1234`
-- AMD GPU with ROCm if you want the accelerated TTS/OCR paths
+- AMD GPU with ROCm if you want the accelerated TTS paths and faster local inference
 
 Without a supported GPU the project can still run partially on CPU, but some TTS engines are intentionally degraded or unavailable.
 
@@ -88,15 +89,11 @@ Expected base URL:
 http://localhost:1234/v1
 ```
 
-### 3. Set up the OCR sidecar
+### 3. Set up the OCR model in LM Studio
 
 ```bash
-cd services/ocr/paddleocr-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install paddlepaddle-gpu==2.6.2 -f https://www.paddlepaddle.org.cn/whl/linux/rocm/stable.html
-pip install -r requirements.txt
+# Load an OCR-capable vision model in LM Studio, for example:
+# OCR_MODEL=paddleocr-vl-0.9b
 ```
 
 ### 4. Set up the TTS sidecars you need
@@ -202,13 +199,12 @@ http://localhost:3000
 
 ```bash
 npm run dev:frontend
-npm run dev:paddleocr
 npm run dev:stanza
 npm run dev:supertone
 npm run dev:kokoro
 npm run dev:f5
 npm run dev:voxtral
-npm run smoke:paddleocr
+npm run smoke:ocr
 npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
@@ -233,7 +229,7 @@ npm run perf:browser
 npm run perf:phase4
 ```
 
-`test:e2e:browser` and `perf:phase4` rebuild the app and run with `LM_STUDIO_SMOKE_ONLY=true`, so they do not hit real LM Studio generation paths during automation.
+`test:e2e:browser` and `perf:phase4` expect a real local LM Studio server with the OCR and structuring models already loaded.
 
 `test:e2e:browser:vocab` is a lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`, seeds a real saved document, and does not require OCR or TTS sidecars.
 
@@ -260,9 +256,9 @@ curl http://localhost:3000/api/health
 
 Response fields:
 
-- `paddleOcrReachable`
-- `paddleOcrModels`
-- `paddleOcrDevice`
+- `ocrReachable`
+- `ocrModels`
+- `ocrDevice`
 - `lmStudioReachable`
 - `lmStudioModels`
 - `superToneReachable`
@@ -361,10 +357,10 @@ These routes require `OPENAI_API_KEY`.
 
 ## Health Lamp Semantics
 
-- `red`: PaddleOCR unreachable
-- `yellow`: PaddleOCR reachable but running on CPU
-- `blue`: PaddleOCR GPU + LM Studio + Supertone + Kokoro + F5 all healthy; Voxtral is reported but does not block blue
-- `green`: PaddleOCR GPU healthy, but at least one other baseline dependency is missing
+- `red`: OCR unavailable
+- `yellow`: OCR is reachable but running on CPU
+- `blue`: OCR + LM Studio + Supertone + Kokoro + F5 all healthy; Voxtral is reported but does not block blue
+- `green`: OCR is healthy, but at least one other baseline dependency is missing
 
 ## Important Config
 
@@ -373,8 +369,7 @@ Root `.env` commonly includes:
 ```env
 LM_STUDIO_BASE_URL=http://localhost:1234/v1
 STRUCTURING_MODEL=qwen/qwen3.5-9b
-PADDLEOCR_HOST=localhost
-PADDLEOCR_PORT=8000
+OCR_MODEL=paddleocr-vl-0.9b
 SUPERTONE_HOST=localhost
 SUPERTONE_PORT=8100
 KOKORO_HOST=localhost
@@ -390,8 +385,8 @@ Launcher-side TTS defaults are controlled separately in `scripts/linux/tts-model
 
 ## Related Docs
 
-- [CLAUDE.md](/media/cbandy/HDD_Content/llmAgentTest/CLAUDE.md)
-- [agents.md](/media/cbandy/HDD_Content/llmAgentTest/agents.md)
-- [structure.md](/media/cbandy/HDD_Content/llmAgentTest/structure.md)
-- [docs/agents/project-overview.md](/media/cbandy/HDD_Content/llmAgentTest/docs/agents/project-overview.md)
-- [docs/agents/runbook.md](/media/cbandy/HDD_Content/llmAgentTest/docs/agents/runbook.md)
+- `CLAUDE.md`
+- `agents.md`
+- `structure.md`
+- `docs/agents/project-overview.md`
+- `docs/agents/runbook.md`

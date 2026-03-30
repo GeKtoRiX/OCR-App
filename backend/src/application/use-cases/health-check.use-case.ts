@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HealthCheckOutput } from '../dto/health-check.dto';
-import { IPaddleOcrHealthPort } from '../../domain/ports/paddle-ocr-health.port';
 import { ILmStudioHealthPort } from '../../domain/ports/lm-studio-health.port';
+import { IOcrHealthPort } from '../../domain/ports/ocr-health.port';
 import { ISupertonePort } from '../../domain/ports/supertone.port';
 import { IKokoroPort } from '../../domain/ports/kokoro.port';
 import { IF5TtsPort } from '../../domain/ports/f5-tts.port';
@@ -17,7 +17,7 @@ export class HealthCheckUseCase {
 
   constructor(
     private readonly lmStudioHealth: ILmStudioHealthPort,
-    private readonly paddleOcrHealth: IPaddleOcrHealthPort,
+    private readonly ocrHealth: IOcrHealthPort,
     private readonly supertone: ISupertonePort,
     private readonly kokoro: IKokoroPort,
     private readonly f5Tts: IF5TtsPort,
@@ -31,7 +31,7 @@ export class HealthCheckUseCase {
     }
 
     const [
-      paddleOcrReachable,
+      ocrReachable,
       lmStudioReachable,
       superToneReachable,
       kokoroReachable,
@@ -39,7 +39,7 @@ export class HealthCheckUseCase {
       voxtralHealth,
     ] =
       await Promise.all([
-        this.safeIsReachable(this.paddleOcrHealth),
+        this.safeIsReachable(this.ocrHealth),
         LM_STUDIO_SMOKE_ONLY
           ? Promise.resolve(false)
           : this.safeIsReachable(this.lmStudioHealth),
@@ -49,23 +49,23 @@ export class HealthCheckUseCase {
         this.voxtralTts.getHealth(),
       ]);
 
-    const [paddleOcrModels, lmStudioModels, paddleOcrDevice] =
+    const [ocrModels, lmStudioModels, ocrDevice] =
       await Promise.all([
-        paddleOcrReachable
-          ? this.safeListModels(this.paddleOcrHealth)
+        ocrReachable
+          ? this.safeListModels(this.ocrHealth)
           : Promise.resolve([]),
         !LM_STUDIO_SMOKE_ONLY && lmStudioReachable
           ? this.safeListModels(this.lmStudioHealth)
           : Promise.resolve([]),
-        paddleOcrReachable
-          ? this.paddleOcrHealth.getDevice()
+        ocrReachable
+          ? this.ocrHealth.getDevice()
           : Promise.resolve(null),
       ]);
 
     const result: HealthCheckOutput = {
-      paddleOcrReachable,
-      paddleOcrModels,
-      paddleOcrDevice,
+      ocrReachable,
+      ocrModels,
+      ocrDevice,
       lmStudioReachable,
       lmStudioModels,
       superToneReachable,

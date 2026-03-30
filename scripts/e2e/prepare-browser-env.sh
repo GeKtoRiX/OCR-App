@@ -7,7 +7,8 @@ cd "$ROOT_DIR"
 bash scripts/e2e/stop-browser-env.sh
 
 mkdir -p tmp/test-db
-rm -f tmp/test-db/browser-e2e.sqlite
+rm -f tmp/test-db/documents.sqlite
+rm -f tmp/test-db/vocabulary.sqlite
 
 bash scripts/linux/run-js-command.sh npm run build:frontend
 bash scripts/linux/run-js-command.sh npm run build:backend

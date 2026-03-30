@@ -101,6 +101,7 @@ export class OcrController implements OnModuleInit {
         rawText: result.rawText,
         markdown: result.markdown,
         filename: file.originalname,
+        blocks: result.blocks,
       };
     } catch (error) {
       const message =

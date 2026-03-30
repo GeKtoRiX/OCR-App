@@ -94,6 +94,9 @@ export class GatewayDocumentController {
       llmReview: Boolean(body.llmReview),
       targetLang: body.targetLang.trim(),
       nativeLang: body.nativeLang.trim(),
+      selectedCandidateIds: Array.isArray(body.selectedCandidateIds)
+        ? body.selectedCandidateIds
+        : undefined,
     };
     return this.send<PrepareDocumentVocabularyPayload, PreparedDocumentVocabularyDto>(
       DOCUMENT_PATTERNS.PREPARE_VOCABULARY,
@@ -131,6 +134,7 @@ export class GatewayDocumentController {
     try {
       return await lastValueFrom(
         this.documentClient.send<TResult, TPayload>(pattern, payload),
+        { defaultValue: undefined as TResult },
       );
     } catch (error) {
       throw asUpstreamHttpError(error, 'Document service request failed');

@@ -1,7 +1,0 @@
-# paddlepaddle-gpu (ROCm) is installed in Dockerfile via the official wheel index
-paddleocr>=2.7.3,<3.0
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-python-multipart>=0.0.12
-Pillow>=10.1.0
-numpy>=1.24.0

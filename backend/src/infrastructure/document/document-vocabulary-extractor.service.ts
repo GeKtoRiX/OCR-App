@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import {
   ExtractDocumentVocabularyInput,
@@ -11,7 +11,7 @@ interface StanzaCandidatePayload {
   surface: string;
   normalized: string;
   lemma: string;
-  vocabType: 'word' | 'phrasal_verb' | 'idiom';
+  vocabType: 'word' | 'phrasal_verb' | 'idiom' | 'collocation';
   pos: DocumentCandidatePos;
   contextSentence: string;
   sentenceIndex: number;
@@ -22,6 +22,7 @@ interface StanzaCandidatePayload {
 
 const STANZA_SERVICE_URL =
   process.env.STANZA_SERVICE_URL ?? 'http://127.0.0.1:8501/extract';
+const STANZA_TIMEOUT_MS = parseInt(process.env.STANZA_SERVICE_TIMEOUT ?? '10000', 10);
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by', 'for',
@@ -235,6 +236,8 @@ export function extractHeuristicDocumentVocabulary(
 
 @Injectable()
 export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtractor {
+  private readonly logger = new Logger(DocumentVocabularyExtractorService.name);
+
   async extract(
     input: ExtractDocumentVocabularyInput,
   ): Promise<DocumentVocabCandidate[]> {
@@ -242,9 +245,8 @@ export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtra
       const response = await fetch(STANZA_SERVICE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          markdown: input.markdown,
-        }),
+        body: JSON.stringify({ markdown: input.markdown }),
+        signal: AbortSignal.timeout(STANZA_TIMEOUT_MS),
       });
       if (!response.ok) {
         throw new Error(`Stanza service returned HTTP ${response.status}`);
@@ -256,7 +258,10 @@ export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtra
       return payload.candidates.map((candidate) =>
         buildCandidate(input.documentId, candidate),
       );
-    } catch {
+    } catch (err) {
+      this.logger.warn(
+        `Stanza extraction failed, using heuristic fallback: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return extractHeuristicDocumentVocabulary(input);
     }
   }

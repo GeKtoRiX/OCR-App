@@ -1,3 +1,5 @@
+import { OcrBlock } from '@ocr-app/shared';
+
 export interface ProcessImageInput {
   buffer: Buffer;
   mimeType: string;
@@ -7,4 +9,5 @@ export interface ProcessImageInput {
 export interface ProcessImageOutput {
   rawText: string;
   markdown: string;
+  blocks?: OcrBlock[];
 }

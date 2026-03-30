@@ -166,6 +166,43 @@ describe('SavedDocumentUseCase', () => {
   });
 
   describe('prepareVocabulary', () => {
+    it('skips LLM enrichment when llmReview is false', async () => {
+      const candidate = new DocumentVocabCandidate(
+        'candidate-1',
+        doc.id,
+        'Markdown',
+        'markdown',
+        'markdown',
+        'word',
+        'noun',
+        '',
+        'Markdown content',
+        0,
+        0,
+        8,
+        true,
+        false,
+        'base_nlp',
+      );
+
+      mockRepo.findById.mockResolvedValue(doc);
+      mockRepo.updateAnalysisStatus.mockResolvedValue(doc);
+      mockVocabularyExtractor.extract.mockResolvedValue([candidate]);
+      mockVocabularyRepo.findByWord.mockResolvedValue(null);
+
+      const result = await useCase.prepareVocabulary('id-1', {
+        llmReview: false,
+        targetLang: 'en',
+        nativeLang: 'ru',
+      });
+
+      expect(mockVocabularyExtractor.extract).toHaveBeenCalled();
+      expect(mockVocabularyLlmService.enrichDocumentCandidates).not.toHaveBeenCalled();
+      expect(mockRepo.replaceVocabularyCandidates).toHaveBeenCalled();
+      expect(result?.candidates[0].translation).toBe('');
+      expect(result?.llmReviewApplied).toBe(false);
+    });
+
     it('extracts, enriches, marks duplicates, and persists candidates', async () => {
       const candidate = new DocumentVocabCandidate(
         'candidate-1',

@@ -1,13 +1,29 @@
+export interface OcrLine {
+  text: string;
+  bbox: number[];
+  confidence?: number;
+}
+
+export interface OcrBlock {
+  type: string;
+  bbox: number[];
+  text: string;
+  html?: string;
+  lines?: OcrLine[];
+  score?: number | null;
+}
+
 export interface OcrResponse {
   rawText: string;
   markdown: string;
   filename: string;
+  blocks?: OcrBlock[];
 }
 
 export interface HealthResponse {
-  paddleOcrReachable: boolean;
-  paddleOcrModels: string[];
-  paddleOcrDevice: 'gpu' | 'cpu' | null;
+  ocrReachable: boolean;
+  ocrModels: string[];
+  ocrDevice: 'gpu' | 'cpu' | null;
   lmStudioReachable: boolean;
   lmStudioModels: string[];
   superToneReachable: boolean;

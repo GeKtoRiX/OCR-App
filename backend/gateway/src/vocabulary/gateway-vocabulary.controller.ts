@@ -158,6 +158,7 @@ export class GatewayVocabularyController {
     try {
       return await lastValueFrom(
         this.vocabularyClient.send<TResult, TPayload>(pattern, payload),
+        { defaultValue: undefined as TResult },
       );
     } catch (error) {
       throw asUpstreamHttpError(error, 'Vocabulary service request failed');

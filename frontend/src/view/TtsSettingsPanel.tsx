@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { TtsState } from '../features/tts';
 import {
   TTS_VOICES,
@@ -6,20 +7,31 @@ import {
   PIPER_VOICES,
   KOKORO_VOICES,
   VOXTRAL_EN_VOICES,
+  type TtsEngine,
 } from '../shared/types';
 import './TtsPanel.css';
 
+const ALL_ENGINES = ['supertone', 'piper', 'kokoro', 'f5', 'voxtral'] as const;
+
 interface Props {
   tts: TtsState;
+  engines?: readonly TtsEngine[];
 }
 
-export function TtsSettingsPanel({ tts }: Props) {
+export function TtsSettingsPanel({ tts, engines = ALL_ENGINES }: Props) {
   const { ttsSettings } = tts;
+
+  useEffect(() => {
+    if (!engines.includes(ttsSettings.engine)) {
+      tts.setEngine(engines[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engines]);
 
   return (
     <div className="tts-panel">
       <div className="tts-panel__engine-row">
-        {(['supertone', 'piper', 'kokoro', 'f5', 'voxtral'] as const).map((engine) => (
+        {engines.map((engine) => (
           <button
             key={engine}
             className={`tts-panel__engine-btn ${ttsSettings.engine === engine ? 'tts-panel__engine-btn--active' : ''}`}

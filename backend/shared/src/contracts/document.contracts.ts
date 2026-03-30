@@ -67,6 +67,7 @@ export interface PrepareDocumentVocabularyPayload {
   llmReview: boolean;
   targetLang: string;
   nativeLang: string;
+  selectedCandidateIds?: string[];
 }
 
 export interface PreparedDocumentVocabularyDto {

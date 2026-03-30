@@ -19,34 +19,6 @@ export default defineConfig({
   webServer: [
     {
       command:
-        'bash scripts/linux/run-js-command.sh npm run dev:paddleocr',
-      url: 'http://127.0.0.1:8000/health',
-      reuseExistingServer: true,
-      timeout: 5 * 60 * 1000,
-    },
-    {
-      command:
-        'SUPERTONE_USE_GPU=false LD_LIBRARY_PATH=/home/cbandy/.local/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH services/tts/supertone-service/.venv/bin/python -m uvicorn --app-dir services/tts/supertone-service main:app --host 0.0.0.0 --port 8100',
-      url: 'http://127.0.0.1:8100/health',
-      reuseExistingServer: true,
-      timeout: 5 * 60 * 1000,
-    },
-    {
-      command:
-        'bash scripts/linux/run-js-command.sh npm run dev:kokoro',
-      url: 'http://127.0.0.1:8200/health',
-      reuseExistingServer: true,
-      timeout: 5 * 60 * 1000,
-    },
-    {
-      command:
-        'bash scripts/linux/run-js-command.sh npm run dev:f5',
-      url: 'http://127.0.0.1:8300/health',
-      reuseExistingServer: true,
-      timeout: 5 * 60 * 1000,
-    },
-    {
-      command:
         "bash -lc 'export LM_STUDIO_SMOKE_ONLY=true; bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js'",
       port: 3901,
       reuseExistingServer: true,
@@ -61,7 +33,7 @@ export default defineConfig({
     },
     {
       command:
-        "bash -lc 'export DOCUMENTS_SQLITE_DB_PATH=tmp/test-db/documents.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js'",
+        "bash -lc 'export LM_STUDIO_SMOKE_ONLY=true DOCUMENTS_SQLITE_DB_PATH=tmp/test-db/documents.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js'",
       port: 3903,
       reuseExistingServer: true,
       timeout: 2 * 60 * 1000,

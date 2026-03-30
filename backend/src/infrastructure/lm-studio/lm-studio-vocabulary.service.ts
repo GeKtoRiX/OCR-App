@@ -244,15 +244,14 @@ Provide your analysis.`;
       )
       .join('\n');
 
+    const markdownSection = input.llmReview
+      ? `\nSource markdown:\n"""\n${input.markdown}\n"""\n`
+      : '';
+
     const userPrompt = `Target language: ${input.targetLang}
 Native language: ${input.nativeLang}
 LLM review enabled: ${input.llmReview ? 'yes' : 'no'}
-
-Source markdown:
-"""
-${input.markdown}
-"""
-
+${markdownSection}
 Extracted candidates:
 | # | id | surface | normalized | vocabType | pos | contextSentence |
 |---|----|---------|------------|-----------|-----|-----------------|

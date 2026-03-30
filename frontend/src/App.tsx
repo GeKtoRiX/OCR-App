@@ -320,11 +320,12 @@ export default function App() {
           error={docs.vocabularyReviewError}
           llmReviewApplied={docs.vocabularyReviewLlmApplied}
           confirmResult={docs.vocabularyConfirmResult}
-          onPrepare={(llmReview) =>
+          onPrepare={(llmReview, selectedIds) =>
             docs.prepareVocabulary(activeSavedDoc.id, {
               llmReview,
               targetLang: vocab.langPair.targetLang,
               nativeLang: vocab.langPair.nativeLang,
+              selectedIds,
             })
           }
           onConfirm={async (items) => {
