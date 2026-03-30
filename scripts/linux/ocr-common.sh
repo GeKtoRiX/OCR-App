@@ -901,8 +901,7 @@ start_kokoro() {
 
     log "Starting Kokoro TTS sidecar (port ${KOKORO_PORT_CFG})..."
     dim "Kokoro log file: ${LOG_KOKORO}"
-    env KOKORO_USE_GPU=true \
-        HSA_OVERRIDE_GFX_VERSION="${HSA_OVERRIDE_GFX_VERSION:-11.0.0}" \
+    env KOKORO_USE_GPU=false \
         LD_LIBRARY_PATH="${torch_lib:+${torch_lib}:}${LD_LIBRARY_PATH:-}" \
         "${KOKORO_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/tts/kokoro-service" main:app \
