@@ -26,8 +26,6 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 - `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar on `:8501`
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar on `:8100`
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar on `:8200`
-- `services/tts/f5-service/`: F5 FastAPI sidecar on `:8300`
-- `services/tts/voxtral-service/`: Voxtral FastAPI adapter on `:8400`
 
 ## Core Capabilities
 
@@ -37,7 +35,7 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 - document vocabulary candidate prepare/confirm flow
 - vocabulary CRUD with spaced-repetition metadata
 - practice sessions with LLM-generated exercises and session analysis
-- TTS through `supertone`, `piper`, `kokoro`, `f5`, and `voxtral`
+- TTS through `supertone`, `piper`, and `kokoro`
 - health aggregation for OCR, LM Studio, and all TTS engines
 - optional agentic planning/deployment workflow
 
@@ -72,8 +70,7 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 - `agentic` requires `OPENAI_API_KEY`
 - browser/perf automation may run with `LM_STUDIO_SMOKE_ONLY=true`
 - lightweight browser e2e exists for `Save Vocabulary` and does not require OCR/TTS sidecars
-- launcher defaults currently enable only Voxtral unless `scripts/linux/tts-models.conf` is changed
-- frontend currently exposes only English Voxtral preset voices
+- launcher defaults currently enable Kokoro unless `scripts/linux/tts-models.conf` is changed
 
 ## Current Health Payload
 
@@ -86,7 +83,3 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 - `lmStudioModels`
 - `superToneReachable`
 - `kokoroReachable`
-- `f5TtsReachable`
-- `f5TtsDevice`
-- `voxtralReachable`
-- `voxtralDevice`

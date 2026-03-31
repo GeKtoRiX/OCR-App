@@ -21,12 +21,10 @@ describe('decorator metadata fallbacks', () => {
         require('./application/use-cases/saved-document.use-case');
         require('./application/use-cases/synthesize-speech.use-case');
         require('./application/use-cases/vocabulary.use-case');
-        require('./infrastructure/f5/f5-tts.service');
         require('./infrastructure/kokoro/kokoro.service');
         require('./infrastructure/lm-studio/lm-studio-ocr.service');
         require('./infrastructure/lm-studio/lm-studio-structuring.service');
         require('./infrastructure/lm-studio/lm-studio-vocabulary.service');
-        require('./infrastructure/voxtral/voxtral-tts.service');
         require('./infrastructure/sqlite/sqlite-connection.provider');
         require('./infrastructure/sqlite/sqlite-practice-session.repository');
         require('./infrastructure/sqlite/sqlite-saved-document.repository');

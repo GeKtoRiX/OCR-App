@@ -8,9 +8,8 @@ Frontend
        -> OCR service        :3901 -> PaddleOCR :8000
        -> TTS service        :3902 -> Supertone/Piper :8100
        |                               Kokoro          :8200
-       |                               F5              :8300
-       |                               Voxtral         :8400
        -> Document service   :3903 -> SQLite + optional Stanza :8501
+                                              + optional BERT  :8502 (en only)
        -> Vocabulary service :3904 -> SQLite + LM Studio
        -> Agentic service    :3905 -> OpenAI Agents SDK
 
@@ -41,7 +40,6 @@ domain <- application <- infrastructure / presentation
 Responsibilities:
 
 - validate HTTP request shape
-- perform multipart handling for F5 uploads
 - proxy to TCP services through shared contracts
 - map upstream failures into HTTP responses
 - serve `frontend/dist`
@@ -90,7 +88,7 @@ Examples:
 
 - port `3902`
 - reuses `SynthesizeSpeechUseCase`
-- binds Supertone, Kokoro, F5, and Voxtral ports
+- binds Supertone and Kokoro ports
 
 ### Document Service
 
@@ -98,6 +96,7 @@ Examples:
 - reuses saved document use cases and SQLite repository
 - owns document-scoped vocabulary candidate preparation
 - prefers the Stanza sidecar for extraction and falls back to heuristics when the sidecar is unavailable
+- for English targets, calls the BERT sidecar to score candidates via MLM before constructing `DocumentVocabCandidate`; degrades silently
 - can run in `LM_STUDIO_SMOKE_ONLY=true` during lightweight automation
 
 ### Vocabulary Service
@@ -120,8 +119,6 @@ Current key ports:
 - `ILmStudioHealthPort`
 - `ISupertonePort`
 - `IKokoroPort`
-- `IF5TtsPort`
-- `IVoxtralTtsPort`
 - `ISavedDocumentRepository`
 - `IDocumentVocabularyExtractor`
 - `IVocabularyRepository`
@@ -146,8 +143,6 @@ POST /api/tts
   -> gateway TTS controller
   -> TTS TCP service
   -> SynthesizeSpeechUseCase
-       voxtral -> IVoxtralTtsPort
-       f5      -> IF5TtsPort
        kokoro  -> IKokoroPort
        default -> ISupertonePort
   -> audio/wav
@@ -157,7 +152,6 @@ Gateway-level TTS validation:
 
 - `text` required
 - max length `5000`
-- F5 upload limit `50 MB`
 
 ## Health Flow
 
@@ -178,10 +172,6 @@ Returned health fields:
 - `lmStudioModels`
 - `superToneReachable`
 - `kokoroReachable`
-- `f5TtsReachable`
-- `f5TtsDevice`
-- `voxtralReachable`
-- `voxtralDevice`
 
 ## Document / Vocabulary / Practice Flows
 
@@ -201,6 +191,7 @@ POST /api/documents/:id/vocabulary/prepare
   -> gateway
   -> document TCP service
   -> Stanza sidecar or heuristic extractor
+  -> BERT sidecar MLM scoring (English only, optional)
   -> optional LLM review enrichment
   -> document-scoped candidate storage
   -> frontend review overlay editor
@@ -286,20 +277,19 @@ frontend/src/
 
 - `red`: PaddleOCR unreachable
 - `yellow`: PaddleOCR reachable on CPU
-- `blue`: PaddleOCR GPU plus LM Studio, Supertone, Kokoro, and F5 all healthy; Voxtral is informational and does not block blue
+- `blue`: PaddleOCR GPU plus LM Studio, Supertone, and Kokoro all healthy
 - `green`: PaddleOCR GPU healthy but some baseline dependency is missing
 
 ### Frontend TTS Notes
 
-- Voxtral is exposed as a frontend engine
-- the frontend currently shows only `VOXTRAL_EN_VOICES`
+- the result panel currently exposes Kokoro
 - Kokoro is rejected client-side for Cyrillic input
 
 ## Launcher Architecture
 
 - `scripts/linux/ocr-common.sh` contains shared lifecycle logic
 - `scripts/linux/tts-models.conf` controls which TTS sidecars start by default
-- current default is Voxtral only
+- current default is Kokoro only
 
 Supported launcher entries:
 

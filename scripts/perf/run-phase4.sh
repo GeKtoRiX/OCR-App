@@ -31,7 +31,6 @@ start_bg() {
 
 start_bg "${LOG_DIR}/supertone.log" bash -lc 'SUPERTONE_USE_GPU=false bash scripts/linux/run-python-with-torch.sh services/tts/supertone-service/.venv/bin/python -m uvicorn --app-dir services/tts/supertone-service main:app --host 0.0.0.0 --port 8100'
 start_bg "${LOG_DIR}/kokoro.log" bash scripts/linux/run-js-command.sh npm run dev:kokoro
-start_bg "${LOG_DIR}/f5.log" bash scripts/linux/run-js-command.sh npm run dev:f5
 start_bg "${LOG_DIR}/svc-ocr.log" bash scripts/linux/run-js-command.sh node backend/dist/services/ocr/src/main.js
 start_bg "${LOG_DIR}/svc-tts.log" bash scripts/linux/run-js-command.sh node backend/dist/services/tts/src/main.js
 start_bg "${LOG_DIR}/svc-doc.log" bash -lc 'export DOCUMENTS_SQLITE_DB_PATH=tmp/test-db/documents.sqlite; bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js'
@@ -57,7 +56,6 @@ wait_for_url() {
 wait_for_url "http://127.0.0.1:1234/v1/models" 60 "LM Studio"
 wait_for_url "http://127.0.0.1:8100/health" 60 "Supertone"
 wait_for_url "http://127.0.0.1:8200/health" 180 "Kokoro"
-wait_for_url "http://127.0.0.1:8300/health" 180 "F5"
 wait_for_url "http://127.0.0.1:3000/api/health" 120 "Gateway"
 
 bash scripts/linux/run-js-command.sh node scripts/perf/api-benchmark.mjs

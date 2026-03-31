@@ -6,11 +6,7 @@ import {
   Inject,
   Post,
   Res,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
@@ -25,13 +21,9 @@ interface TtsRequestDto {
   text: string;
   engine?: string;
   voice?: string;
-  format?: 'wav';
   lang?: string;
   speed?: number;
   totalSteps?: number;
-  refText?: string;
-  autoTranscribe?: string | boolean;
-  removeSilence?: string | boolean;
 }
 
 @Controller('api')
@@ -41,16 +33,9 @@ export class GatewayTtsController {
   ) {}
 
   @Post('tts')
-  @UseInterceptors(
-    FileInterceptor('refAudio', {
-      storage: memoryStorage(),
-      limits: { fileSize: 50 * 1024 * 1024 },
-    }),
-  )
   async synthesize(
     @Body() body: TtsRequestDto,
     @Res() res: Response,
-    @UploadedFile() refAudio?: Express.Multer.File,
   ): Promise<void> {
     if (!body.text || !body.text.trim()) {
       throw new HttpException('text is required', HttpStatus.BAD_REQUEST);
@@ -62,32 +47,13 @@ export class GatewayTtsController {
       );
     }
 
-    const autoTranscribe =
-      body.autoTranscribe === undefined
-        ? undefined
-        : typeof body.autoTranscribe === 'string'
-          ? body.autoTranscribe.toLowerCase() === 'true'
-          : Boolean(body.autoTranscribe);
-
-    const removeSilence =
-      typeof body.removeSilence === 'string'
-        ? body.removeSilence.toLowerCase() === 'true'
-        : body.removeSilence;
-
     const payload: TtsSynthesizePayload = {
       text: body.text,
       engine: body.engine,
       voice: body.voice,
-      format: body.format,
       lang: body.lang,
       speed: body.speed,
       totalSteps: body.totalSteps,
-      refText: body.refText?.trim(),
-      refAudioBase64: refAudio?.buffer.toString('base64'),
-      refAudioFilename: refAudio?.originalname,
-      refAudioMimeType: refAudio?.mimetype,
-      autoTranscribe,
-      removeSilence,
     };
 
     let result: TtsSynthesizeResponse;

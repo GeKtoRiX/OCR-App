@@ -20,7 +20,6 @@ __exportStar(require("./domain/entities/ocr-result.entity"), exports);
 __exportStar(require("./domain/entities/practice-session.entity"), exports);
 __exportStar(require("./domain/entities/saved-document.entity"), exports);
 __exportStar(require("./domain/entities/vocabulary-word.entity"), exports);
-__exportStar(require("./domain/ports/f5-tts.port"), exports);
 __exportStar(require("./domain/ports/kokoro.port"), exports);
 __exportStar(require("./domain/ports/lm-studio-chat.port"), exports);
 __exportStar(require("./domain/ports/lm-studio-health.port"), exports);

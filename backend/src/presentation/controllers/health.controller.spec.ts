@@ -19,10 +19,6 @@ describe('HealthController', () => {
       lmStudioModels: ['qwen/qwen3.5-9b'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu' as const,
-      voxtralReachable: false,
-      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
@@ -40,10 +36,6 @@ describe('HealthController', () => {
       lmStudioModels: [],
       superToneReachable: false,
       kokoroReachable: false,
-      f5TtsReachable: false,
-      f5TtsDevice: null,
-      voxtralReachable: false,
-      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 

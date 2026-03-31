@@ -24,10 +24,6 @@ export class GatewayHealthController {
     lmStudioModels: string[];
     superToneReachable: boolean;
     kokoroReachable: boolean;
-    f5TtsReachable: boolean;
-    f5TtsDevice: 'gpu' | 'cpu' | null;
-    voxtralReachable: boolean;
-    voxtralDevice: 'gpu' | 'cpu' | null;
   }> {
     const [ocrHealth, ttsHealth] = await Promise.all([
       lastValueFrom(

@@ -59,10 +59,6 @@ describe('useHealthStore', () => {
       lmStudioModels: ['qwen'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu' as const,
-      voxtralReachable: false,
-      voxtralDevice: null,
     };
     mocks.checkHealth.mockResolvedValue(health);
 
@@ -89,10 +85,6 @@ describe('useHealthStore', () => {
       lmStudioModels: ['qwen'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu' as const,
-      voxtralReachable: false,
-      voxtralDevice: null,
     });
 
     const stopPolling = useHealthStore.getState().startPolling();
@@ -117,10 +109,6 @@ describe('useHealthStore', () => {
       lmStudioModels: ['qwen'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu' as const,
-      voxtralReachable: false,
-      voxtralDevice: null,
     });
 
     const stopPolling = useHealthStore.getState().startPolling();

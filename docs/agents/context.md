@@ -2,7 +2,7 @@
 
 ## Snapshot Date
 
-- `2026-03-27`
+- `2026-03-31`
 
 ## System Status
 
@@ -11,26 +11,21 @@
 - OCR, TTS, document, vocabulary, and agentic workloads are hosted as separate TCP service apps
 - reusable business logic still lives in `backend/src`
 - frontend uses a feature/store/view layout with Zustand stores
-- Voxtral is integrated as an optional TTS adapter and appears in health + frontend
 - launcher-side TTS defaults are now controlled through `scripts/linux/tts-models.conf`
-- current launcher default enables only Voxtral
+- current launcher default enables Kokoro
+- BERT MLM scorer sidecar added at `:8502` (`bert-large-cased`, English-only, optional)
+- vocabulary extraction pipeline: Stanza → BERT scoring → candidate build → optional LLM review
 - documentation has been refreshed to match the current repo shape
 
 ## Confirmed Facts
 
-- `GET /api/health` includes Voxtral fields:
-  - `voxtralReachable`
-  - `voxtralDevice`
 - `POST /api/tts` supports:
   - `supertone`
   - `piper`
   - `kokoro`
-  - `f5`
-  - `voxtral`
 - gateway validates TTS text length at `5000`
-- F5 uploads are accepted in memory through the gateway and forwarded over TCP
 - browser/perf automation may use `LM_STUDIO_SMOKE_ONLY=true`
-- frontend currently exposes only English Voxtral voices
+- the result panel currently exposes Kokoro
 - Kokoro is rejected client-side for Cyrillic text
 - SQLite persistence is split:
   - `data/documents.sqlite`
@@ -40,9 +35,16 @@
 
 - `agentic` still lacks a graceful degraded response when `OPENAI_API_KEY` is absent
 - checked-in runtime companion files inside `backend/shared/src` can confuse readers if treated as primary source
-- launcher defaults can surprise operators because only Voxtral is enabled by default
-- Voxtral readiness remains hardware-sensitive on AMD/ROCm
+- launcher defaults can surprise operators if `scripts/linux/tts-models.conf` drifts from the docs
 - build artifacts and caches can accumulate quickly if not cleaned periodically
+
+## Confirmed Facts (added 2026-03-31)
+
+- BERT sidecar exposes `GET /health` (`modelReady`, `modelName`, `supportedLanguage: "en"`) and `POST /score`
+- scoring uses geometric-mean MLM probability across subwords; `bertProb >= 0.15` → `selectedByDefault: false`
+- BERT sidecar is started by the launcher as Step 1e (after Stanza), with a 120 s startup window; failure is non-fatal
+- `BERT_SERVICE_URL`, `BERT_SERVICE_TIMEOUT`, `BERT_MODEL_NAME`, `BERT_USE_GPU`, `BERT_MODEL_DIR` are all configurable via env
+- model cache is at `services/nlp/bert-service/models/`, excluded from git
 
 ## Recommended Next Actions
 

@@ -95,37 +95,6 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Generate')).toBeInTheDocument();
   });
 
-  it('should expose f5 as a TTS engine option', async () => {
-    const user = userEvent.setup();
-    render(<ResultPanel result={result} />);
-
-    await user.click(screen.getByText('🔊 TTS'));
-    // "F5" matches both the engine button and the supertone voice chip "F5";
-    // target the engine button specifically.
-    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
-    await user.click(engineBtn);
-
-    expect(screen.getByLabelText('Reference Audio')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter the transcript of the reference audio')).toBeInTheDocument();
-  });
-
-  it('should expose voxtral as a TTS engine option with preset voices only', async () => {
-    const user = userEvent.setup();
-    render(<ResultPanel result={result} />);
-
-    await user.click(screen.getByText('🔊 TTS'));
-    await user.click(screen.getByRole('button', { name: 'Voxtral' }));
-
-    expect(screen.getByTitle('Casual — casual_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Casual — casual_male')).toBeInTheDocument();
-    expect(screen.getByTitle('Cheerful — cheerful_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Neutral — neutral_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Neutral — neutral_male')).toBeInTheDocument();
-    expect(screen.queryByTitle('German — de_female')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Spanish — es_female')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Reference Audio')).not.toBeInTheDocument();
-  });
-
   it('should reset to original content when result prop changes', () => {
     const { rerender } = render(<ResultPanel result={result} />);
 
@@ -294,42 +263,22 @@ describe('ResultPanel', () => {
     render(<ResultPanel result={result} />);
 
     await user.click(screen.getByText('🔊 TTS'));
-
-    await user.click(screen.getByText('ES'));
-    await user.click(screen.getByText('F2'));
-    const supertoneSliders = screen.getAllByRole('slider');
-    fireEvent.change(supertoneSliders[0], { target: { value: '1.35' } });
-    fireEvent.change(supertoneSliders[1], { target: { value: '8' } });
-
-    await user.click(screen.getByText('Piper'));
-    await user.click(screen.getByText('Amy'));
-    await user.clear(screen.getByPlaceholderText('e.g. en_US-amy-medium'));
-    await user.type(screen.getByPlaceholderText('e.g. en_US-amy-medium'), 'en_US-lessac-high');
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '1.2' } });
-
-    await user.click(screen.getByText('Kokoro'));
     await user.click(screen.getByText('Fable'));
     fireEvent.change(screen.getByRole('slider'), { target: { value: '1.15' } });
-
-    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
-    await user.click(engineBtn);
-    const fileInput = screen.getByLabelText('Reference Audio');
-    const file = new File(['wav'], 'reference.wav', { type: 'audio/wav' });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-    await user.type(screen.getByPlaceholderText('Enter the transcript of the reference audio'), 'Reference transcript');
-    const checkboxes = screen.getAllByRole('checkbox');
-    await user.click(checkboxes[0]);
-    expect(screen.getByPlaceholderText('Reference text will be detected from the uploaded audio')).toBeDisabled();
-    await user.click(checkboxes[0]);
-    await user.click(checkboxes[1]);
-
-    await user.click(screen.getByText('Supertone'));
     await user.click(screen.getByText('Generate'));
 
     await waitFor(() => {
       expect(mockGenerateSpeech).toHaveBeenCalled();
     });
     expect(await screen.findByTitle('Download WAV')).toBeInTheDocument();
+    expect(mockGenerateSpeech).toHaveBeenCalledWith(
+      '# Markdown content',
+      expect.objectContaining({
+        engine: 'kokoro',
+        voice: 'bm_fable',
+        speed: 1.15,
+      }),
+    );
 
     await user.click(screen.getByText('1.5×'));
 

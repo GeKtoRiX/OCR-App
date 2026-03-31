@@ -13,6 +13,25 @@ try:
 except Exception:  # pragma: no cover
     stanza = None
 
+try:
+    from wordfreq import zipf_frequency as _zipf_frequency  # type: ignore
+    _WORDFREQ_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _WORDFREQ_AVAILABLE = False
+
+try:
+    import nltk  # type: ignore
+    from nltk.corpus import wordnet as _wordnet  # type: ignore
+    _NLTK_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _NLTK_AVAILABLE = False
+
+try:
+    from symspellpy import SymSpell, Verbosity as _SymVerbosity  # type: ignore
+    _SYMSPELL_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _SYMSPELL_AVAILABLE = False
+
 
 APP_TITLE = "stanza-vocabulary-service"
 PARTICLES = {
@@ -107,9 +126,78 @@ class ExtractResponse(BaseModel):
 
 app = FastAPI(title=APP_TITLE)
 _pipeline = None
+_symspell: Any = None
+_wordnet_ready = False
 SERVICE_DIR = Path(__file__).resolve().parent
 DEFAULT_MODELS_DIR = SERVICE_DIR / "models"
-PIPELINE_PROCESSORS = "tokenize,pos,lemma,depparse,ner"
+NLTK_DATA_DIR = SERVICE_DIR / "data"
+PIPELINE_PROCESSORS = "tokenize,mwt,pos,lemma,depparse,ner"
+
+# Words with zipf < this threshold are flagged as possible OCR artifacts
+# and cross-checked against WordNet + symspell before inclusion.
+NOISE_ZIPF_THRESHOLD = 2.5
+
+
+def _init_wordnet() -> None:
+    global _wordnet_ready
+    if not _NLTK_AVAILABLE or _wordnet_ready:
+        return
+    try:
+        nltk_path = str(NLTK_DATA_DIR)
+        if nltk_path not in nltk.data.path:
+            nltk.data.path.insert(0, nltk_path)
+        _wordnet.synsets("test")  # trigger corpus load
+        _wordnet_ready = True
+    except Exception:
+        _wordnet_ready = False
+
+
+def _get_symspell() -> Any:
+    global _symspell
+    if not _SYMSPELL_AVAILABLE:
+        return None
+    if _symspell is None:
+        try:
+            import symspellpy  # type: ignore
+            dict_path = Path(symspellpy.__file__).parent / "frequency_dictionary_en_82_765.txt"
+            if dict_path.exists():
+                _symspell = SymSpell(max_dictionary_edit_distance=0)
+                _symspell.load_dictionary(str(dict_path), term_index=0, count_index=1)
+        except Exception:
+            _symspell = None
+    return _symspell
+
+
+def word_frequency(word: str) -> float:
+    """Return zipf frequency (0–8). Returns 5.0 if wordfreq unavailable."""
+    if not _WORDFREQ_AVAILABLE:
+        return 5.0
+    return float(_zipf_frequency(word, "en"))
+
+
+def is_ocr_artifact(word: str, is_proper_noun: bool = False) -> bool:
+    """Return True if word is likely an OCR artifact, not a real English word.
+
+    Proper nouns are never filtered (names/places won't be in general corpora).
+    A word passes if any of: zipf >= threshold, in WordNet, in symspell dict.
+    """
+    if is_proper_noun:
+        return False
+    if word_frequency(word) >= NOISE_ZIPF_THRESHOLD:
+        return False
+    # Rare word — cross-check with WordNet
+    if _NLTK_AVAILABLE and _wordnet_ready:
+        try:
+            if _wordnet.synsets(word):
+                return False
+        except Exception:
+            pass
+    # Final check: symspell dictionary
+    sym = _get_symspell()
+    if sym is not None:
+        if sym.lookup(word, _SymVerbosity.TOP, max_edit_distance=0):
+            return False
+    return True
 
 
 def strip_markdown(markdown: str) -> str:
@@ -363,7 +451,7 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                 pos = "adverb"
             elif word.upos == "ADJ":
                 pos = "adjective"
-            elif word.upos == "NOUN":
+            elif word.upos in ("NOUN", "PROPN"):
                 pos = "noun"
             else:
                 pos = None
@@ -373,6 +461,12 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
 
             # Lemma (from Stanza lemmatiser)
             lemma = (word.lemma or normalized).lower()
+
+            # Frequency + OCR artifact filter (skip for proper nouns)
+            is_propn = word.upos == "PROPN"
+            if is_ocr_artifact(lemma, is_proper_noun=is_propn):
+                continue
+            lemma_freq = word_frequency(lemma)
 
             # NER: named entities are lower-priority study candidates
             is_ne = overlaps_ner(word.start_char, word.end_char, ner_skip)
@@ -389,6 +483,7 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                     "startOffset": word.start_char,
                     "endOffset": word.end_char,
                     "selectedByDefault": not is_ne,
+                    "frequency": round(lemma_freq, 2),
                 }
             )
 
@@ -396,11 +491,12 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
             if pos == "verb":
                 prt = prt_by_head.get(word.id)
                 if prt:
+                    pv_norm = f"{lemma} {prt.text.lower()}"
                     add_candidate(
                         {
                             "surface": f"{word.text} {prt.text}",
-                            "normalized": f"{lemma} {prt.text.lower()}",
-                            "lemma": f"{lemma} {prt.text.lower()}",
+                            "normalized": pv_norm,
+                            "lemma": pv_norm,
                             "vocabType": "phrasal_verb",
                             "pos": "verb",
                             "contextSentence": sentence_text,
@@ -408,15 +504,17 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                             "startOffset": min(word.start_char, prt.start_char),
                             "endOffset": max(word.end_char, prt.end_char),
                             "selectedByDefault": True,
+                            "frequency": round(word_frequency(pv_norm), 2),
                         }
                     )
                 elif idx + 1 < len(words) and words[idx + 1].text.lower() in PARTICLES:
                     nxt = words[idx + 1]
+                    pv_norm = f"{lemma} {nxt.text.lower()}"
                     add_candidate(
                         {
                             "surface": f"{word.text} {nxt.text}",
-                            "normalized": f"{lemma} {nxt.text.lower()}",
-                            "lemma": f"{lemma} {nxt.text.lower()}",
+                            "normalized": pv_norm,
+                            "lemma": pv_norm,
                             "vocabType": "phrasal_verb",
                             "pos": "verb",
                             "contextSentence": sentence_text,
@@ -424,6 +522,7 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                             "startOffset": word.start_char,
                             "endOffset": nxt.end_char,
                             "selectedByDefault": True,
+                            "frequency": round(word_frequency(pv_norm), 2),
                         }
                     )
 
@@ -444,6 +543,11 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
             if compound_norm in STOP_WORDS or len(compound_norm) < 4:
                 continue
 
+            # Filter if either component is an OCR artifact
+            if is_ocr_artifact(mod_lemma, is_proper_noun=mod_word.upos == "PROPN") or \
+               is_ocr_artifact(head_lemma, is_proper_noun=head_word.upos == "PROPN"):
+                continue
+
             add_candidate(
                 {
                     "surface": surface,
@@ -456,10 +560,17 @@ def stanza_extract(text: str) -> list[dict[str, Any]]:
                     "startOffset": cstart,
                     "endOffset": cend,
                     "selectedByDefault": True,
+                    "frequency": round(word_frequency(compound_norm), 2),
                 }
             )
 
     return candidates
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    _init_wordnet()
+    _get_symspell()  # warm up symspell cache
 
 
 @app.get("/health")
@@ -472,6 +583,9 @@ def health() -> dict[str, Any]:
         "activeFeatures": ["tokenize", "pos", "lemma", "ner", "depparse"],
         "stanzaUseGpu": os.getenv("STANZA_USE_GPU", "false").strip().lower() in {"1", "true", "yes", "on"},
         "stanzaModelDir": os.getenv("STANZA_MODEL_DIR", str(DEFAULT_MODELS_DIR)),
+        "wordfreqAvailable": _WORDFREQ_AVAILABLE,
+        "wordnetAvailable": _wordnet_ready,
+        "symspellAvailable": _get_symspell() is not None,
     }
 
 

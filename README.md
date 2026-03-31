@@ -2,7 +2,7 @@
 
 Alpha baseline: `v0.1.0-alpha.1`
 
-OCR-App is a local-first OCR and study workflow. It extracts text from images, structures the result with LM Studio, lets you save documents, collect vocabulary with SM-2 scheduling, run practice sessions, and synthesize speech through several local TTS engines.
+OCR-App is a local-first OCR and study workflow. It extracts text from images, structures the result with LM Studio, lets you save documents, collect vocabulary with SM-2 scheduling, run practice sessions, and synthesize speech through local TTS engines.
 
 The saved-document flow is split into:
 
@@ -10,8 +10,6 @@ The saved-document flow is split into:
 - `Save Vocabulary` for preparing document-scoped vocabulary candidates, optionally running LLM review, editing the final list in a confirmation overlay, and only then writing confirmed items into the shared vocabulary store
 
 The only cloud-dependent area is the optional `agentic` API under `/api/agents/*`, which requires `OPENAI_API_KEY`.
-
-For Docker-backed Voxtral runs, the project uses your existing Docker daemon configuration. If your Docker data root already lives on another disk, no additional project changes are required.
 
 ## Runtime Topology
 
@@ -24,8 +22,6 @@ HTTP Gateway :3000
         +--> OCR service       :3901 --> LM Studio vision OCR :1234
         +--> TTS service       :3902 --> Supertone/Piper :8100
         |                              Kokoro          :8200
-        |                              F5 TTS          :8300
-        |                              Voxtral         :8400
         +--> Document service  :3903 --> SQLite + optional Stanza :8501
         +--> Vocabulary service:3904 --> SQLite + LM Studio
         +--> Agentic service   :3905 --> OpenAI Agents SDK
@@ -41,8 +37,6 @@ OCR + vocabulary structuring/generation use LM Studio :1234
 - `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar for document vocabulary extraction.
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar.
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar.
-- `services/tts/f5-service/`: F5 TTS FastAPI sidecar.
-- `services/tts/voxtral-service/`: Voxtral FastAPI adapter over `vLLM + vLLM-Omni`.
 - `frontend/`: React 18 + Vite 6 client.
 
 ## Current Launcher Defaults
@@ -52,11 +46,9 @@ Launcher-side TTS defaults live in `scripts/linux/tts-models.conf`.
 Current default:
 
 - `TTS_ENABLE_SUPERTONE=false`
-- `TTS_ENABLE_KOKORO=false`
-- `TTS_ENABLE_F5=false`
-- `TTS_ENABLE_VOXTRAL=true`
+- `TTS_ENABLE_KOKORO=true`
 
-That means the shell launchers currently start only Voxtral by default unless you enable the other TTS sidecars in that config file.
+That means the shell launchers currently start Kokoro by default unless you enable other TTS sidecars in that config file.
 
 ## Requirements
 
@@ -122,31 +114,8 @@ pip uninstall -y onnxruntime
 pip install onnxruntime-rocm==1.22.2.post1
 ```
 
-F5:
-
-```bash
-cd services/tts/f5-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-Voxtral:
-
-```bash
-cd services/tts/voxtral-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
 Notes:
 
-- Voxtral is optional and stays in explicit no-go mode if the local ROCm stack cannot start it cleanly.
-- Voxtral caches live under `services/tts/voxtral-service/models/`.
-- F5 is treated as GPU-only in this project.
 - Piper voices are served through the Supertone sidecar.
 
 ### 4b. Set up the optional Stanza sidecar
@@ -202,14 +171,10 @@ npm run dev:frontend
 npm run dev:stanza
 npm run dev:supertone
 npm run dev:kokoro
-npm run dev:f5
-npm run dev:voxtral
 npm run smoke:ocr
 npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
-npm run smoke:f5
-npm run smoke:voxtral
 npm run smoke:lmstudio
 ```
 
@@ -263,30 +228,15 @@ Response fields:
 - `lmStudioModels`
 - `superToneReachable`
 - `kokoroReachable`
-- `f5TtsReachable`
-- `f5TtsDevice`
-- `voxtralReachable`
-- `voxtralDevice`
 
 ### TTS
 
-Supertone / Piper / Kokoro / Voxtral use JSON:
+Supertone / Piper / Kokoro use JSON:
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"voxtral","voice":"casual_female","format":"wav"}' \
-  --output speech.wav
-```
-
-F5 uses multipart:
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -F "text=Hello world" \
-  -F "engine=f5" \
-  -F "refText=Reference transcript" \
-  -F "refAudio=@reference.wav" \
+  -d '{"text":"Hello world","engine":"kokoro","voice":"af_heart","speed":1.0}' \
   --output speech.wav
 ```
 
@@ -294,7 +244,6 @@ Gateway validation:
 
 - `text` is required
 - max text length is `5000`
-- `refAudio` upload limit for F5 is `50 MB`
 
 ### Documents
 
@@ -351,15 +300,14 @@ These routes require `OPENAI_API_KEY`.
 - Saved documents, vocabulary, practice state, and health state each have their own Zustand store.
 - Saved results expose separate `Save Document` and `Save Vocabulary` actions.
 - `Save Vocabulary` always opens a review overlay with an embedded editor before writing anything to the DB.
-- TTS engines exposed in the UI: `supertone`, `piper`, `kokoro`, `f5`, `voxtral`.
-- The frontend currently exposes only English Voxtral preset voices, even though the backend/runtime supports a wider multilingual preset set.
+- TTS engine exposed in the result panel UI: `kokoro`.
 - Kokoro is blocked in the frontend for Cyrillic input and will throw a client-side error for that text path.
 
 ## Health Lamp Semantics
 
 - `red`: OCR unavailable
 - `yellow`: OCR is reachable but running on CPU
-- `blue`: OCR + LM Studio + Supertone + Kokoro + F5 all healthy; Voxtral is reported but does not block blue
+- `blue`: OCR + LM Studio + Supertone + Kokoro are healthy
 - `green`: OCR is healthy, but at least one other baseline dependency is missing
 
 ## Important Config
@@ -374,10 +322,6 @@ SUPERTONE_HOST=localhost
 SUPERTONE_PORT=8100
 KOKORO_HOST=localhost
 KOKORO_PORT=8200
-F5_TTS_HOST=localhost
-F5_TTS_PORT=8300
-VOXTRAL_HOST=localhost
-VOXTRAL_PORT=8400
 OPENAI_API_KEY=
 ```
 

@@ -16,8 +16,6 @@ const TTS_CONF_PATH = `${ROOT_DIR}/scripts/linux/tts-models.conf`;
 const APP_PORT = Number.parseInt(process.env.PORT ?? '3000', 10);
 const SUPERTONE_PORT = Number.parseInt(process.env.SUPERTONE_PORT ?? '8100', 10);
 const KOKORO_PORT = Number.parseInt(process.env.KOKORO_PORT ?? '8200', 10);
-const F5_PORT = Number.parseInt(process.env.F5_TTS_PORT ?? '8300', 10);
-const VOXTRAL_PORT = Number.parseInt(process.env.VOXTRAL_PORT ?? '8400', 10);
 const LM_URL = process.env.LM_STUDIO_BASE_URL ?? 'http://localhost:1234/v1';
 const LM_MODEL_ID = process.env.STRUCTURING_MODEL ?? 'qwen/qwen3.5-9b';
 const LM_PORT = resolvePort(LM_URL);
@@ -218,8 +216,6 @@ function ttsActivePorts(conf) {
   const ports = [];
   if (conf.TTS_ENABLE_SUPERTONE) ports.push(SUPERTONE_PORT);
   if (conf.TTS_ENABLE_KOKORO) ports.push(KOKORO_PORT);
-  if (conf.TTS_ENABLE_F5) ports.push(F5_PORT);
-  if (conf.TTS_ENABLE_VOXTRAL) ports.push(VOXTRAL_PORT);
   return ports;
 }
 
@@ -227,8 +223,6 @@ function ttsInactivePorts(conf) {
   const ports = [];
   if (!conf.TTS_ENABLE_SUPERTONE) ports.push(SUPERTONE_PORT);
   if (!conf.TTS_ENABLE_KOKORO) ports.push(KOKORO_PORT);
-  if (!conf.TTS_ENABLE_F5) ports.push(F5_PORT);
-  if (!conf.TTS_ENABLE_VOXTRAL) ports.push(VOXTRAL_PORT);
   return ports;
 }
 
@@ -236,7 +230,7 @@ function ttsInactivePorts(conf) {
 
 async function checkEnabledTtsEngines(conf) {
   assert.ok(
-    conf.TTS_ENABLE_SUPERTONE || conf.TTS_ENABLE_KOKORO || conf.TTS_ENABLE_F5 || conf.TTS_ENABLE_VOXTRAL,
+    conf.TTS_ENABLE_SUPERTONE || conf.TTS_ENABLE_KOKORO,
     'At least one TTS engine must be enabled in tts-models.conf',
   );
 
@@ -253,18 +247,6 @@ async function checkEnabledTtsEngines(conf) {
   if (conf.TTS_ENABLE_KOKORO) {
     const r = await fetchJson(`http://127.0.0.1:${KOKORO_PORT}/health`);
     assert.equal(r.ready, true, 'Kokoro must report ready');
-  }
-
-  if (conf.TTS_ENABLE_F5) {
-    const r = await fetchJson(`http://127.0.0.1:${F5_PORT}/health`);
-    assert.equal(r.ready, true, 'F5 must report ready');
-  }
-
-  if (conf.TTS_ENABLE_VOXTRAL) {
-    // Voxtral is optional — the Docker runtime may still be loading the model.
-    // Mirror start_voxtral_optional: only require the sidecar HTTP to respond.
-    const r = await fetchJson(`http://127.0.0.1:${VOXTRAL_PORT}/health`);
-    assert.ok(r.status !== undefined, 'Voxtral sidecar must respond to /health');
   }
 }
 
@@ -328,7 +310,7 @@ async function assertEverythingStopped() {
   await waitForCondition(async () => {
     await assertPortsState(
       [],
-      [SUPERTONE_PORT, KOKORO_PORT, F5_PORT, VOXTRAL_PORT, APP_PORT],
+      [SUPERTONE_PORT, KOKORO_PORT, APP_PORT],
       'post-stop',
     );
     return true;
@@ -405,7 +387,7 @@ test('ocr.sh starts OCR mode when LM Studio is ready', { timeout: 12 * 60 * 1000
 
     const closedPorts = [];
     if (!conf.TTS_ENABLE_SUPERTONE) closedPorts.push(SUPERTONE_PORT);
-    if (!conf.TTS_ENABLE_F5) closedPorts.push(F5_PORT);
+    if (!conf.TTS_ENABLE_KOKORO) closedPorts.push(KOKORO_PORT);
 
     await assertPortsState(activePorts, closedPorts, 'ocr-mode');
 

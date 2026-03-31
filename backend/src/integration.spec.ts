@@ -22,44 +22,13 @@ const STRUCTURING_MODEL = process.env.STRUCTURING_MODEL || 'qwen/qwen3.5-9b';
 
 const SUPERTONE_URL = `http://${process.env.SUPERTONE_HOST || 'localhost'}:${process.env.SUPERTONE_PORT || '8100'}`;
 const KOKORO_URL = `http://${process.env.KOKORO_HOST || 'localhost'}:${process.env.KOKORO_PORT || '8200'}`;
-const F5_TTS_URL = `http://${process.env.F5_TTS_HOST || 'localhost'}:${process.env.F5_TTS_PORT || '8300'}`;
 
 let lmStudioAvailable = false;
 let supertoneAvailable = false;
 let kokoroAvailable = false;
-let f5TtsAvailable = false;
 let imageExists = false;
 let ocrModelLoaded = false;
 let structuringModelLoaded = false;
-
-function buildReferenceWav(): Buffer {
-  const sampleRate = 24_000;
-  const seconds = 1;
-  const samples = sampleRate * seconds;
-  const pcm = Buffer.alloc(samples * 2);
-
-  for (let i = 0; i < samples; i += 1) {
-    const value = Math.round(10_000 * Math.sin((2 * Math.PI * 440 * i) / sampleRate));
-    pcm.writeInt16LE(value, i * 2);
-  }
-
-  const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm.length, 4);
-  wav.write('WAVE', 8);
-  wav.write('fmt ', 12);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * 2, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm.length, 40);
-  pcm.copy(wav, 44);
-  return wav;
-}
 
 function skipIf(reason: string) {
   console.warn(`SKIP: ${reason}`);
@@ -104,24 +73,9 @@ beforeAll(async () => {
     kokoroAvailable = false;
   }
 
-  try {
-    const res = await fetch(`${F5_TTS_URL}/health`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { ready?: boolean; device?: string | null };
-      f5TtsAvailable = data.ready === true && data.device === 'gpu';
-    } else {
-      f5TtsAvailable = false;
-    }
-  } catch {
-    f5TtsAvailable = false;
-  }
-
   if (!lmStudioAvailable) console.warn('LM Studio not running');
   if (!supertoneAvailable) console.warn(`Supertone sidecar not running (${SUPERTONE_URL})`);
   if (!kokoroAvailable) console.warn(`Kokoro sidecar not running (${KOKORO_URL})`);
-  if (!f5TtsAvailable) console.warn(`F5 TTS sidecar not running (${F5_TTS_URL})`);
   if (!imageExists) console.warn(`Test image not found at ${TEST_IMAGE}`);
 });
 
@@ -323,47 +277,6 @@ describe('Smoke: Kokoro TTS sidecar', () => {
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf.length).toBeGreaterThan(100);
   }, 30000);
-});
-
-describe('Smoke: F5 TTS sidecar', () => {
-  it('should be reachable when available', async () => {
-    if (!f5TtsAvailable) {
-      skipIf('F5 TTS sidecar not running');
-      return;
-    }
-
-    const res = await fetch(`${F5_TTS_URL}/health`);
-    expect(res.ok).toBe(true);
-    const data: any = await res.json();
-    expect(data.ready).toBe(true);
-    expect(data.device).toBe('gpu');
-  }, 10000);
-
-  it('should synthesize speech from reference audio when available', async () => {
-    if (!f5TtsAvailable) {
-      skipIf('F5 TTS sidecar not running');
-      return;
-    }
-
-    const form = new FormData();
-    form.append('text', 'Integration test.');
-    form.append('refText', 'This is a short reference clip.');
-    form.append(
-      'refAudio',
-      new Blob([buildReferenceWav()], { type: 'audio/wav' }),
-      'reference.wav',
-    );
-
-    const res = await fetch(`${F5_TTS_URL}/api/tts`, {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(120000),
-    });
-
-    expect(res.ok).toBe(true);
-    const buf = Buffer.from(await res.arrayBuffer());
-    expect(buf.length).toBeGreaterThan(100);
-  }, 120000);
 });
 
 describe('Integration: Full NestJS pipeline', () => {

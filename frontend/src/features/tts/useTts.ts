@@ -13,7 +13,6 @@ const DEFAULT_SETTINGS: TtsSettings = {
 
 const DEFAULT_PIPER_VOICE  = 'en_US-ryan-high';
 const DEFAULT_KOKORO_VOICE = 'af_heart';
-const DEFAULT_VOXTRAL_VOICE = 'casual_female';
 
 export interface TtsState {
   ttsOpen: boolean;
@@ -27,8 +26,6 @@ export interface TtsState {
   setPiperVoice: React.Dispatch<React.SetStateAction<string>>;
   kokoroVoice: string;
   setKokoroVoice: React.Dispatch<React.SetStateAction<string>>;
-  voxtralVoice: string;
-  setVoxtralVoice: React.Dispatch<React.SetStateAction<string>>;
 
   ttsStatus: 'idle' | 'loading' | 'error';
   ttsError: string | null;
@@ -54,7 +51,6 @@ export function useTts(activeContent: string, filename: string, disabled = false
   const [ttsSettings, setTtsSettings] = useState<TtsSettings>(DEFAULT_SETTINGS);
   const [piperVoice, setPiperVoice]   = useState(DEFAULT_PIPER_VOICE);
   const [kokoroVoice, setKokoroVoice] = useState(DEFAULT_KOKORO_VOICE);
-  const [voxtralVoice, setVoxtralVoice] = useState(DEFAULT_VOXTRAL_VOICE);
   const [ttsStatus, setTtsStatus]     = useState<'idle' | 'loading' | 'error'>('idle');
   const [ttsError, setTtsError]       = useState<string | null>(null);
   const [audioUrl, setAudioUrl]       = useState<string | null>(null);
@@ -84,20 +80,6 @@ export function useTts(activeContent: string, filename: string, disabled = false
       setTtsSettings({ engine: 'piper', voice: piperVoice, speed: 1.05 });
     } else if (engine === 'kokoro') {
       setTtsSettings({ engine: 'kokoro', voice: kokoroVoice, speed: 1.0 });
-    } else if (engine === 'f5') {
-      setTtsSettings({
-        engine: 'f5',
-        refText: '',
-        refAudioFile: null,
-        autoTranscribe: false,
-        removeSilence: false,
-      });
-    } else if (engine === 'voxtral') {
-      setTtsSettings({
-        engine: 'voxtral',
-        voice: voxtralVoice,
-        format: 'wav',
-      });
     }
   };
 
@@ -112,19 +94,6 @@ export function useTts(activeContent: string, filename: string, disabled = false
       settingsToUse = { ...ttsSettings, voice: piperVoice };
     } else if (ttsSettings.engine === 'kokoro') {
       settingsToUse = { ...ttsSettings, voice: kokoroVoice };
-    } else if (ttsSettings.engine === 'voxtral') {
-      settingsToUse = { ...ttsSettings, voice: voxtralVoice };
-    } else if (
-      ttsSettings.engine === 'f5' &&
-      ((!ttsSettings.autoTranscribe && !ttsSettings.refText.trim()) || !ttsSettings.refAudioFile)
-    ) {
-      setTtsError(
-        ttsSettings.autoTranscribe
-          ? 'F5 TTS requires reference audio'
-          : 'F5 TTS requires reference audio and reference text',
-      );
-      setTtsStatus('error');
-      return;
     }
 
     if (settingsToUse.engine === 'kokoro' && /[\u0400-\u04FF]/.test(activeContent)) {
@@ -146,21 +115,17 @@ export function useTts(activeContent: string, filename: string, disabled = false
       setTtsError(toErrorMessage(e, 'TTS failed'));
       setTtsStatus('error');
     }
-  }, [activeContent, ttsSettings, piperVoice, kokoroVoice, voxtralVoice, filename]);
+  }, [activeContent, ttsSettings, piperVoice, kokoroVoice, filename]);
 
   const canGenerate =
     !disabled &&
-    activeContent.trim().length > 0 &&
-    (ttsSettings.engine !== 'f5' ||
-      (((ttsSettings.autoTranscribe || ttsSettings.refText.trim().length > 0)) &&
-        ttsSettings.refAudioFile !== null));
+    activeContent.trim().length > 0;
 
   return {
     ttsOpen, setTtsOpen,
     ttsSettings, setTtsSettings, setEngine,
     piperVoice, setPiperVoice,
     kokoroVoice, setKokoroVoice,
-    voxtralVoice, setVoxtralVoice,
     ttsStatus, ttsError,
     audioUrl, audioFilename, audioRef,
     playbackRate, setPlaybackRate,

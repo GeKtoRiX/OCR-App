@@ -22,7 +22,7 @@ Read this file before changing architecture, launchers, contracts, or documentat
 - gateway + TCP service backend
 - SQLite-backed documents, vocabulary, and practice sessions
 - document-scoped `Save Vocabulary` review flow with confirm-before-save semantics
-- multi-engine TTS including Voxtral
+- local TTS via Supertone/Piper and Kokoro
 - optional agentic planning/deployment features
 
 ## Working Rules
@@ -113,7 +113,7 @@ Do not reintroduce the removed `model/` / `viewmodel/` structure.
 
 ### TTS Integration Owner
 
-- Owns Supertone/Piper, Kokoro, F5, and Voxtral sidecars plus backend integrations.
+- Owns Supertone/Piper and Kokoro sidecars plus backend integrations.
 - Must update docs when sidecar contracts, launcher behavior, health fields, or frontend engine options change.
 - Preserves the current rule that launcher defaults are configured in `scripts/linux/tts-models.conf`.
 
@@ -166,15 +166,14 @@ Verify all applicable items before implementation:
 
 ## Current Runtime Facts
 
-- launcher defaults currently enable only Voxtral by default
-- health includes Voxtral fields
-- frontend shows only English Voxtral voices
+- launcher defaults currently enable Kokoro by default
 - Kokoro is blocked client-side for Cyrillic text
 - browser/perf automation may run with `LM_STUDIO_SMOKE_ONLY=true`
 - `Save Vocabulary` prepares document-scoped candidates before writing to the shared vocabulary store
 - the review overlay contains an embedded editor and optional LLM review toggle
 - lightweight browser e2e exists for this flow via `test:e2e:browser:vocab`
 - document vocabulary extraction prefers the optional Stanza sidecar on `:8501`
+- for English targets, BERT sidecar on `:8502` (`bert-large-cased`) scores candidates via MLM and adjusts `selectedByDefault`; optional and degrades silently
 
 ## Related Docs
 

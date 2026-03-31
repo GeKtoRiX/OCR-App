@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
+import { timeout } from 'rxjs/operators';
 import {
   CreateDocumentPayload,
   ConfirmDocumentVocabularyPayload,
@@ -130,10 +131,13 @@ export class GatewayDocumentController {
   private async send<TPayload, TResult>(
     pattern: string,
     payload: TPayload,
+    timeoutMs = 150_000,
   ): Promise<TResult> {
     try {
       return await lastValueFrom(
-        this.documentClient.send<TResult, TPayload>(pattern, payload),
+        this.documentClient
+          .send<TResult, TPayload>(pattern, payload)
+          .pipe(timeout(timeoutMs)),
         { defaultValue: undefined as TResult },
       );
     } catch (error) {

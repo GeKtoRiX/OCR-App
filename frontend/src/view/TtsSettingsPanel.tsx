@@ -6,12 +6,11 @@ import {
   TTS_LANG_LABELS,
   PIPER_VOICES,
   KOKORO_VOICES,
-  VOXTRAL_EN_VOICES,
   type TtsEngine,
 } from '../shared/types';
 import './TtsPanel.css';
 
-const ALL_ENGINES = ['supertone', 'piper', 'kokoro', 'f5', 'voxtral'] as const;
+const ALL_ENGINES = ['supertone', 'kokoro'] as const;
 
 interface Props {
   tts: TtsState;
@@ -145,116 +144,6 @@ export function TtsSettingsPanel({ tts, engines = ALL_ENGINES }: Props) {
               className="tts-panel__slider"
             />
           </label>
-        </div>
-      ) : ttsSettings.engine === 'f5' ? (
-        <div className="tts-panel__settings">
-          <div className="tts-panel__row">
-            <label className="tts-panel__field-label" htmlFor="f5-ref-audio">
-              Reference Audio
-            </label>
-            <input
-              id="f5-ref-audio"
-              className="tts-panel__voice-input"
-              type="file"
-              accept=".wav,.mp3,.flac,.ogg,audio/wav,audio/x-wav,audio/mpeg,audio/flac,audio/ogg"
-              onChange={(e) =>
-                tts.setTtsSettings((settings) =>
-                  settings.engine === 'f5'
-                    ? { ...settings, refAudioFile: e.target.files?.[0] ?? null }
-                    : settings,
-                )
-              }
-            />
-          </div>
-
-          <div className="tts-panel__row">
-            <label className="tts-panel__field-label" htmlFor="f5-ref-text">
-              Reference Text
-            </label>
-            <textarea
-              id="f5-ref-text"
-              className="tts-panel__voice-input"
-              value={ttsSettings.refText}
-              onChange={(e) =>
-                tts.setTtsSettings((settings) =>
-                  settings.engine === 'f5' ? { ...settings, refText: e.target.value } : settings,
-                )
-              }
-              placeholder={
-                ttsSettings.autoTranscribe
-                  ? 'Reference text will be detected from the uploaded audio'
-                  : 'Enter the transcript of the reference audio'
-              }
-              disabled={ttsSettings.autoTranscribe}
-              spellCheck={false}
-              rows={3}
-            />
-          </div>
-
-          <label className="tts-panel__label">
-            <span>Auto-detect reference text</span>
-            <input
-              type="checkbox"
-              checked={ttsSettings.autoTranscribe}
-              onChange={(e) =>
-                tts.setTtsSettings((settings) =>
-                  settings.engine === 'f5'
-                    ? {
-                        ...settings,
-                        autoTranscribe: e.target.checked,
-                        refText: e.target.checked ? '' : settings.refText,
-                      }
-                    : settings,
-                )
-              }
-            />
-          </label>
-
-          <label className="tts-panel__label">
-            <span>Trim output silence</span>
-            <input
-              type="checkbox"
-              checked={ttsSettings.removeSilence}
-              onChange={(e) =>
-                tts.setTtsSettings((settings) =>
-                  settings.engine === 'f5'
-                    ? { ...settings, removeSilence: e.target.checked }
-                    : settings,
-                )
-              }
-            />
-          </label>
-
-          <p className="tts-panel__hint">
-            F5 uses uploaded reference audio for voice cloning. Keep the clip short. You can provide
-            its transcript manually or let F5 detect it automatically. The first auto-detect run can
-            take much longer because the ASR model may need to download.
-          </p>
-        </div>
-      ) : ttsSettings.engine === 'voxtral' ? (
-        <div className="tts-panel__settings">
-          <div className="tts-panel__row">
-            <label className="tts-panel__field-label">Voice</label>
-            <div className="tts-panel__chips tts-panel__chips--wrap">
-              {VOXTRAL_EN_VOICES.map((voice) => (
-                <button
-                  key={voice.id}
-                  className={`tts-panel__chip ${tts.voxtralVoice === voice.id ? 'tts-panel__chip--active' : ''}`}
-                  onClick={() => tts.setVoxtralVoice(voice.id)}
-                  title={`${voice.label} — ${voice.id}`}
-                >
-                  <span className="tts-panel__chip-label">{voice.label}</span>
-                  <span className="tts-panel__chip-lang">{voice.meta}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p className="tts-panel__hint">
-            Voxtral in this stack uses the open-weight preset voices exposed by local `vLLM-Omni`.
-            AI Studio demo presets such as `Jane, Curious` or `Paul, Sad` are not part of this local
-            runtime. Output stays fixed to WAV while the AMD/ROCm path is validated.
-          </p>
         </div>
       ) : ttsSettings.engine === 'piper' ? (
         <div className="tts-panel__settings">

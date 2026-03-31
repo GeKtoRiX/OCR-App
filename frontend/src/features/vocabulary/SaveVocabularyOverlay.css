@@ -212,6 +212,7 @@
 .save-vocab-item__body {
   border: none;
   background: transparent;
+  color: inherit;
   padding: 0;
   margin: 0;
   text-align: left;

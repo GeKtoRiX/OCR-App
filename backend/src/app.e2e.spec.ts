@@ -28,10 +28,6 @@ const mockHealthCheckService = {
     lmStudioModels: ['qwen/qwen3.5-9b'],
     superToneReachable: true,
     kokoroReachable: true,
-    f5TtsReachable: true,
-    f5TtsDevice: 'gpu',
-    voxtralReachable: false,
-    voxtralDevice: null,
   }),
 };
 
@@ -240,10 +236,6 @@ describe('App E2E (Image Processing)', () => {
       lmStudioModels: ['qwen/qwen3.5-9b'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu',
-      voxtralReachable: false,
-      voxtralDevice: null,
     });
     mockAgentEcosystemService.execute.mockResolvedValue({
       request: 'Design a multi-agent system',
@@ -472,10 +464,6 @@ describe('App E2E (Image Processing)', () => {
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,
         kokoroReachable: true,
-        f5TtsReachable: true,
-        f5TtsDevice: 'gpu',
-        voxtralReachable: false,
-        voxtralDevice: null,
       });
     });
 

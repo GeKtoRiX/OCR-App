@@ -31,13 +31,13 @@ describe('StatusLight', () => {
       <StatusLight
         color="blue"
         label="All"
-        tooltip="OCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | Supertone ✓"
+        tooltip="OCR GPU ✓ | LM Studio ✓ | Kokoro ✓ | Supertone ✓"
       />,
     );
 
     expect(screen.getByText('OCR GPU ✓')).toBeInTheDocument();
     expect(screen.getByText('LM Studio ✓')).toBeInTheDocument();
-    expect(screen.getByText('F5 TTS ✓')).toBeInTheDocument();
+    expect(screen.getByText('Kokoro ✓')).toBeInTheDocument();
     expect(screen.getByText('Supertone ✓')).toBeInTheDocument();
   });
 

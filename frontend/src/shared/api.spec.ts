@@ -111,10 +111,6 @@ describe('API service', () => {
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,
         kokoroReachable: true,
-        f5TtsReachable: true,
-        f5TtsDevice: 'gpu',
-        voxtralReachable: false,
-        voxtralDevice: null,
       };
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -197,60 +193,6 @@ describe('API service', () => {
       });
 
       await expect(generateSpeech('text', settings)).rejects.toThrow('Internal Server Error');
-    });
-
-    it('should POST FormData for f5 requests', async () => {
-      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
-      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
-
-      const result = await generateSpeech('hello world', {
-        engine: 'f5',
-        refText: 'Reference text',
-        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
-        autoTranscribe: false,
-        removeSilence: true,
-      });
-
-      expect(result).toBe(fakeBlob);
-      expect(global.fetch).toHaveBeenCalledWith(
-        '/api/tts',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.any(FormData),
-        }),
-      );
-      const form = (global.fetch as any).mock.calls[0][1].body as FormData;
-      expect(form.get('engine')).toBe('f5');
-      expect(form.get('refText')).toBe('Reference text');
-      expect(form.get('autoTranscribe')).toBe('false');
-      expect(form.get('removeSilence')).toBe('true');
-      expect(form.get('refAudio')).toBeInstanceOf(File);
-    });
-
-    it('should POST JSON for voxtral requests', async () => {
-      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
-      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
-
-      const result = await generateSpeech('hello world', {
-        engine: 'voxtral',
-        voice: 'casual_male',
-        format: 'wav',
-      });
-
-      expect(result).toBe(fakeBlob);
-      expect(global.fetch).toHaveBeenCalledWith(
-        '/api/tts',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: 'hello world',
-            engine: 'voxtral',
-            voice: 'casual_male',
-            format: 'wav',
-          }),
-        }),
-      );
     });
   });
 

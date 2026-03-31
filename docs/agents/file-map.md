@@ -80,8 +80,6 @@ Important files:
 - `backend/src/infrastructure/paddleocr/paddleocr-health.service.ts`
 - `backend/src/infrastructure/supertone/supertone.service.ts`
 - `backend/src/infrastructure/kokoro/kokoro.service.ts`
-- `backend/src/infrastructure/f5/f5-tts.service.ts`
-- `backend/src/infrastructure/voxtral/voxtral-tts.service.ts`
 
 ## Frontend
 
@@ -126,12 +124,6 @@ Important files:
 - `services/tts/supertone-service/smoke_test.py`
 - `services/tts/kokoro-service/main.py`
 - `services/tts/kokoro-service/smoke_test.py`
-- `services/tts/f5-service/main.py`
-- `services/tts/f5-service/smoke_test.py`
-- `services/tts/voxtral-service/main.py`
-- `services/tts/voxtral-service/smoke_test.py`
-- `services/tts/voxtral-service/Dockerfile`
-- `services/tts/voxtral-service/patch_voxtral_runtime.py`
 
 ## Scripts
 
