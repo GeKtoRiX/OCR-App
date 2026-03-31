@@ -24,6 +24,10 @@ const STANZA_SERVICE_URL =
   process.env.STANZA_SERVICE_URL ?? 'http://127.0.0.1:8501/extract';
 const STANZA_TIMEOUT_MS = parseInt(process.env.STANZA_SERVICE_TIMEOUT ?? '10000', 10);
 
+const BERT_SERVICE_URL =
+  process.env.BERT_SERVICE_URL ?? 'http://127.0.0.1:8502/score';
+const BERT_TIMEOUT_MS = parseInt(process.env.BERT_SERVICE_TIMEOUT ?? '15000', 10);
+
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being', 'but', 'by', 'for',
   'from', 'had', 'has', 'have', 'he', 'her', 'hers', 'him', 'his', 'i', 'if', 'in',
@@ -97,7 +101,40 @@ function guessPos(word: string): DocumentCandidatePos {
   return 'noun';
 }
 
+// Irregular noun forms: plural → singular
+const IRREGULAR_NOUNS: Record<string, string> = {
+  children: 'child', men: 'man', women: 'woman', feet: 'foot',
+  teeth: 'tooth', mice: 'mouse', geese: 'goose', oxen: 'ox',
+  people: 'person', leaves: 'leaf', knives: 'knife', wives: 'wife',
+  lives: 'life', shelves: 'shelf', loaves: 'loaf', thieves: 'thief',
+  scarves: 'scarf', calves: 'calf', halves: 'half', wolves: 'wolf',
+  selves: 'self', elves: 'elf', alumni: 'alumnus', cacti: 'cactus',
+  syllabi: 'syllabus', foci: 'focus', fungi: 'fungus', nuclei: 'nucleus',
+  data: 'datum', criteria: 'criterion', phenomena: 'phenomenon',
+  analyses: 'analysis', bases: 'basis', crises: 'crisis',
+  diagnoses: 'diagnosis', hypotheses: 'hypothesis', theses: 'thesis',
+};
+
 function lemmaFor(word: string, pos: DocumentCandidatePos): string {
+  if (pos === 'noun') {
+    if (IRREGULAR_NOUNS[word]) {
+      return IRREGULAR_NOUNS[word];
+    }
+    // Regular plurals: -ies → -y, -ves → -f, -es/-s → base
+    if (word.endsWith('ies') && word.length > 4) {
+      return word.slice(0, -3) + 'y';
+    }
+    if (word.endsWith('ves') && word.length > 4) {
+      return word.slice(0, -3) + 'f';
+    }
+    if (word.endsWith('ses') || word.endsWith('xes') || word.endsWith('zes') ||
+        word.endsWith('ches') || word.endsWith('shes')) {
+      return word.slice(0, -2);
+    }
+    if (word.endsWith('s') && word.length > 3 && !word.endsWith('ss')) {
+      return word.slice(0, -1);
+    }
+  }
   if (pos === 'verb') {
     if (word.endsWith('ing') && word.length > 5) {
       return word.slice(0, -3);
@@ -238,9 +275,52 @@ export function extractHeuristicDocumentVocabulary(
 export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtractor {
   private readonly logger = new Logger(DocumentVocabularyExtractorService.name);
 
+  private async applyBertScores(
+    payloads: StanzaCandidatePayload[],
+  ): Promise<StanzaCandidatePayload[]> {
+    try {
+      const response = await fetch(BERT_SERVICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates: payloads.map((p, i) => ({
+            id: String(i),
+            surface: p.surface,
+            contextSentence: p.contextSentence,
+          })),
+        }),
+        signal: AbortSignal.timeout(BERT_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(`BERT service returned HTTP ${response.status}`);
+      }
+      const result = (await response.json()) as {
+        scores?: { id: string; bertProb: number; selectedByDefault: boolean }[];
+      };
+      if (!Array.isArray(result.scores)) {
+        throw new Error('BERT service returned malformed scores payload');
+      }
+      const scoreById = new Map(result.scores.map((s) => [s.id, s]));
+      return payloads.map((p, i) => {
+        const score = scoreById.get(String(i));
+        if (!score || p.selectedByDefault === false) {
+          return p;
+        }
+        return { ...p, selectedByDefault: score.selectedByDefault };
+      });
+    } catch (err) {
+      this.logger.warn(
+        `BERT scoring unavailable, skipping: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return payloads;
+    }
+  }
+
   async extract(
     input: ExtractDocumentVocabularyInput,
   ): Promise<DocumentVocabCandidate[]> {
+    let payloads: StanzaCandidatePayload[];
+
     try {
       const response = await fetch(STANZA_SERVICE_URL, {
         method: 'POST',
@@ -255,14 +335,18 @@ export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtra
       if (!Array.isArray(payload.candidates)) {
         throw new Error('Stanza service returned malformed candidates payload');
       }
-      return payload.candidates.map((candidate) =>
-        buildCandidate(input.documentId, candidate),
-      );
+      payloads = payload.candidates;
     } catch (err) {
       this.logger.warn(
         `Stanza extraction failed, using heuristic fallback: ${err instanceof Error ? err.message : String(err)}`,
       );
       return extractHeuristicDocumentVocabulary(input);
     }
+
+    if (input.targetLang === 'en') {
+      payloads = await this.applyBertScores(payloads);
+    }
+
+    return payloads.map((candidate) => buildCandidate(input.documentId, candidate));
   }
 }
