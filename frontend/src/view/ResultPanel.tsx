@@ -4,6 +4,7 @@ import { useResultPanel } from './useResultPanel';
 import { VocabContextMenu } from '../features/vocabulary/VocabContextMenu';
 import { VocabAddForm } from '../features/vocabulary/VocabAddForm';
 import { TtsSettingsPanel } from './TtsSettingsPanel';
+import { OcrEditor } from './OcrEditor';
 import './ResultPanel.css';
 
 interface Props {
@@ -137,14 +138,22 @@ export function ResultPanel({
       </div>
 
       {panel.isEditing ? (
-        <textarea
-          ref={panel.textareaRef}
-          className="result__editor"
-          data-testid="result-editor"
-          value={panel.activeContent}
-          onChange={e => panel.setActiveContent(e.target.value)}
-          spellCheck={false}
-        />
+        panel.tab === 'markdown' ? (
+          <OcrEditor
+            value={panel.editedMarkdown}
+            onChange={panel.setActiveContent}
+            onVocabContextMenu={onAddVocabulary ? panel.triggerVocabFromEditor : undefined}
+          />
+        ) : (
+          <textarea
+            ref={panel.textareaRef}
+            className="result__editor"
+            data-testid="result-editor"
+            value={panel.activeContent}
+            onChange={e => panel.setActiveContent(e.target.value)}
+            spellCheck={false}
+          />
+        )
       ) : (
         <pre
           ref={panel.contentRef}
@@ -174,13 +183,14 @@ export function ResultPanel({
           y={panel.vocabCtx.vocabForm.y}
           selectedText={panel.vocabCtx.vocabForm.selectedText}
           vocabType={panel.vocabCtx.vocabForm.vocabType}
+          contextSentence={panel.vocabCtx.vocabForm.contextSentence}
           isDuplicate={panel.vocabCtx.vocabForm.isDuplicate}
           onAdd={panel.vocabCtx.handleVocabAdd}
           onClose={panel.vocabCtx.closeVocabForm}
         />
       )}
 
-      {panel.tts.ttsOpen && <TtsSettingsPanel tts={panel.tts} engines={['kokoro']} />}
+      {panel.tts.ttsOpen && <TtsSettingsPanel tts={panel.tts} engines={['kokoro', 'piper', 'supertone']} />}
     </div>
   );
 }

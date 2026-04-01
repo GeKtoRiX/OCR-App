@@ -246,6 +246,40 @@ describe('HistoryPanel', () => {
     expect(storeMocks.mockPractice.start).toHaveBeenCalledWith('en', 'ru');
   });
 
+  it('updates a vocabulary word from the vocab tab inline editor', async () => {
+    const user = userEvent.setup();
+    storeMocks.mockVocab.words = [
+      {
+        id: 'w1',
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello there.',
+        sourceDocumentId: null,
+        intervalDays: 1,
+        easinessFactor: 2.5,
+        repetitions: 1,
+        nextReviewAt: '2024-01-01T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ];
+
+    render(<HistoryPanel />);
+    await user.click(screen.getByText('Vocab (1)'));
+    await user.click(screen.getByTitle('Edit'));
+
+    await user.clear(screen.getByTestId('vocab-edit-word'));
+    await user.type(screen.getByTestId('vocab-edit-word'), 'hi');
+    await user.clear(screen.getByTestId('vocab-edit-translation'));
+    await user.type(screen.getByTestId('vocab-edit-translation'), 'здравствуй');
+    await user.click(screen.getByTestId('vocab-edit-save'));
+
+    expect(storeMocks.mockVocab.updateWord).toHaveBeenCalledWith('w1', 'hi', 'здравствуй');
+  });
+
   it('revokes thumbnail URLs on unmount', () => {
     storeMocks.mockOcr.entries = [makeEntry('thumb-test')];
 

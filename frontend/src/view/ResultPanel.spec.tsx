@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ResultPanel } from './ResultPanel';
 
@@ -9,6 +9,45 @@ vi.mock('../shared/lib/clipboard', () => ({
 
 vi.mock('../shared/api', () => ({
   generateSpeech: vi.fn(),
+}));
+
+vi.mock('ckeditor5', () => {
+  const stub = () => class {};
+  return {
+    Alignment: stub(), Autoformat: stub(), AutoImage: stub(), AutoLink: stub(),
+    AutoMediaEmbed: stub(), BlockQuote: stub(), Bold: stub(),
+    ClassicEditor: stub(), Code: stub(), CodeBlock: stub(),
+    Essentials: stub(), FindAndReplace: stub(), Heading: stub(),
+    Highlight: stub(), HorizontalLine: stub(),
+    Image: stub(), ImageCaption: stub(), ImageInsert: stub(),
+    ImageResize: stub(), ImageStyle: stub(), ImageToolbar: stub(),
+    Indent: stub(), IndentBlock: stub(), Italic: stub(),
+    Link: stub(), LinkImage: stub(), List: stub(), ListProperties: stub(),
+    Markdown: stub(), MediaEmbed: stub(), PageBreak: stub(), Paragraph: stub(),
+    PasteFromOffice: stub(), PictureEditing: stub(), RemoveFormat: stub(),
+    SelectAll: stub(), ShowBlocks: stub(), SourceEditing: stub(),
+    SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
+    Strikethrough: stub(), Subscript: stub(), Superscript: stub(),
+    Table: stub(), TableCaption: stub(), TableCellProperties: stub(),
+    TableColumnResize: stub(), TableProperties: stub(), TableToolbar: stub(),
+    TodoList: stub(), Underline: stub(),
+  };
+});
+
+vi.mock('@ckeditor/ckeditor5-react', () => ({
+  CKEditor: ({
+    data,
+    onChange,
+  }: {
+    data: string;
+    onChange: (e: unknown, ed: { getData: () => string }) => void;
+  }) => (
+    <textarea
+      data-testid="result-editor"
+      value={data}
+      onChange={e => onChange({}, { getData: () => e.target.value })}
+    />
+  ),
 }));
 
 import { copyToClipboard } from '../shared/lib/clipboard';
@@ -205,6 +244,9 @@ describe('ResultPanel', () => {
 
     fireEvent.mouseDown(content, { button: 2 });
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    act(() => {
+      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
+    });
     await user.click(screen.getByText('Word'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));
@@ -245,6 +287,9 @@ describe('ResultPanel', () => {
     selection?.removeAllRanges();
 
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    act(() => {
+      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
+    });
     await user.click(screen.getByText('Word'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));

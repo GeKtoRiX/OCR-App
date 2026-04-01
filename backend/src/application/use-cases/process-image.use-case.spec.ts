@@ -21,7 +21,11 @@ describe('ProcessImageUseCase', () => {
   };
 
   it('should return rawText as markdown (PP-Structure already structures output)', async () => {
-    mockOcrService.extractText.mockResolvedValue('# Hello\n\nWorld');
+    mockOcrService.extractText.mockResolvedValue({
+      rawText: '# Hello\n\nWorld',
+      markdown: '# Hello\n\nWorld',
+      blocks: [],
+    });
 
     const result = await useCase.execute(input);
 
@@ -31,7 +35,11 @@ describe('ProcessImageUseCase', () => {
   });
 
   it('should pass correct ImageData to OCR service', async () => {
-    mockOcrService.extractText.mockResolvedValue('text');
+    mockOcrService.extractText.mockResolvedValue({
+      rawText: 'text',
+      markdown: 'text',
+      blocks: [],
+    });
 
     await useCase.execute(input);
 
@@ -43,7 +51,11 @@ describe('ProcessImageUseCase', () => {
   });
 
   it('should return fallback when OCR returns empty string', async () => {
-    mockOcrService.extractText.mockResolvedValue('');
+    mockOcrService.extractText.mockResolvedValue({
+      rawText: '',
+      markdown: '',
+      blocks: [],
+    });
 
     const result = await useCase.execute(input);
 
@@ -52,7 +64,11 @@ describe('ProcessImageUseCase', () => {
   });
 
   it('should return fallback when OCR returns whitespace only', async () => {
-    mockOcrService.extractText.mockResolvedValue('   \n\t  ');
+    mockOcrService.extractText.mockResolvedValue({
+      rawText: '   \n\t  ',
+      markdown: '',
+      blocks: [],
+    });
 
     const result = await useCase.execute(input);
 
@@ -64,5 +80,18 @@ describe('ProcessImageUseCase', () => {
     mockOcrService.extractText.mockRejectedValue(new Error('OCR failed'));
 
     await expect(useCase.execute(input)).rejects.toThrow('OCR failed');
+  });
+
+  it('should prefer markdown when the OCR service returns a structured markdown value', async () => {
+    mockOcrService.extractText.mockResolvedValue({
+      rawText: 'Raw OCR text',
+      markdown: '# Structured markdown',
+      blocks: [],
+    });
+
+    const result = await useCase.execute(input);
+
+    expect(result.rawText).toBe('Raw OCR text');
+    expect(result.markdown).toBe('# Structured markdown');
   });
 });

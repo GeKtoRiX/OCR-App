@@ -67,6 +67,7 @@ export interface FindAllVocabularyPayload {
 
 export interface UpdateVocabularyPayload {
   id: string;
+  word?: string;
   translation: string;
   contextSentence: string;
 }

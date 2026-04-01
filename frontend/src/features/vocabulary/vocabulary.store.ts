@@ -31,8 +31,8 @@ interface VocabularyActions {
   removeWord(id: string): Promise<boolean>;
   updateWord(
     id: string,
+    word: string,
     translation: string,
-    contextSentence: string,
   ): Promise<VocabularyWord | null>;
   setLangPair(langPair: LanguagePair): void;
 }
@@ -145,9 +145,11 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
       }
     },
 
-    async updateWord(id, translation, contextSentence) {
+    async updateWord(id, word, translation) {
       try {
-        const updated = await updateVocabularyWord(id, translation, contextSentence);
+        const existing = get().words.find((w) => w.id === id);
+        const contextSentence = existing?.contextSentence ?? '';
+        const updated = await updateVocabularyWord(id, translation, contextSentence, word);
         set((state) => {
           const words = state.words.map((word) => (word.id === id ? updated : word));
 

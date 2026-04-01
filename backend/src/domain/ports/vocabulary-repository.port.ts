@@ -46,6 +46,7 @@ export abstract class IVocabularyRepository {
     id: string,
     translation: string,
     contextSentence: string,
+    word?: string,
   ): Promise<VocabularyWord | null>;
   abstract delete(id: string): Promise<boolean>;
 }

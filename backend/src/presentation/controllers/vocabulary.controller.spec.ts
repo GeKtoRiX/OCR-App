@@ -83,7 +83,7 @@ describe('VocabularyController', () => {
           targetLang: 'en',
           nativeLang: 'ru',
           contextSentence: '',
-        }),
+        } as any),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -271,16 +271,15 @@ describe('VocabularyController', () => {
   });
 
   describe('findAll', () => {
-    it('returns all words', async () => {
-      const result = await controller.findAll();
-
-      expect(result).toHaveLength(1);
+    it('passes filters to the use case', async () => {
+      await expect(controller.findAll('en', 'ru')).resolves.toEqual([mockOutput]);
+      expect(useCase.findAll).toHaveBeenCalledWith('en', 'ru');
     });
 
-    it('passes language filter', async () => {
-      await controller.findAll('en', 'ru');
+    it('allows omitted filters', async () => {
+      await controller.findAll();
 
-      expect(useCase.findAll).toHaveBeenCalledWith('en', 'ru');
+      expect(useCase.findAll).toHaveBeenCalledWith(undefined, undefined);
     });
   });
 
@@ -317,6 +316,21 @@ describe('VocabularyController', () => {
         controller.update('v1', { translation: 'новый', contextSentence: 'ctx' }),
       ).resolves.toEqual(mockOutput);
       expect(useCase.update).toHaveBeenCalledWith('v1', {
+        word: undefined,
+        translation: 'новый',
+        contextSentence: 'ctx',
+      });
+    });
+
+    it('trims the word field when present', async () => {
+      await controller.update('v1', {
+        word: '  refined  ',
+        translation: 'новый',
+        contextSentence: 'ctx',
+      });
+
+      expect(useCase.update).toHaveBeenCalledWith('v1', {
+        word: 'refined',
         translation: 'новый',
         contextSentence: 'ctx',
       });
@@ -334,6 +348,7 @@ describe('VocabularyController', () => {
       await controller.update('v1', {});
 
       expect(useCase.update).toHaveBeenCalledWith('v1', {
+        word: undefined,
         translation: '',
         contextSentence: '',
       });

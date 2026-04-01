@@ -183,6 +183,21 @@ describe('VocabularyUseCase', () => {
     });
   });
 
+  it('update passes the optional word through to the repository', async () => {
+    await useCase.update('id-1', {
+      word: 'refined',
+      translation: 'новый',
+      contextSentence: 'новый контекст',
+    });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      'id-1',
+      'новый',
+      'новый контекст',
+      'refined',
+    );
+  });
+
   it('delete delegates to repository', async () => {
     expect(await useCase.delete('id-1')).toBe(true);
   });

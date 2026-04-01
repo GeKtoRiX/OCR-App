@@ -65,7 +65,7 @@ export function useResultPanel({
     contentRef,
     contentText: activeContent,
     existingWordsSet,
-    onAddVocabulary: !isEditing && tab === 'markdown' ? onAddVocabulary : undefined,
+    onAddVocabulary: tab === 'markdown' ? onAddVocabulary : undefined,
   });
 
   return {
@@ -82,6 +82,7 @@ export function useResultPanel({
     contentRef,
     tts,
     vocabCtx,
+    triggerVocabFromEditor: vocabCtx.triggerContextMenu,
     handleCopy,
     showRawTab: !isSavedDocument,
     rawCharCount: editedRaw.length,

@@ -10,6 +10,7 @@ const baseProps = {
   dueCount: 0,
   onLangPairChange: vi.fn(),
   onDelete: vi.fn(),
+  onUpdate: vi.fn(),
   onStartPractice: vi.fn(),
 };
 
@@ -59,7 +60,6 @@ describe('VocabularyPanel', () => {
     expect(screen.getByText('EF: 2.5')).toBeInTheDocument();
 
     await user.click(screen.getByTitle('Remove'));
-
     expect(onDelete).toHaveBeenCalledWith('word-1');
   });
 
@@ -95,5 +95,83 @@ describe('VocabularyPanel', () => {
     await user.click(practiceButton);
 
     expect(onStartPractice).toHaveBeenCalled();
+  });
+
+  it('opens inline edit form and calls onUpdate with changed word and translation', async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    render(
+      <VocabularyPanel
+        {...baseProps}
+        onUpdate={onUpdate}
+        words={[{
+          id: 'word-1',
+          word: 'hello',
+          vocabType: 'word',
+          translation: 'привет',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: 'Hello there.',
+          sourceDocumentId: null,
+          intervalDays: 2,
+          easinessFactor: 2.5,
+          repetitions: 1,
+          nextReviewAt: '2026-03-21T00:00:00.000Z',
+          createdAt: '2026-03-21T00:00:00.000Z',
+          updatedAt: '2026-03-21T00:00:00.000Z',
+        }]}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Edit'));
+    expect(screen.getByTestId('vocab-edit-form')).toBeInTheDocument();
+
+    const wordInput = screen.getByTestId('vocab-edit-word');
+    const translationInput = screen.getByTestId('vocab-edit-translation');
+    expect(wordInput).toHaveValue('hello');
+    expect(translationInput).toHaveValue('привет');
+
+    await user.clear(wordInput);
+    await user.type(wordInput, 'hi');
+    await user.clear(translationInput);
+    await user.type(translationInput, 'привет (неформ.)');
+
+    await user.click(screen.getByTestId('vocab-edit-save'));
+
+    expect(onUpdate).toHaveBeenCalledWith('word-1', 'hi', 'привет (неформ.)');
+    expect(screen.queryByTestId('vocab-edit-form')).not.toBeInTheDocument();
+  });
+
+  it('cancels edit without calling onUpdate', async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+    render(
+      <VocabularyPanel
+        {...baseProps}
+        onUpdate={onUpdate}
+        words={[{
+          id: 'word-1',
+          word: 'hello',
+          vocabType: 'word',
+          translation: 'привет',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: '',
+          sourceDocumentId: null,
+          intervalDays: 1,
+          easinessFactor: 2.5,
+          repetitions: 0,
+          nextReviewAt: '2026-03-21T00:00:00.000Z',
+          createdAt: '2026-03-21T00:00:00.000Z',
+          updatedAt: '2026-03-21T00:00:00.000Z',
+        }]}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Edit'));
+    await user.click(screen.getByTestId('vocab-edit-cancel'));
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.getByText('hello')).toBeInTheDocument();
   });
 });

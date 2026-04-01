@@ -10,7 +10,7 @@ import {
 } from '../shared/types';
 import './TtsPanel.css';
 
-const ALL_ENGINES = ['supertone', 'kokoro'] as const;
+const ALL_ENGINES = ['kokoro', 'piper', 'supertone'] as const;
 
 interface Props {
   tts: TtsState;

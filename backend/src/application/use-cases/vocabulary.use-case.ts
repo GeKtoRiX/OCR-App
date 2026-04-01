@@ -105,6 +105,7 @@ export class VocabularyUseCase {
       id,
       input.translation,
       input.contextSentence,
+      input.word,
     );
     return word ? this.toOutput(word) : null;
   }

@@ -3,16 +3,14 @@ import type { TtsSettings, TtsEngine } from '../../shared/types';
 import { generateSpeech } from '../../shared/api';
 import { toErrorMessage } from '../../shared/lib/errors';
 
-const DEFAULT_SETTINGS: TtsSettings = {
-  engine: 'supertone',
-  voice: 'M1',
-  lang: 'en',
-  speed: 1.05,
-  totalSteps: 5,
-};
-
 const DEFAULT_PIPER_VOICE  = 'en_US-ryan-high';
 const DEFAULT_KOKORO_VOICE = 'af_heart';
+
+const DEFAULT_SETTINGS: TtsSettings = {
+  engine: 'kokoro',
+  voice: DEFAULT_KOKORO_VOICE,
+  speed: 1.0,
+};
 
 export interface TtsState {
   ttsOpen: boolean;

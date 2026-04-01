@@ -206,11 +206,12 @@ export async function updateVocabularyWord(
   id: string,
   translation: string,
   contextSentence: string,
+  word?: string,
 ): Promise<VocabularyWord> {
   const res = await fetch(`${BASE}/vocabulary/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ translation, contextSentence }),
+    body: JSON.stringify({ word, translation, contextSentence }),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();

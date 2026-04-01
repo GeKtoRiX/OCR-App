@@ -44,6 +44,7 @@ export class SqliteVocabularyRepository
     selectDueByLang: Database.Statement;
     updateSrs: Database.Statement;
     updateFields: Database.Statement;
+    updateFieldsWithWord: Database.Statement;
     deleteById: Database.Statement;
   };
 
@@ -101,6 +102,9 @@ export class SqliteVocabularyRepository
       ),
       updateFields: db.prepare(
         'UPDATE vocabulary SET translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
+      ),
+      updateFieldsWithWord: db.prepare(
+        'UPDATE vocabulary SET word = ?, translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
       ),
       deleteById: db.prepare('DELETE FROM vocabulary WHERE id = ?'),
     };
@@ -170,6 +174,24 @@ export class SqliteVocabularyRepository
 
     const now = new Date().toISOString();
     const results: VocabularyWord[] = [];
+    const seenPairs = new Set<string>();
+
+    for (const item of inputs) {
+      const pairKey = `${item.word}::${item.targetLang}::${item.nativeLang}`;
+      if (seenPairs.has(pairKey)) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+      seenPairs.add(pairKey);
+
+      const existing = this.stmts.selectByWord.get(
+        item.word,
+        item.targetLang,
+        item.nativeLang,
+      ) as VocabularyRow | undefined;
+      if (existing) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+    }
 
     const insertMany = this.connection.db.transaction(
       (items: CreateVocabularyInput[]) => {
@@ -259,11 +281,12 @@ export class SqliteVocabularyRepository
     id: string,
     translation: string,
     contextSentence: string,
+    word?: string,
   ): Promise<VocabularyWord | null> {
     const now = new Date().toISOString();
-    const result = this.stmts.updateFields.run(
-      translation, contextSentence, now, id,
-    );
+    const result = word
+      ? this.stmts.updateFieldsWithWord.run(word.trim(), translation, contextSentence, now, id)
+      : this.stmts.updateFields.run(translation, contextSentence, now, id);
     if (result.changes === 0) return null;
     return this.findById(id);
   }

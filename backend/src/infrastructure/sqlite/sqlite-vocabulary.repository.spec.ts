@@ -214,6 +214,36 @@ describe('SqliteVocabularyRepository', () => {
     expect(updated!.contextSentence).toBe('new context');
   });
 
+  it('update also modifies the word when provided', async () => {
+    const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
+
+    const updated = await repo.update(
+      created.id,
+      'новый перевод',
+      'new context',
+      'updated word',
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.word).toBe('updated word');
+    expect(updated!.translation).toBe('новый перевод');
+    expect(updated!.contextSentence).toBe('new context');
+  });
+
+  it('update trims the provided word before saving', async () => {
+    const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
+
+    const updated = await repo.update(
+      created.id,
+      'новый перевод',
+      'new context',
+      '  updated word  ',
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.word).toBe('updated word');
+  });
+
   it('update returns null when no row matches the id', async () => {
     await expect(repo.update('missing', 'x', 'y')).resolves.toBeNull();
   });

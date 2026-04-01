@@ -1,0 +1,312 @@
+/* ── AI Panel ───────────────────────────────────────────── */
+.ai-panel {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.22s ease, opacity 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.ai-panel--open {
+  width: 300px;
+  min-width: 300px;
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: visible;
+}
+
+/* Header */
+.ai-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.9rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-panel__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+
+.ai-panel__close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ai-panel__close:hover {
+  color: var(--text);
+  background: var(--accent-dim);
+}
+
+/* Selection context */
+.ai-panel__context {
+  margin: 0.5rem 0.9rem 0;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ai-panel__context-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.2rem;
+}
+
+.ai-panel__context-text {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Command chips */
+.ai-panel__commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.6rem 0.9rem 0.4rem;
+}
+
+.ai-panel__cmd-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.ai-panel__cmd-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-dim);
+}
+
+.ai-panel__cmd-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ai-panel__cmd-icon {
+  font-size: 0.8rem;
+}
+
+/* Custom input */
+.ai-panel__input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+}
+
+.ai-panel__input {
+  flex: 1;
+  resize: none;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 0.4rem 0.55rem;
+  transition: border-color 0.15s;
+  min-height: 3.4rem;
+}
+
+.ai-panel__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ai-panel__input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.ai-panel__send-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.ai-panel__send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ai-panel__send-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+/* Response area */
+.ai-panel__response-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.9rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 4rem;
+}
+
+/* Thinking dots */
+.ai-panel__thinking {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.6rem 0.2rem;
+  align-items: center;
+}
+
+.ai-panel__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.6;
+  animation: ai-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.ai-panel__dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-panel__dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes ai-dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-5px); opacity: 1; }
+}
+
+.ai-panel__error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #e07070;
+  padding: 0.4rem 0.5rem;
+  background: rgba(224, 112, 112, 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(224, 112, 112, 0.25);
+}
+
+.ai-panel__response {
+  margin: 0;
+  font-size: 0.78rem;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  line-height: 1.6;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  overflow-x: auto;
+}
+
+.ai-panel__stop-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ai-panel__stop-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Action buttons */
+.ai-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.4rem 0.9rem 0.75rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-panel__action-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-code);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.ai-panel__action-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.ai-panel__action-btn--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.ai-panel__action-btn--primary:hover {
+  opacity: 0.85;
+  color: #fff;
+}
+
+.ai-panel__action-btn--discard {
+  flex: 0 0 auto;
+  min-width: unset;
+}
+
+.ai-panel__action-btn--discard:hover {
+  border-color: #e07070;
+  color: #e07070;
+  background: rgba(224, 112, 112, 0.08);
+}

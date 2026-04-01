@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { VocabularyWord, LanguagePair } from '../../shared/types';
 import { VOCAB_TYPE_LABELS } from '../../shared/types';
 import './VocabularyPanel.css';
@@ -9,6 +10,7 @@ interface Props {
   dueCount: number;
   onLangPairChange: (lp: LanguagePair) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, word: string, translation: string) => void;
   onStartPractice: () => void;
 }
 
@@ -19,8 +21,30 @@ export function VocabularyPanel({
   dueCount,
   onLangPairChange,
   onDelete,
+  onUpdate,
   onStartPractice,
 }: Props) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editWord, setEditWord] = useState('');
+  const [editTranslation, setEditTranslation] = useState('');
+
+  const startEdit = (w: VocabularyWord) => {
+    setEditingId(w.id);
+    setEditWord(w.word);
+    setEditTranslation(w.translation);
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    const trimmedWord = editWord.trim();
+    const trimmedTranslation = editTranslation.trim();
+    if (!trimmedWord || !trimmedTranslation) return;
+    onUpdate(editingId, trimmedWord, trimmedTranslation);
+    setEditingId(null);
+  };
+
   return (
     <div className="vocab-panel" data-testid="vocabulary-panel">
       <div className="vocab-panel__controls">
@@ -69,24 +93,80 @@ export function VocabularyPanel({
         <ul className="vocab-panel__list">
           {words.map((w) => (
             <li key={w.id} className="vocab-panel__item">
-              <div className="vocab-panel__item-main">
-                <span className="vocab-panel__word">{w.word}</span>
-                <span className="vocab-panel__type-badge">
-                  {VOCAB_TYPE_LABELS[w.vocabType]}
-                </span>
-              </div>
-              <div className="vocab-panel__translation">{w.translation}</div>
-              <div className="vocab-panel__meta">
-                <span>Rep: {w.repetitions}</span>
-                <span>EF: {w.easinessFactor.toFixed(1)}</span>
-                <button
-                  className="vocab-panel__delete-btn"
-                  onClick={() => onDelete(w.id)}
-                  title="Remove"
-                >
-                  x
-                </button>
-              </div>
+              {editingId === w.id ? (
+                <div className="vocab-panel__edit-form" data-testid="vocab-edit-form">
+                  <div className="vocab-panel__edit-row">
+                    <span className="vocab-panel__edit-label">Word</span>
+                    <input
+                      className="vocab-panel__edit-input"
+                      value={editWord}
+                      onChange={(e) => setEditWord(e.target.value)}
+                      data-testid="vocab-edit-word"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="vocab-panel__edit-row">
+                    <span className="vocab-panel__edit-label">Translation</span>
+                    <input
+                      className="vocab-panel__edit-input"
+                      value={editTranslation}
+                      onChange={(e) => setEditTranslation(e.target.value)}
+                      data-testid="vocab-edit-translation"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveEdit();
+                        if (e.key === 'Escape') cancelEdit();
+                      }}
+                    />
+                  </div>
+                  <div className="vocab-panel__edit-actions">
+                    <button
+                      className="vocab-panel__edit-save"
+                      onClick={saveEdit}
+                      title="Save"
+                      data-testid="vocab-edit-save"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      className="vocab-panel__edit-cancel"
+                      onClick={cancelEdit}
+                      title="Cancel"
+                      data-testid="vocab-edit-cancel"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="vocab-panel__item-main">
+                    <span className="vocab-panel__word">{w.word}</span>
+                    <span className="vocab-panel__type-badge">
+                      {VOCAB_TYPE_LABELS[w.vocabType]}
+                    </span>
+                  </div>
+                  <div className="vocab-panel__translation">{w.translation}</div>
+                  <div className="vocab-panel__meta">
+                    <span>Rep: {w.repetitions}</span>
+                    <span>EF: {w.easinessFactor.toFixed(1)}</span>
+                    <button
+                      className="vocab-panel__edit-btn"
+                      onClick={() => startEdit(w)}
+                      title="Edit"
+                      data-testid={`vocab-edit-btn-${w.id}`}
+                    >
+                      ✏
+                    </button>
+                    <button
+                      className="vocab-panel__delete-btn"
+                      onClick={() => onDelete(w.id)}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>

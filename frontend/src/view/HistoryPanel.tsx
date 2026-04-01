@@ -158,6 +158,10 @@ export function HistoryPanel() {
     void vocab.removeWord(id);
   };
 
+  const handleVocabUpdate = (id: string, word: string, translation: string) => {
+    void vocab.updateWord(id, word, translation);
+  };
+
   const handleStartPractice = () => {
     void practice.start(vocab.langPair.targetLang, vocab.langPair.nativeLang);
   };
@@ -255,6 +259,7 @@ export function HistoryPanel() {
           dueCount={vocab.dueCount}
           onLangPairChange={vocab.setLangPair}
           onDelete={handleVocabDelete}
+          onUpdate={handleVocabUpdate}
           onStartPractice={handleStartPractice}
         />
       )}

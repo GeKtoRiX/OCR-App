@@ -117,10 +117,11 @@ export class GatewayVocabularyController {
   @Put(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { translation?: string; contextSentence?: string },
+    @Body() body: { word?: string; translation?: string; contextSentence?: string },
   ): Promise<VocabularyItemDto> {
     const payload: UpdateVocabularyPayload = {
       id,
+      word: body.word?.trim(),
       translation: body.translation ?? '',
       contextSentence: body.contextSentence ?? '',
     };

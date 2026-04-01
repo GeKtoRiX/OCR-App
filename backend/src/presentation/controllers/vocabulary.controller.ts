@@ -139,6 +139,7 @@ export class VocabularyController {
     @Body() body: UpdateVocabularyDto,
   ) {
     const word = await this.vocabularyUseCase.update(id, {
+      word: body.word?.trim(),
       translation: body.translation ?? '',
       contextSentence: body.contextSentence ?? '',
     });

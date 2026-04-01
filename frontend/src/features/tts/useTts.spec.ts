@@ -22,11 +22,9 @@ describe('useTts', () => {
 
     expect(result.current.ttsOpen).toBe(false);
     expect(result.current.ttsSettings).toEqual({
-      engine: 'supertone',
-      voice: 'M1',
-      lang: 'en',
-      speed: 1.05,
-      totalSteps: 5,
+      engine: 'kokoro',
+      voice: 'af_heart',
+      speed: 1.0,
     });
     expect(result.current.ttsStatus).toBe('idle');
     expect(result.current.ttsError).toBeNull();
@@ -72,7 +70,7 @@ describe('useTts', () => {
 
       expect(mockGenerateSpeech).toHaveBeenCalledWith(
         'my text',
-        expect.objectContaining({ engine: 'supertone', voice: 'M1' }),
+        expect.objectContaining({ engine: 'kokoro', voice: 'af_heart' }),
       );
     });
 
