@@ -83,6 +83,11 @@ export class VocabularyUseCase {
     return word ? this.toOutput(word) : null;
   }
 
+  async findByIds(ids: string[]): Promise<VocabularyOutput[]> {
+    const words = await this.repository.findByIds(ids);
+    return words.map((w) => this.toOutput(w));
+  }
+
   async findByWord(
     word: string,
     targetLang: string,

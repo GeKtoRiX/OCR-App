@@ -11,14 +11,16 @@ import { IVocabularyLlmService } from '@backend/domain/ports/vocabulary-llm-serv
 import { IVocabularyRepository } from '@backend/domain/ports/vocabulary-repository.port';
 import { SqliteConfig } from '@backend/infrastructure/config/sqlite.config';
 import { LMStudioVocabularyService } from '@backend/infrastructure/lm-studio/lm-studio-vocabulary.service';
+import { LmStudioExerciseGeneratorService } from '@backend/infrastructure/lm-studio/lm-studio-exercise-generator.service';
+import { LmStudioSessionAnalyzerService } from '@backend/infrastructure/lm-studio/lm-studio-session-analyzer.service';
+import { LmStudioCandidateEnricherService } from '@backend/infrastructure/lm-studio/lm-studio-candidate-enricher.service';
 import { SqliteConnectionProvider } from '@backend/infrastructure/sqlite/sqlite-connection.provider';
 import { SqlitePracticeSessionRepository } from '@backend/infrastructure/sqlite/sqlite-practice-session.repository';
 import { SqliteVocabularyRepository } from '@backend/infrastructure/sqlite/sqlite-vocabulary.repository';
+import { smokeOnlyProvider } from '@backend/infrastructure/testing/smoke-only.provider';
 import { StubVocabularyLlmService } from '@backend/infrastructure/testing/stub-vocabulary-llm.service';
 import { LmStudioModule } from '@backend/presentation/modules/lm-studio.module';
 import { VocabularyMessageController } from './vocabulary.message.controller';
-
-const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 
 @Module({
   imports: [LmStudioModule],
@@ -50,14 +52,12 @@ const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
       provide: SharedPracticeSessionRepository,
       useExisting: IPracticeSessionRepository,
     },
+    LmStudioExerciseGeneratorService,
+    LmStudioSessionAnalyzerService,
+    LmStudioCandidateEnricherService,
     LMStudioVocabularyService,
     StubVocabularyLlmService,
-    {
-      provide: IVocabularyLlmService,
-      useClass: LM_STUDIO_SMOKE_ONLY
-        ? StubVocabularyLlmService
-        : LMStudioVocabularyService,
-    },
+    smokeOnlyProvider(IVocabularyLlmService, LMStudioVocabularyService, StubVocabularyLlmService),
     {
       provide: SharedVocabularyLlmService,
       useExisting: IVocabularyLlmService,

@@ -26,7 +26,7 @@ describe('PracticeUseCase', () => {
   beforeEach(() => {
     vocabRepo = {
       findDueForReview: jest.fn().mockResolvedValue([mockWord]),
-      findById: jest.fn().mockResolvedValue(mockWord),
+      findByIds: jest.fn().mockResolvedValue([mockWord]),
       updateSrs: jest.fn().mockResolvedValue(mockWord),
     } as unknown as jest.Mocked<IVocabularyRepository>;
 

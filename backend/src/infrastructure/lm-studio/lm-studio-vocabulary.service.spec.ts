@@ -1,4 +1,8 @@
-import { LMStudioVocabularyService, parseJsonResponse } from './lm-studio-vocabulary.service';
+import { LMStudioVocabularyService } from './lm-studio-vocabulary.service';
+import { LmStudioExerciseGeneratorService } from './lm-studio-exercise-generator.service';
+import { LmStudioSessionAnalyzerService } from './lm-studio-session-analyzer.service';
+import { LmStudioCandidateEnricherService } from './lm-studio-candidate-enricher.service';
+import { parseJsonResponse } from './lm-studio-vocabulary.utils';
 import { LMStudioConfig } from '../config/lm-studio.config';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { ExerciseAttempt } from '../../domain/entities/exercise-attempt.entity';
@@ -24,11 +28,15 @@ describe('LMStudioVocabularyService', () => {
   beforeEach(() => {
     client = {
       chatCompletion: jest.fn(),
-    } as unknown as jest.Mocked<LMStudioClient>;
+    } as unknown as jest.Mocked<ILmStudioChatPort>;
     const config = {
       vocabularyModel: 'qwen/qwen3.5-9b',
     } as LMStudioConfig;
-    service = new LMStudioVocabularyService(client, config);
+
+    const exerciseGenerator = new LmStudioExerciseGeneratorService(client, config);
+    const sessionAnalyzer = new LmStudioSessionAnalyzerService(client, config);
+    const candidateEnricher = new LmStudioCandidateEnricherService(client, config);
+    service = new LMStudioVocabularyService(exerciseGenerator, sessionAnalyzer, candidateEnricher);
   });
 
   describe('generateExercises', () => {

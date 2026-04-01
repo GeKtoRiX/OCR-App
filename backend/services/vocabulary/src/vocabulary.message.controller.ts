@@ -6,6 +6,7 @@ import {
   CompletePracticeResponse,
   DeleteVocabularyPayload,
   FindAllVocabularyPayload,
+  FindVocabularyByIdsPayload,
   FindVocabularyByWordPayload,
   FindDueVocabularyPayload,
   FindVocabularyByIdPayload,
@@ -75,6 +76,11 @@ export class VocabularyMessageController {
       throw new RpcException({ statusCode: 404, message: 'Word not found' });
     }
     return word;
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_IDS)
+  async findByIds(payload: FindVocabularyByIdsPayload): Promise<VocabularyItemDto[]> {
+    return this.vocabularyUseCase.findByIds(payload.ids);
   }
 
   @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_WORD)

@@ -34,6 +34,7 @@
     "test:e2e:integration": "bash scripts/linux/run-js-command.sh npm run test:e2e:integration --workspace=./backend",
     "test:e2e:launcher": "bash scripts/linux/run-js-command.sh node --test e2e/ocr-launcher.e2e.mjs",
     "test:e2e:browser": "bash scripts/e2e/prepare-browser-env.sh && bash scripts/linux/run-js-command.sh npx playwright test",
+    "test:e2e:browser:ai": "bash scripts/e2e/prepare-browser-env.sh && bash scripts/linux/run-js-command.sh npx playwright test e2e/ai-editor.spec.ts --workers=1",
     "test:e2e:browser:vocab": "bash scripts/e2e/prepare-save-vocabulary-env.sh && bash scripts/linux/run-js-command.sh npx playwright test --config=playwright.save-vocabulary.config.ts",
     "perf:api": "bash scripts/linux/run-js-command.sh node scripts/perf/api-benchmark.mjs",
     "perf:browser": "bash scripts/linux/run-js-command.sh node scripts/perf/browser-benchmark.mjs",

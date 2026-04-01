@@ -29,6 +29,7 @@ export abstract class IVocabularyRepository {
     nativeLang?: string,
   ): Promise<VocabularyWord[]>;
   abstract findById(id: string): Promise<VocabularyWord | null>;
+  abstract findByIds(ids: string[]): Promise<VocabularyWord[]>;
   abstract findByWord(
     word: string,
     targetLang: string,

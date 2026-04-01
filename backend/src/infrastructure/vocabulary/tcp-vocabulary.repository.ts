@@ -3,6 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
 import {
   AddVocabularyPayload,
+  FindVocabularyByIdsPayload,
   FindVocabularyByWordPayload,
   VOCABULARY_PATTERNS,
   VocabularyItemDto,
@@ -90,6 +91,18 @@ export class TcpVocabularyRepository
 
   async findById(_id: string): Promise<VocabularyWord | null> {
     throw new Error('TcpVocabularyRepository.findById is not implemented');
+  }
+
+  async findByIds(ids: string[]): Promise<VocabularyWord[]> {
+    if (ids.length === 0) return [];
+    const payload: FindVocabularyByIdsPayload = { ids };
+    const items = await lastValueFrom(
+      this.vocabularyClient.send<VocabularyItemDto[], FindVocabularyByIdsPayload>(
+        VOCABULARY_PATTERNS.FIND_BY_IDS,
+        payload,
+      ),
+    );
+    return items.map((item) => this.toEntity(item));
   }
 
   async findByWord(

@@ -243,6 +243,15 @@ export class SqliteVocabularyRepository
     return row ? this.toEntity(row) : null;
   }
 
+  async findByIds(ids: string[]): Promise<VocabularyWord[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.connection.db
+      .prepare(`SELECT * FROM vocabulary WHERE id IN (${placeholders})`)
+      .all(...ids) as VocabularyRow[];
+    return rows.map((r) => this.toEntity(r));
+  }
+
   async findByWord(
     word: string,
     targetLang: string,

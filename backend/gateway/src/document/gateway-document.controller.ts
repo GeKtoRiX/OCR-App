@@ -10,8 +10,6 @@ import {
   Body,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { lastValueFrom } from 'rxjs';
-import { timeout } from 'rxjs/operators';
 import {
   CreateDocumentPayload,
   ConfirmDocumentVocabularyPayload,
@@ -24,7 +22,7 @@ import {
   SavedDocumentDto,
   UpdateDocumentPayload,
 } from '@ocr-app/shared';
-import { asUpstreamHttpError } from '../upstream-http-error';
+import { gatewaySend } from '../gateway-send';
 
 @Controller('api/documents')
 export class GatewayDocumentController {
@@ -128,20 +126,11 @@ export class GatewayDocumentController {
     );
   }
 
-  private async send<TPayload, TResult>(
+  private send<TPayload, TResult>(
     pattern: string,
     payload: TPayload,
     timeoutMs = 150_000,
   ): Promise<TResult> {
-    try {
-      return await lastValueFrom(
-        this.documentClient
-          .send<TResult, TPayload>(pattern, payload)
-          .pipe(timeout(timeoutMs)),
-        { defaultValue: undefined as TResult },
-      );
-    } catch (error) {
-      throw asUpstreamHttpError(error, 'Document service request failed');
-    }
+    return gatewaySend(this.documentClient, pattern, payload, 'Document service request failed', timeoutMs);
   }
 }

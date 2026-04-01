@@ -6,6 +6,7 @@ export const VOCABULARY_PATTERNS = {
   ADD_MANY: 'vocabulary.add_many',
   FIND_ALL: 'vocabulary.find_all',
   FIND_BY_ID: 'vocabulary.find_by_id',
+  FIND_BY_IDS: 'vocabulary.find_by_ids',
   FIND_BY_WORD: 'vocabulary.find_by_word',
   FIND_DUE: 'vocabulary.find_due',
   UPDATE: 'vocabulary.update',
@@ -46,6 +47,10 @@ export interface AddVocabularyPayload {
 
 export interface FindVocabularyByIdPayload {
   id: string;
+}
+
+export interface FindVocabularyByIdsPayload {
+  ids: string[];
 }
 
 export interface FindVocabularyByWordPayload {

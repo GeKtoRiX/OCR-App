@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
+import { fetchWithRetry } from '../http/fetch-with-retry';
 import {
   ExtractDocumentVocabularyInput,
   IDocumentVocabularyExtractor,
@@ -279,18 +280,21 @@ export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtra
     payloads: StanzaCandidatePayload[],
   ): Promise<StanzaCandidatePayload[]> {
     try {
-      const response = await fetch(BERT_SERVICE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidates: payloads.map((p, i) => ({
-            id: String(i),
-            surface: p.surface,
-            contextSentence: p.contextSentence,
-          })),
-        }),
-        signal: AbortSignal.timeout(BERT_TIMEOUT_MS),
-      });
+      const response = await fetchWithRetry(
+        BERT_SERVICE_URL,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidates: payloads.map((p, i) => ({
+              id: String(i),
+              surface: p.surface,
+              contextSentence: p.contextSentence,
+            })),
+          }),
+        },
+        { timeoutMs: BERT_TIMEOUT_MS },
+      );
       if (!response.ok) {
         throw new Error(`BERT service returned HTTP ${response.status}`);
       }
@@ -322,12 +326,15 @@ export class DocumentVocabularyExtractorService extends IDocumentVocabularyExtra
     let payloads: StanzaCandidatePayload[];
 
     try {
-      const response = await fetch(STANZA_SERVICE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: input.markdown }),
-        signal: AbortSignal.timeout(STANZA_TIMEOUT_MS),
-      });
+      const response = await fetchWithRetry(
+        STANZA_SERVICE_URL,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markdown: input.markdown }),
+        },
+        { timeoutMs: STANZA_TIMEOUT_MS },
+      );
       if (!response.ok) {
         throw new Error(`Stanza service returned HTTP ${response.status}`);
       }

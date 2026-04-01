@@ -22,7 +22,7 @@ export function asUpstreamHttpError(
   return new HttpException(message, status);
 }
 
-function extractErrorLike(error: unknown): ErrorLike {
+export function extractErrorLike(error: unknown): ErrorLike {
   if (typeof error !== 'object' || error === null) {
     return {};
   }
@@ -45,7 +45,7 @@ function extractErrorLike(error: unknown): ErrorLike {
   return direct;
 }
 
-function extractMessage(
+export function extractMessage(
   error: ErrorLike,
   original: unknown,
   fallback: string,
