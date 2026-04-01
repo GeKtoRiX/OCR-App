@@ -8,7 +8,7 @@ Short memory of recent significant changes so the next session does not need a f
 
 ### 2026-03-31 - BERT MLM Scorer Sidecar Integration
 
-- Added `services/nlp/bert-service/` FastAPI sidecar hosting `bert-large-cased` (port `:8502`).
+- Added `services/nlp/bert-service/` FastAPI sidecar hosting `prajjwal1/bert-tiny` (port `:8502`).
 - Sidecar exposes `GET /health` and `POST /score`; scores candidates by masking surface tokens and computing geometric-mean MLM probability.
 - `DocumentVocabularyExtractorService` calls BERT between Stanza extraction and `DocumentVocabCandidate` construction. English-only (`targetLang === 'en'`); silent fallback on any error.
 - Words with `bertProb >= 0.15` (contextually predictable) get `selectedByDefault: false`; rare/domain words keep `true`.

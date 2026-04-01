@@ -23,8 +23,8 @@ cd services/nlp/bert-service
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 BERT_MODEL_DIR="${PWD}/models" .venv/bin/python -c \
   "from transformers import BertForMaskedLM, BertTokenizerFast; \
-   BertTokenizerFast.from_pretrained('bert-large-cased', cache_dir='models'); \
-   BertForMaskedLM.from_pretrained('bert-large-cased', cache_dir='models'); \
+   BertTokenizerFast.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
+   BertForMaskedLM.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
    print('OK')"
 ```
 

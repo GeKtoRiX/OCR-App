@@ -81,11 +81,11 @@ Expected base URL:
 http://localhost:1234/v1
 ```
 
-### 3. Set up the OCR model in LM Studio
+### 3. Set up the LM Studio model
 
 ```bash
-# Load an OCR-capable vision model in LM Studio, for example:
-# OCR_MODEL=paddleocr-vl-0.9b
+# Load this model in LM Studio before starting OCR-backed flows:
+# qwen/qwen3.5-9b
 ```
 
 ### 4. Set up the TTS sidecars you need
@@ -117,6 +117,7 @@ pip install onnxruntime-rocm==1.22.2.post1
 Notes:
 
 - Piper voices are served through the Supertone sidecar.
+- The optional BERT scorer downloads and caches `prajjwal1/bert-tiny` under `services/nlp/bert-service/models/`, then loads it locally from there on later runs.
 
 ### 4b. Set up the optional Stanza sidecar
 
@@ -144,6 +145,12 @@ Available launcher modes:
 - `./scripts/linux/ocr-tts.sh`: full stack
 - `./scripts/linux/stack.sh`: interactive menu for start/stop/status/switch
 
+Launcher defaults are conservative about VRAM:
+
+- LM Studio model loading is manual
+- BERT and Stanza default to CPU
+- Supertone is disabled by default in `scripts/linux/tts-models.conf`
+
 Lifecycle helpers:
 
 ```bash
@@ -156,6 +163,15 @@ Lifecycle helpers:
 ./scripts/linux/ocr-tts.sh status
 
 ./scripts/linux/ocr-tts.sh wipe
+```
+
+VRAM cleanup helper:
+
+- `./scripts/linux/clear-llm-vram.sh`: unloads LM Studio models, stops the LM Studio server when needed, terminates extra user-owned LLM processes, and reports VRAM usage before and after cleanup
+- expects `rocm-smi` to be installed for primary VRAM telemetry, with `/sys/class/drm` used as a fallback
+
+```bash
+./scripts/linux/clear-llm-vram.sh
 ```
 
 When a backend-enabled stack is running, the app is served at:
@@ -194,7 +210,7 @@ npm run perf:browser
 npm run perf:phase4
 ```
 
-`test:e2e:browser` and `perf:phase4` expect a real local LM Studio server with the OCR and structuring models already loaded.
+`test:e2e:browser` and `perf:phase4` expect a real local LM Studio server with `qwen/qwen3.5-9b` already loaded.
 
 `test:e2e:browser:vocab` is a lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`, seeds a real saved document, and does not require OCR or TTS sidecars.
 
@@ -317,7 +333,7 @@ Root `.env` commonly includes:
 ```env
 LM_STUDIO_BASE_URL=http://localhost:1234/v1
 STRUCTURING_MODEL=qwen/qwen3.5-9b
-OCR_MODEL=paddleocr-vl-0.9b
+OCR_MODEL=qwen/qwen3.5-9b
 SUPERTONE_HOST=localhost
 SUPERTONE_PORT=8100
 KOKORO_HOST=localhost

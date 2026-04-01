@@ -173,7 +173,7 @@ Verify all applicable items before implementation:
 - the review overlay contains an embedded editor and optional LLM review toggle
 - lightweight browser e2e exists for this flow via `test:e2e:browser:vocab`
 - document vocabulary extraction prefers the optional Stanza sidecar on `:8501`
-- for English targets, BERT sidecar on `:8502` (`bert-large-cased`) scores candidates via MLM and adjusts `selectedByDefault`; optional and degrades silently
+- for English targets, BERT sidecar on `:8502` (`prajjwal1/bert-tiny`) scores candidates via MLM and adjusts `selectedByDefault`; optional and degrades silently
 
 ## Related Docs
 

@@ -13,7 +13,7 @@
 - frontend uses a feature/store/view layout with Zustand stores
 - launcher-side TTS defaults are now controlled through `scripts/linux/tts-models.conf`
 - current launcher default enables Kokoro
-- BERT MLM scorer sidecar added at `:8502` (`bert-large-cased`, English-only, optional)
+- BERT MLM scorer sidecar added at `:8502` (`prajjwal1/bert-tiny`, English-only, optional)
 - vocabulary extraction pipeline: Stanza → BERT scoring → candidate build → optional LLM review
 - documentation has been refreshed to match the current repo shape
 

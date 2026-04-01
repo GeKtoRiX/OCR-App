@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # OCR App — shared launcher implementation
 #
-#  ./ocr.sh             — start OCR mode (LM Studio OCR + selected TTS sidecars + backend)
-#  ./tts.sh             — start TTS mode (LM Studio OCR + selected TTS sidecars + backend)
-#  ./ocr-tts.sh         — start all services (OCR + selected TTS sidecars + LM Studio model + backend)
+#  ./ocr.sh             — start OCR mode (manual LM Studio + selected TTS sidecars + backend)
+#  ./tts.sh             — start TTS mode (manual LM Studio + selected TTS sidecars + backend)
+#  ./ocr-tts.sh         — start all services (manual LM Studio + selected TTS sidecars + backend)
 #  ./stack.sh           — interactive stack menu (start, stop, switch, status)
 #  ./*.sh stop          — stop all known project services and clear ports
 #  ./*.sh status        — show current mode, health and process state
@@ -403,7 +403,7 @@ kill_known_project_processes() {
     kill_by_pattern "Frontend Vite" "npm run dev --workspace=frontend"
 }
 
-global_cleanup() {
+project_cleanup() {
     stop_service "Gateway" "${PID_BACKEND}"
     stop_service "Agentic service" "${PID_SVC_AGENTIC}"
     stop_service "Vocabulary service" "${PID_SVC_VOCAB}"
@@ -424,13 +424,29 @@ global_cleanup() {
     remove_state
 }
 
+stop_lm_studio_server() {
+    if ! check_lm_studio; then
+        return 0
+    fi
+    if lms_cli_available; then
+        dim "Stopping LM Studio server"
+        lms_cmd server stop >/dev/null 2>&1 || true
+    fi
+}
+
+global_cleanup() {
+    project_cleanup
+    unload_lm_model
+    stop_lm_studio_server
+}
+
 # ─── Ctrl+C handler ────────────────────────────────────────────────────────────
 cleanup() {
     trap - INT TERM
     echo
     echo
     header "Shutting down"
-    global_cleanup
+    project_cleanup
     echo
     ok "All known project services stopped."
     echo
@@ -446,7 +462,7 @@ startup_failed() {
     fi
     echo
     header "Rolling back"
-    global_cleanup
+    project_cleanup
     echo
     exit 1
 }
@@ -460,7 +476,7 @@ rollback_startup() {
     fi
     echo
     header "Rolling back"
-    global_cleanup
+    project_cleanup
     echo
 }
 
@@ -877,7 +893,7 @@ start_stanza() {
 
     log "Starting Stanza NLP sidecar (port ${STANZA_PORT_CFG})..."
     dim "Stanza log file: ${LOG_STANZA}"
-    env STANZA_USE_GPU="${STANZA_USE_GPU:-true}" \
+    env STANZA_USE_GPU="${STANZA_USE_GPU:-false}" \
         STANZA_MODEL_DIR="${ROOT_DIR}/services/nlp/stanza-service/models" \
         "${STANZA_VENV}/bin/python" -m uvicorn \
         --app-dir "${ROOT_DIR}/services/nlp/stanza-service" main:app \
@@ -914,8 +930,8 @@ start_bert() {
 
     log "Starting BERT scorer sidecar (port ${BERT_PORT_CFG})..."
     dim "BERT log file: ${LOG_BERT}"
-    env BERT_MODEL_NAME="${BERT_MODEL_NAME:-bert-large-cased}" \
-        BERT_USE_GPU="${BERT_USE_GPU:-true}" \
+    env BERT_MODEL_NAME="${BERT_MODEL_NAME:-prajjwal1/bert-tiny}" \
+        BERT_USE_GPU="${BERT_USE_GPU:-false}" \
         BERT_MODEL_DIR="${ROOT_DIR}/services/nlp/bert-service/models" \
         bash "${ROOT_DIR}/scripts/linux/run-python-with-torch.sh" \
         "${BERT_VENV}/bin/python" -m uvicorn \
@@ -945,29 +961,21 @@ start_lm_studio_server() {
     return 1
 }
 
-load_lm_model() {
-    if check_lm_model_loaded; then
-        ok "LM Studio model loaded (${LM_MODEL_ID})"
+unload_lm_model() {
+    if ! check_lm_studio; then
         return 0
     fi
-
-    dim "Loading LM Studio model: ${LM_MODEL_ID}"
+    if ! check_lm_model_loaded; then
+        return 0
+    fi
+    dim "Unloading LM Studio model: ${LM_MODEL_ID}"
     if lms_cli_available; then
-        lms_cmd load "${LM_MODEL_ID}" >/dev/null 2>&1 || true
+        lms_cmd unload "${LM_MODEL_ID}" >/dev/null 2>&1 || true
     else
         local encoded
-        encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${LM_MODEL_ID}")
-        curl -sf -X POST "${LM_BASE_URL}/api/v0/models/${encoded}/load" \
-            -H "Content-Type: application/json" -d '{}' >/dev/null 2>&1 || true
+        encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${LM_MODEL_ID}" 2>/dev/null || true)
+        curl -sf -X DELETE "${LM_BASE_URL}/api/v0/models/${encoded}" >/dev/null 2>&1 || true
     fi
-
-    if wait_for_check "LM Studio model ${LM_MODEL_ID}" 120 check_lm_model_loaded; then
-        ok "LM Studio model loaded (${LM_MODEL_ID})"
-        return 0
-    fi
-
-    warn "LM Studio model failed to load: ${LM_MODEL_ID}"
-    return 1
 }
 
 diagnose_backend_startup() {
@@ -1407,7 +1415,7 @@ start_mode_stack() {
 
     header "OCR App — Reset"
     log "Force-stopping previous project services and occupied ports..."
-    global_cleanup
+    project_cleanup
     write_state
     echo
 
@@ -1479,9 +1487,11 @@ start_mode_stack() {
             rollback_startup "LM Studio server failed to start."
             return 1
         fi
-        if ! load_lm_model; then
-            rollback_startup "LM Studio model ${LM_MODEL_ID} failed to load."
-            return 1
+        if check_lm_model_loaded; then
+            ok "LM Studio model already loaded (${LM_MODEL_ID})"
+        else
+            warn "LM Studio model is not loaded (${LM_MODEL_ID})"
+            warn "Load it manually in LM Studio before using OCR or vocabulary features."
         fi
     else
         dim "LM Studio skipped in TTS mode."

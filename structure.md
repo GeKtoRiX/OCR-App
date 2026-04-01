@@ -225,7 +225,7 @@ These paths may exist at runtime but are not source of truth:
 - Gateway/services/shared split is present and active.
 - Frontend uses feature-oriented folders with Zustand stores, not MVVM.
 - Stanza is present as an optional NLP sidecar for document vocabulary extraction (port `:8501`).
-- BERT MLM scorer sidecar added (`bert-large-cased`, port `:8502`, English-only, optional).
+- BERT MLM scorer sidecar added (`prajjwal1/bert-tiny`, port `:8502`, English-only, optional).
 - Vocabulary extraction pipeline order: Stanza (or heuristic fallback) → BERT scoring → `DocumentVocabCandidate` construction.
 - Launcher-side TTS defaults are controlled through `scripts/linux/tts-models.conf`.
 - `Save Vocabulary` uses document-scoped candidate preparation plus a confirm-before-save review overlay.

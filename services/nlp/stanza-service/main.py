@@ -338,6 +338,7 @@ def get_pipeline():
                 tokenize_no_ssplit=False,
                 model_dir=str(models_dir),
                 use_gpu=use_gpu,
+                download_method=None,
             )
         except Exception:
             _pipeline = None

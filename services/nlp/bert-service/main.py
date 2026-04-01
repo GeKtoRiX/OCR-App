@@ -15,7 +15,7 @@ try:
 except Exception:  # pragma: no cover
     _TRANSFORMERS_AVAILABLE = False
 
-MODEL_NAME = os.getenv("BERT_MODEL_NAME", "bert-large-cased")
+MODEL_NAME = os.getenv("BERT_MODEL_NAME", "prajjwal1/bert-tiny")
 USE_GPU = os.getenv("BERT_USE_GPU", "false").strip().lower() in {"1", "true", "yes", "on"}
 SERVICE_DIR = Path(__file__).resolve().parent
 MODEL_CACHE_DIR = Path(os.getenv("BERT_MODEL_DIR", str(SERVICE_DIR / "models")))
@@ -59,7 +59,7 @@ def _load_model() -> bool:
 
 
 def _score_candidate(surface: str, context: str) -> float:
-    """Return the MLM probability of *surface* in *context* under bert-large-cased.
+    """Return the MLM probability of *surface* in *context* under the configured local BERT MLM.
 
     The sentence is tokenised, the subword tokens that correspond to *surface*
     are all replaced with [MASK], and a single forward pass recovers the joint

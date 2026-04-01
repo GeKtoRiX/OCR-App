@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Clear LLM VRAM
+Comment=Unload LM Studio models and free GPU VRAM from user LLM processes
+Exec=bash -lc 'cd /mnt/HDD_Store/ocrProject && bash scripts/linux/clear-llm-vram.sh; echo; read -n 1 -s -r -p "Press any key to close..."'
+Path=/mnt/HDD_Store/ocrProject
+Terminal=true
+Icon=utilities-terminal
+Categories=Utility;Development;
+StartupNotify=true

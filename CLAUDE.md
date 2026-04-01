@@ -29,7 +29,7 @@ The current backend runtime is no longer a single NestJS process. It is split in
 - Frontend state: Zustand stores plus local orchestration hooks
 - OCR: PaddleOCR Python FastAPI sidecar on `:8000`
 - NLP: optional Stanza FastAPI sidecar on `:8501` with heuristic fallback in the document service
-- NLP scoring: optional BERT FastAPI sidecar on `:8502` (`bert-large-cased`, English-only MLM scoring)
+- NLP scoring: optional BERT FastAPI sidecar on `:8502` (`prajjwal1/bert-tiny`, English-only MLM scoring)
 - TTS:
   - Supertone + Piper sidecar on `:8100`
   - Kokoro sidecar on `:8200`
