@@ -7,5 +7,7 @@ exports.DOCUMENT_PATTERNS = {
     FIND_BY_ID: 'document.find_by_id',
     UPDATE: 'document.update',
     DELETE: 'document.delete',
+    PREPARE_VOCABULARY: 'document.prepare_vocabulary',
+    CONFIRM_VOCABULARY: 'document.confirm_vocabulary',
 };
 //# sourceMappingURL=document.contracts.js.map

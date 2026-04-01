@@ -2,7 +2,12 @@
 
 Alpha baseline: `v0.1.0-alpha.1`
 
-OCR-App is a local-first OCR and study workflow. It extracts text from images, structures the result with LM Studio, lets you save documents, collect vocabulary with SM-2 scheduling, run practice sessions, and synthesize speech through several local TTS engines.
+OCR-App is a local-first OCR and study workflow. It extracts text from images, structures the result with LM Studio, lets you save documents, collect vocabulary with SM-2 scheduling, run practice sessions, and synthesize speech through local TTS engines.
+
+The saved-document flow is split into:
+
+- `Save Document` for persisting OCR/Markdown output
+- `Save Vocabulary` for preparing document-scoped vocabulary candidates, optionally running LLM review, editing the final list in a confirmation overlay, and only then writing confirmed items into the shared vocabulary store
 
 The only cloud-dependent area is the optional `agentic` API under `/api/agents/*`, which requires `OPENAI_API_KEY`.
 
@@ -14,12 +19,10 @@ Frontend (React/Vite)
         v
 HTTP Gateway :3000
         |
-        +--> OCR service       :3901 --> PaddleOCR sidecar :8000
+        +--> OCR service       :3901 --> LM Studio vision OCR :1234
         +--> TTS service       :3902 --> Supertone/Piper :8100
         |                              Kokoro          :8200
-        |                              F5 TTS          :8300
-        |                              Voxtral         :8400
-        +--> Document service  :3903 --> SQLite
+        +--> Document service  :3903 --> SQLite + optional Stanza :8501
         +--> Vocabulary service:3904 --> SQLite + LM Studio
         +--> Agentic service   :3905 --> OpenAI Agents SDK
 
@@ -31,32 +34,28 @@ OCR + vocabulary structuring/generation use LM Studio :1234
 - `backend/gateway/`: HTTP entrypoint, static frontend hosting, throttling, upstream error mapping.
 - `backend/services/*`: TCP microservices for OCR, TTS, documents, vocabulary/practice, and agentic workflows.
 - `backend/shared/`: shared contracts and domain abstractions used across processes.
-- `services/ocr/paddleocr-service/`: PaddleOCR FastAPI sidecar.
+- `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar for document vocabulary extraction.
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar.
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar.
-- `services/tts/f5-service/`: F5 TTS FastAPI sidecar.
-- `services/tts/voxtral-service/`: Voxtral FastAPI adapter over `vLLM + vLLM-Omni`.
 - `frontend/`: React 18 + Vite 6 client.
 
 ## Current Launcher Defaults
 
-Launcher-side TTS defaults live in [scripts/linux/tts-models.conf](/media/cbandy/HDD_Content/llmAgentTest/scripts/linux/tts-models.conf).
+Launcher-side TTS defaults live in `scripts/linux/tts-models.conf`.
 
 Current default:
 
 - `TTS_ENABLE_SUPERTONE=false`
-- `TTS_ENABLE_KOKORO=false`
-- `TTS_ENABLE_F5=false`
-- `TTS_ENABLE_VOXTRAL=true`
+- `TTS_ENABLE_KOKORO=true`
 
-That means the shell launchers currently start only Voxtral by default unless you enable the other TTS sidecars in that config file.
+That means the shell launchers currently start Kokoro by default unless you enable other TTS sidecars in that config file.
 
 ## Requirements
 
 - Node.js `20+`
 - Python `3.10+`
 - LM Studio running locally at `http://localhost:1234`
-- AMD GPU with ROCm if you want the accelerated TTS/OCR paths
+- AMD GPU with ROCm if you want the accelerated TTS paths and faster local inference
 
 Without a supported GPU the project can still run partially on CPU, but some TTS engines are intentionally degraded or unavailable.
 
@@ -82,15 +81,11 @@ Expected base URL:
 http://localhost:1234/v1
 ```
 
-### 3. Set up the OCR sidecar
+### 3. Set up the LM Studio model
 
 ```bash
-cd services/ocr/paddleocr-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install paddlepaddle-gpu==2.6.2 -f https://www.paddlepaddle.org.cn/whl/linux/rocm/stable.html
-pip install -r requirements.txt
+# Load this model in LM Studio before starting OCR-backed flows:
+# qwen/qwen3.5-9b
 ```
 
 ### 4. Set up the TTS sidecars you need
@@ -119,32 +114,22 @@ pip uninstall -y onnxruntime
 pip install onnxruntime-rocm==1.22.2.post1
 ```
 
-F5:
-
-```bash
-cd services/tts/f5-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-Voxtral:
-
-```bash
-cd services/tts/voxtral-service
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
 Notes:
 
-- Voxtral is optional and stays in explicit no-go mode if the local ROCm stack cannot start it cleanly.
-- Voxtral caches live under `services/tts/voxtral-service/models/`.
-- F5 is treated as GPU-only in this project.
 - Piper voices are served through the Supertone sidecar.
+- The optional BERT scorer downloads and caches `prajjwal1/bert-tiny` under `services/nlp/bert-service/models/`, then loads it locally from there on later runs.
+
+### 4b. Set up the optional Stanza sidecar
+
+`Save Vocabulary` can use a lightweight heuristic fallback, but the preferred extractor is the Stanza sidecar.
+
+```bash
+cd services/nlp/stanza-service
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
 ### 5. Start a stack
 
@@ -160,6 +145,12 @@ Available launcher modes:
 - `./scripts/linux/ocr-tts.sh`: full stack
 - `./scripts/linux/stack.sh`: interactive menu for start/stop/status/switch
 
+Launcher defaults are conservative about VRAM:
+
+- LM Studio model loading is manual
+- BERT and Stanza default to CPU
+- Supertone is disabled by default in `scripts/linux/tts-models.conf`
+
 Lifecycle helpers:
 
 ```bash
@@ -174,6 +165,15 @@ Lifecycle helpers:
 ./scripts/linux/ocr-tts.sh wipe
 ```
 
+VRAM cleanup helper:
+
+- `./scripts/linux/clear-llm-vram.sh`: unloads LM Studio models, stops the LM Studio server when needed, terminates extra user-owned LLM processes, and reports VRAM usage before and after cleanup
+- expects `rocm-smi` to be installed for primary VRAM telemetry, with `/sys/class/drm` used as a fallback
+
+```bash
+./scripts/linux/clear-llm-vram.sh
+```
+
 When a backend-enabled stack is running, the app is served at:
 
 ```text
@@ -184,16 +184,13 @@ http://localhost:3000
 
 ```bash
 npm run dev:frontend
-npm run dev:paddleocr
+npm run dev:stanza
 npm run dev:supertone
 npm run dev:kokoro
-npm run dev:f5
-npm run dev:voxtral
-npm run smoke:paddleocr
+npm run smoke:ocr
+npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
-npm run smoke:f5
-npm run smoke:voxtral
 npm run smoke:lmstudio
 ```
 
@@ -207,12 +204,15 @@ npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 npm run perf:api
 npm run perf:browser
 npm run perf:phase4
 ```
 
-`test:e2e:browser` and `perf:phase4` rebuild the app and run with `LM_STUDIO_SMOKE_ONLY=true`, so they do not hit real LM Studio generation paths during automation.
+`test:e2e:browser` and `perf:phase4` expect a real local LM Studio server with `qwen/qwen3.5-9b` already loaded.
+
+`test:e2e:browser:vocab` is a lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`, seeds a real saved document, and does not require OCR or TTS sidecars.
 
 ## Public API
 
@@ -237,37 +237,22 @@ curl http://localhost:3000/api/health
 
 Response fields:
 
-- `paddleOcrReachable`
-- `paddleOcrModels`
-- `paddleOcrDevice`
+- `ocrReachable`
+- `ocrModels`
+- `ocrDevice`
 - `lmStudioReachable`
 - `lmStudioModels`
 - `superToneReachable`
 - `kokoroReachable`
-- `f5TtsReachable`
-- `f5TtsDevice`
-- `voxtralReachable`
-- `voxtralDevice`
 
 ### TTS
 
-Supertone / Piper / Kokoro / Voxtral use JSON:
+Supertone / Piper / Kokoro use JSON:
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"voxtral","voice":"casual_female","format":"wav"}' \
-  --output speech.wav
-```
-
-F5 uses multipart:
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -F "text=Hello world" \
-  -F "engine=f5" \
-  -F "refText=Reference transcript" \
-  -F "refAudio=@reference.wav" \
+  -d '{"text":"Hello world","engine":"kokoro","voice":"af_heart","speed":1.0}' \
   --output speech.wav
 ```
 
@@ -275,7 +260,6 @@ Gateway validation:
 
 - `text` is required
 - max text length is `5000`
-- `refAudio` upload limit for F5 is `50 MB`
 
 ### Documents
 
@@ -284,6 +268,24 @@ Gateway validation:
 - `GET /api/documents/:id`
 - `PUT /api/documents/:id`
 - `DELETE /api/documents/:id`
+- `POST /api/documents/:id/vocabulary/prepare`
+- `POST /api/documents/:id/vocabulary/confirm`
+
+`POST /api/documents/:id/vocabulary/prepare` runs document-scoped candidate extraction and optional LLM review.
+
+```bash
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/prepare \
+  -H "Content-Type: application/json" \
+  -d '{"llmReview":true,"targetLang":"en","nativeLang":"ru"}'
+```
+
+`POST /api/documents/:id/vocabulary/confirm` writes the confirmed items into the normal vocabulary store.
+
+```bash
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"targetLang":"en","nativeLang":"ru","items":[{"candidateId":"<id>","word":"give up","vocabType":"phrasal_verb","translation":"сдаваться","contextSentence":"She gave up too early."}]}'
+```
 
 ### Vocabulary
 
@@ -312,16 +314,17 @@ These routes require `OPENAI_API_KEY`.
 
 - OCR results are stored in a session history store.
 - Saved documents, vocabulary, practice state, and health state each have their own Zustand store.
-- TTS engines exposed in the UI: `supertone`, `piper`, `kokoro`, `f5`, `voxtral`.
-- The frontend currently exposes only English Voxtral preset voices, even though the backend/runtime supports a wider multilingual preset set.
+- Saved results expose separate `Save Document` and `Save Vocabulary` actions.
+- `Save Vocabulary` always opens a review overlay with an embedded editor before writing anything to the DB.
+- TTS engine exposed in the result panel UI: `kokoro`.
 - Kokoro is blocked in the frontend for Cyrillic input and will throw a client-side error for that text path.
 
 ## Health Lamp Semantics
 
-- `red`: PaddleOCR unreachable
-- `yellow`: PaddleOCR reachable but running on CPU
-- `blue`: PaddleOCR GPU + LM Studio + Supertone + Kokoro + F5 all healthy; Voxtral is reported but does not block blue
-- `green`: PaddleOCR GPU healthy, but at least one other baseline dependency is missing
+- `red`: OCR unavailable
+- `yellow`: OCR is reachable but running on CPU
+- `blue`: OCR + LM Studio + Supertone + Kokoro are healthy
+- `green`: OCR is healthy, but at least one other baseline dependency is missing
 
 ## Important Config
 
@@ -330,16 +333,11 @@ Root `.env` commonly includes:
 ```env
 LM_STUDIO_BASE_URL=http://localhost:1234/v1
 STRUCTURING_MODEL=qwen/qwen3.5-9b
-PADDLEOCR_HOST=localhost
-PADDLEOCR_PORT=8000
+OCR_MODEL=qwen/qwen3.5-9b
 SUPERTONE_HOST=localhost
 SUPERTONE_PORT=8100
 KOKORO_HOST=localhost
 KOKORO_PORT=8200
-F5_TTS_HOST=localhost
-F5_TTS_PORT=8300
-VOXTRAL_HOST=localhost
-VOXTRAL_PORT=8400
 OPENAI_API_KEY=
 ```
 
@@ -347,8 +345,8 @@ Launcher-side TTS defaults are controlled separately in `scripts/linux/tts-model
 
 ## Related Docs
 
-- [CLAUDE.md](/media/cbandy/HDD_Content/llmAgentTest/CLAUDE.md)
-- [agents.md](/media/cbandy/HDD_Content/llmAgentTest/agents.md)
-- [structure.md](/media/cbandy/HDD_Content/llmAgentTest/structure.md)
-- [docs/agents/project-overview.md](/media/cbandy/HDD_Content/llmAgentTest/docs/agents/project-overview.md)
-- [docs/agents/runbook.md](/media/cbandy/HDD_Content/llmAgentTest/docs/agents/runbook.md)
+- `CLAUDE.md`
+- `agents.md`
+- `structure.md`
+- `docs/agents/project-overview.md`
+- `docs/agents/runbook.md`

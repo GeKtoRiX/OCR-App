@@ -21,7 +21,7 @@ describe('LMStudioConfig', () => {
     const config = new LMStudioConfig();
 
     expect(config.baseUrl).toBe('http://localhost:1234/v1');
-    expect(config.ocrModel).toBe('paddleocr-vl-0.9b');
+    expect(config.ocrModel).toBe('qwen/qwen3.5-9b');
     expect(config.structuringModel).toBe('qwen/qwen3.5-9b');
     expect(config.vocabularyModel).toBe('qwen/qwen3.5-9b');
     expect(config.timeoutMs).toBe(120000);
@@ -50,5 +50,14 @@ describe('LMStudioConfig', () => {
     const config = new LMStudioConfig();
 
     expect(config.vocabularyModel).toBe('fallback-struct');
+  });
+
+  it('should fall back ocrModel to STRUCTURING_MODEL when OCR_MODEL is not set', () => {
+    delete process.env.OCR_MODEL;
+    process.env.STRUCTURING_MODEL = 'fallback-ocr';
+
+    const config = new LMStudioConfig();
+
+    expect(config.ocrModel).toBe('fallback-ocr');
   });
 });

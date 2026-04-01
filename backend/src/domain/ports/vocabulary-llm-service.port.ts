@@ -1,5 +1,6 @@
 import { VocabularyWord } from '../entities/vocabulary-word.entity';
 import { ExerciseAttempt } from '../entities/exercise-attempt.entity';
+import { DocumentVocabCandidate } from '../entities/document-vocab-candidate.entity';
 
 export interface GeneratedExercise {
   vocabularyId: string;
@@ -34,4 +35,11 @@ export abstract class IVocabularyLlmService {
     words: VocabularyWord[],
     attempts: ExerciseAttempt[],
   ): Promise<SessionAnalysis>;
+  abstract enrichDocumentCandidates(input: {
+    markdown: string;
+    candidates: DocumentVocabCandidate[];
+    targetLang: string;
+    nativeLang: string;
+    llmReview: boolean;
+  }): Promise<DocumentVocabCandidate[]>;
 }

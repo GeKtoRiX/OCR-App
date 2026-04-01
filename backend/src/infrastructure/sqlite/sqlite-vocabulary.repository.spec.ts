@@ -1,6 +1,7 @@
 import { SqliteVocabularyRepository } from './sqlite-vocabulary.repository';
 import { SqliteConnectionProvider } from './sqlite-connection.provider';
 import { SqliteConfig } from '../config/sqlite.config';
+import { VOCABULARY_DUPLICATE_ERROR } from '../../domain/ports/vocabulary-repository.port';
 
 describe('SqliteVocabularyRepository', () => {
   let repo: SqliteVocabularyRepository;
@@ -78,6 +79,24 @@ describe('SqliteVocabularyRepository', () => {
 
     expect(words).toHaveLength(2);
     expect(await repo.findAll()).toHaveLength(2);
+  });
+
+  it('createMany normalizes unique constraint failures to the domain duplicate error', async () => {
+    await repo.create('hello', 'word', 'привет', 'en', 'ru', '', null);
+
+    await expect(
+      repo.createMany([
+        {
+          word: 'hello',
+          vocabType: 'word',
+          translation: 'дубликат',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: '',
+          sourceDocumentId: null,
+        },
+      ]),
+    ).rejects.toThrow(VOCABULARY_DUPLICATE_ERROR);
   });
 
   it('findAll returns all words', async () => {
@@ -193,6 +212,36 @@ describe('SqliteVocabularyRepository', () => {
     expect(updated).not.toBeNull();
     expect(updated!.translation).toBe('новый перевод');
     expect(updated!.contextSentence).toBe('new context');
+  });
+
+  it('update also modifies the word when provided', async () => {
+    const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
+
+    const updated = await repo.update(
+      created.id,
+      'новый перевод',
+      'new context',
+      'updated word',
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.word).toBe('updated word');
+    expect(updated!.translation).toBe('новый перевод');
+    expect(updated!.contextSentence).toBe('new context');
+  });
+
+  it('update trims the provided word before saving', async () => {
+    const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
+
+    const updated = await repo.update(
+      created.id,
+      'новый перевод',
+      'new context',
+      '  updated word  ',
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.word).toBe('updated word');
   });
 
   it('update returns null when no row matches the id', async () => {

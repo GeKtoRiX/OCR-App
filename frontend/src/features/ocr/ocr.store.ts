@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { processImage } from '../../shared/api';
+import { removeAndReselect } from '../../shared/lib/collection';
+import { toErrorMessage } from '../../shared/lib/errors';
 import type { HistoryEntry, OcrResponse } from '../../shared/types';
 
 export type OcrStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -14,6 +16,7 @@ interface OcrState {
 
 interface OcrActions {
   run(file: File): Promise<void>;
+  submitText(text: string, filename: string): void;
   reset(): void;
   selectEntry(id: string): void;
   removeEntry(id: string): void;
@@ -33,6 +36,16 @@ export const useOcrStore = create<OcrStore>((set) => {
   // AbortController as closure variable — not part of Zustand state,
   // so store resets (e.g. in tests) don't orphan live requests.
   let controller: AbortController | null = null;
+
+  const pushEntry = (entry: HistoryEntry) => {
+    set((state) => ({
+      status: 'success',
+      result: entry.result,
+      error: null,
+      entries: [entry, ...state.entries],
+      activeHistoryId: entry.id,
+    }));
+  };
 
   return {
     ...initialState,
@@ -54,18 +67,13 @@ export const useOcrStore = create<OcrStore>((set) => {
 
         const entry: HistoryEntry = {
           id: crypto.randomUUID(),
+          type: 'image',
           file,
           result: data,
           processedAt: new Date(),
         };
 
-        set((state) => ({
-          status: 'success',
-          result: data,
-          error: null,
-          entries: [entry, ...state.entries],
-          activeHistoryId: entry.id,
-        }));
+        pushEntry(entry);
       } catch (error) {
         if (nextController.signal.aborted || controller !== nextController) {
           return;
@@ -74,13 +82,33 @@ export const useOcrStore = create<OcrStore>((set) => {
         set({
           status: 'error',
           result: null,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: toErrorMessage(error, 'Unknown error'),
         });
       } finally {
         if (controller === nextController) {
           controller = null;
         }
       }
+    },
+
+    submitText(text, filename) {
+      controller?.abort();
+      controller = null;
+
+      const result: OcrResponse = {
+        rawText: text,
+        markdown: text,
+        filename: filename.trim() || 'pasted-text.md',
+      };
+
+      const entry: HistoryEntry = {
+        id: crypto.randomUUID(),
+        type: 'text',
+        result,
+        processedAt: new Date(),
+      };
+
+      pushEntry(entry);
     },
 
     reset() {
@@ -95,11 +123,15 @@ export const useOcrStore = create<OcrStore>((set) => {
 
     removeEntry(id) {
       set((state) => {
-        const entries = state.entries.filter((entry) => entry.id !== id);
+        const { items: entries, activeId: activeHistoryId } = removeAndReselect(
+          state.entries,
+          id,
+          state.activeHistoryId,
+        );
+
         return {
           entries,
-          activeHistoryId:
-            state.activeHistoryId === id ? (entries[0]?.id ?? null) : state.activeHistoryId,
+          activeHistoryId,
         };
       });
     },

@@ -6,6 +6,7 @@ import {
 } from '../../domain/ports/vocabulary-llm-service.port';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { ExerciseAttempt } from '../../domain/entities/exercise-attempt.entity';
+import { DocumentVocabCandidate } from '../../domain/entities/document-vocab-candidate.entity';
 
 @Injectable()
 export class StubVocabularyLlmService extends IVocabularyLlmService {
@@ -54,5 +55,38 @@ export class StubVocabularyLlmService extends IVocabularyLlmService {
         };
       }),
     };
+  }
+
+  async enrichDocumentCandidates(input: {
+    markdown: string;
+    candidates: DocumentVocabCandidate[];
+    targetLang: string;
+    nativeLang: string;
+    llmReview: boolean;
+  }): Promise<DocumentVocabCandidate[]> {
+    return input.candidates.map((candidate) => {
+      const reviewSource =
+        input.llmReview && candidate.vocabType === 'word'
+          ? 'llm_reclassified'
+          : candidate.reviewSource;
+
+      return new DocumentVocabCandidate(
+        candidate.id,
+        candidate.documentId,
+        candidate.surface,
+        candidate.normalized,
+        candidate.lemma,
+        candidate.vocabType,
+        candidate.pos,
+        candidate.translation || '',
+        candidate.contextSentence,
+        candidate.sentenceIndex,
+        candidate.startOffset,
+        candidate.endOffset,
+        candidate.selectedByDefault,
+        candidate.isDuplicate,
+        reviewSource,
+      );
+    });
   }
 }

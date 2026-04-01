@@ -10,16 +10,19 @@ import {
   Body,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { lastValueFrom } from 'rxjs';
 import {
   CreateDocumentPayload,
+  ConfirmDocumentVocabularyPayload,
+  ConfirmDocumentVocabularyResultDto,
   DeleteDocumentPayload,
   DOCUMENT_PATTERNS,
   FindDocumentByIdPayload,
+  PrepareDocumentVocabularyPayload,
+  PreparedDocumentVocabularyDto,
   SavedDocumentDto,
   UpdateDocumentPayload,
 } from '@ocr-app/shared';
-import { asUpstreamHttpError } from '../upstream-http-error';
+import { gatewaySend } from '../gateway-send';
 
 @Controller('api/documents')
 export class GatewayDocumentController {
@@ -77,16 +80,57 @@ export class GatewayDocumentController {
     });
   }
 
-  private async send<TPayload, TResult>(
+  @Post(':id/vocabulary/prepare')
+  async prepareVocabulary(
+    @Param('id') id: string,
+    @Body() body: Omit<PrepareDocumentVocabularyPayload, 'id'>,
+  ): Promise<PreparedDocumentVocabularyDto> {
+    if (!body.targetLang?.trim() || !body.nativeLang?.trim()) {
+      throw new BadRequestException('targetLang and nativeLang are required');
+    }
+    const payload: PrepareDocumentVocabularyPayload = {
+      id,
+      llmReview: Boolean(body.llmReview),
+      targetLang: body.targetLang.trim(),
+      nativeLang: body.nativeLang.trim(),
+      selectedCandidateIds: Array.isArray(body.selectedCandidateIds)
+        ? body.selectedCandidateIds
+        : undefined,
+    };
+    return this.send<PrepareDocumentVocabularyPayload, PreparedDocumentVocabularyDto>(
+      DOCUMENT_PATTERNS.PREPARE_VOCABULARY,
+      payload,
+    );
+  }
+
+  @Post(':id/vocabulary/confirm')
+  async confirmVocabulary(
+    @Param('id') id: string,
+    @Body() body: Omit<ConfirmDocumentVocabularyPayload, 'id'>,
+  ): Promise<ConfirmDocumentVocabularyResultDto> {
+    if (!body.targetLang?.trim() || !body.nativeLang?.trim()) {
+      throw new BadRequestException('targetLang and nativeLang are required');
+    }
+    if (!Array.isArray(body.items)) {
+      throw new BadRequestException('items must be an array');
+    }
+    const payload: ConfirmDocumentVocabularyPayload = {
+      id,
+      targetLang: body.targetLang.trim(),
+      nativeLang: body.nativeLang.trim(),
+      items: body.items,
+    };
+    return this.send<ConfirmDocumentVocabularyPayload, ConfirmDocumentVocabularyResultDto>(
+      DOCUMENT_PATTERNS.CONFIRM_VOCABULARY,
+      payload,
+    );
+  }
+
+  private send<TPayload, TResult>(
     pattern: string,
     payload: TPayload,
+    timeoutMs = 150_000,
   ): Promise<TResult> {
-    try {
-      return await lastValueFrom(
-        this.documentClient.send<TResult, TPayload>(pattern, payload),
-      );
-    } catch (error) {
-      throw asUpstreamHttpError(error, 'Document service request failed');
-    }
+    return gatewaySend(this.documentClient, pattern, payload, 'Document service request failed', timeoutMs);
   }
 }

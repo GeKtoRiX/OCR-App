@@ -9,6 +9,7 @@ export class AddVocabularyDto {
 }
 
 export class UpdateVocabularyDto {
+  word?: string;
   translation!: string;
   contextSentence!: string;
 }

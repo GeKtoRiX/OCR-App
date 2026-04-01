@@ -16,60 +16,41 @@ export const HEALTH_LABELS = {
 
 export function computeStatus(health: HealthResponse): HealthStatus {
   const {
-    paddleOcrReachable,
-    paddleOcrDevice,
+    ocrReachable,
+    ocrDevice,
     lmStudioReachable,
     superToneReachable,
     kokoroReachable,
-    f5TtsReachable,
-    f5TtsDevice,
-    voxtralReachable,
-    voxtralDevice,
   } = health;
 
-  const f5Label = !f5TtsReachable
-    ? 'F5 TTS ✗'
-    : f5TtsDevice === 'cpu'
-      ? 'F5 TTS CPU ⚠'
-      : 'F5 TTS ✓';
-  const voxtralLabel = !voxtralReachable
-    ? 'Voxtral ✗'
-    : voxtralDevice === 'cpu'
-      ? 'Voxtral CPU ⚠'
-      : 'Voxtral ✓';
+  const ocrLabel = !ocrReachable
+    ? 'OCR ✗'
+    : ocrDevice === 'cpu'
+      ? 'OCR CPU ⚠'
+      : ocrDevice === 'gpu'
+        ? 'OCR GPU ✓'
+        : 'OCR ✓';
 
-  // 🔴 PaddleOCR down — nothing works
-  if (!paddleOcrReachable) {
-    return { color: 'red', tooltip: 'PaddleOCR unreachable' };
+  if (!ocrReachable) {
+    return { color: 'red', tooltip: 'OCR unavailable' };
   }
 
-  // 🟡 PaddleOCR reachable but on CPU
-  if (paddleOcrDevice === 'cpu') {
+  if (ocrDevice === 'cpu') {
     return {
       color: 'yellow',
-      tooltip: `PaddleOCR CPU ⚠ | LM Studio ${lmStudioReachable ? '✓' : '✗'} | ${f5Label} | ${voxtralLabel} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
+      tooltip: `${ocrLabel} | LM Studio ${lmStudioReachable ? '✓' : '✗'} | Kokoro ${kokoroReachable ? '✓' : '✗'} | Supertone ${superToneReachable ? '✓' : '✗'}`,
     };
   }
 
-  // 🔵 All systems fully operational
-  if (
-    lmStudioReachable &&
-    f5TtsReachable &&
-    f5TtsDevice === 'gpu' &&
-    kokoroReachable &&
-    superToneReachable
-  ) {
+  if (lmStudioReachable && kokoroReachable && superToneReachable) {
     return {
       color: 'blue',
-      tooltip: `PaddleOCR GPU ✓ | LM Studio ✓ | F5 TTS ✓ | ${voxtralLabel} | Kokoro ✓ | Supertone ✓`,
+      tooltip: `${ocrLabel} | LM Studio ✓ | Kokoro ✓ | Supertone ✓`,
     };
   }
 
-  // 🟢 PaddleOCR GPU OK, but something else missing
-  const parts: string[] = ['PaddleOCR GPU ✓'];
+  const parts: string[] = [ocrLabel];
   parts.push(`LM Studio ${lmStudioReachable ? '✓' : '✗'}`);
-  parts.push(f5Label);
-  parts.push(voxtralLabel);
   parts.push(`Kokoro ${kokoroReachable ? '✓' : '✗'}`);
   parts.push(`Supertone ${superToneReachable ? '✓' : '✗'}`);
 

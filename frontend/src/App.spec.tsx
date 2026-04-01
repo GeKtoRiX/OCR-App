@@ -9,8 +9,7 @@ const mocks = vi.hoisted(() => ({
   mockPractice: {} as any,
   mockUpload: {} as any,
   mockHealth: {} as any,
-  healthSetState: vi.fn(),
-  checkHealth: vi.fn(),
+  startPolling: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('./features/ocr/ocr.store', () => ({
@@ -30,18 +29,11 @@ vi.mock('./features/practice/practice.store', () => ({
 }));
 
 vi.mock('./features/health/health.store', () => ({
-  POLL_INTERVAL_MS: 30_000,
-  useHealthStore: Object.assign(() => mocks.mockHealth, {
-    setState: mocks.healthSetState,
-  }),
+  useHealthStore: () => mocks.mockHealth,
 }));
 
 vi.mock('./features/ocr/useImageUpload', () => ({
   useImageUpload: () => mocks.mockUpload,
-}));
-
-vi.mock('./shared/api', () => ({
-  checkHealth: mocks.checkHealth,
 }));
 
 vi.mock('./view/HistoryPanel', () => ({
@@ -83,6 +75,7 @@ function defaultStores() {
       entries: [],
       activeHistoryId: null,
       run: vi.fn(),
+      submitText: vi.fn(),
       reset: vi.fn(),
       selectEntry: vi.fn(),
       removeEntry: vi.fn(),
@@ -93,12 +86,21 @@ function defaultStores() {
       saveStatus: 'idle' as const,
       error: null,
       activeSavedId: null,
+      vocabularyReviewStatus: 'idle' as const,
+      vocabularyReviewDocumentId: null,
+      vocabularyReviewCandidates: [],
+      vocabularyReviewError: null,
+      vocabularyReviewLlmApplied: false,
+      vocabularyConfirmResult: null,
       load: vi.fn().mockResolvedValue(undefined),
       save: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue(null),
       remove: vi.fn().mockResolvedValue(true),
       selectDocument: vi.fn(),
       clearSelection: vi.fn(),
+      prepareVocabulary: vi.fn().mockResolvedValue([]),
+      confirmVocabulary: vi.fn().mockResolvedValue(null),
+      clearVocabularyReview: vi.fn(),
     },
     vocab: {
       words: [],
@@ -142,6 +144,7 @@ function defaultStores() {
     health: {
       color: 'red' as const,
       tooltip: 'Checking status...',
+      startPolling: mocks.startPolling,
     },
   };
 }
@@ -155,27 +158,14 @@ describe('App', () => {
     mocks.mockPractice = defaults.practice;
     mocks.mockUpload = defaults.upload;
     mocks.mockHealth = defaults.health;
-    mocks.healthSetState.mockReset();
-    mocks.checkHealth.mockReset();
-    mocks.checkHealth.mockResolvedValue({
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det', 'rec'],
-      paddleOcrDevice: 'gpu',
-      lmStudioReachable: true,
-      lmStudioModels: ['qwen'],
-      superToneReachable: true,
-      kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu',
-      voxtralReachable: false,
-      voxtralDevice: null,
-    });
+    mocks.startPolling.mockReset();
+    mocks.startPolling.mockReturnValue(vi.fn());
   });
 
   it('renders section headings and lazy sidebar', async () => {
     render(<App />);
 
-    expect(screen.getByText('Prepare source image')).toBeInTheDocument();
+    expect(screen.getByText('Prepare source')).toBeInTheDocument();
     expect(screen.getByText('Recognition output')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('history-panel')).toBeInTheDocument());
   });
@@ -186,8 +176,7 @@ describe('App', () => {
     await waitFor(() => {
       expect(mocks.mockDocs.load).toHaveBeenCalled();
       expect(mocks.mockVocab.load).toHaveBeenCalled();
-      expect(mocks.checkHealth).toHaveBeenCalled();
-      expect(mocks.healthSetState).toHaveBeenCalled();
+      expect(mocks.startPolling).toHaveBeenCalled();
     });
   });
 
@@ -213,6 +202,7 @@ describe('App', () => {
     render(<App />);
     fireEvent.click(screen.getByText('Recognize'));
 
+    expect(mocks.mockDocs.clearSelection).toHaveBeenCalled();
     expect(mocks.mockOcr.run).toHaveBeenCalledWith(mocks.mockUpload.file);
   });
 
@@ -222,6 +212,38 @@ describe('App', () => {
 
     expect(mocks.mockUpload.clear).toHaveBeenCalled();
     expect(mocks.mockOcr.reset).toHaveBeenCalled();
+  });
+
+  it('switches to text mode, clears image upload state, and submits pasted text', () => {
+    mocks.mockUpload.file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Paste Text'));
+
+    expect(mocks.mockUpload.clear).toHaveBeenCalled();
+    expect(screen.queryByText('Recognize')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('document name')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('document name'), {
+      target: { value: 'notes.md' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Paste markdown or plain text here'), {
+      target: { value: '# Notes' },
+    });
+    fireEvent.click(screen.getByText('Load Text'));
+
+    expect(mocks.mockDocs.clearSelection).toHaveBeenCalled();
+    expect(mocks.mockOcr.submitText).toHaveBeenCalledWith('# Notes', 'notes.md');
+  });
+
+  it('switches back to image mode from text mode', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByText('Paste Text'));
+    fireEvent.click(screen.getByText('Image OCR'));
+
+    expect(screen.getByText('Recognize')).toBeInTheDocument();
   });
 
   it('renders the empty result state when no data is available', () => {
@@ -250,6 +272,7 @@ describe('App', () => {
       'word',
       'привет',
       'Hello there.',
+      undefined,
     );
   });
 
@@ -261,6 +284,9 @@ describe('App', () => {
         filename: 'saved.md',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
       },
     ];
     mocks.mockDocs.activeSavedId = 'saved-1';

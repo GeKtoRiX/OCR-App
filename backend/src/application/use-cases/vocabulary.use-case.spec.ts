@@ -1,5 +1,8 @@
 import { VocabularyUseCase } from './vocabulary.use-case';
-import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
+import {
+  IVocabularyRepository,
+  VOCABULARY_DUPLICATE_ERROR,
+} from '../../domain/ports/vocabulary-repository.port';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 
 const mockWord = new VocabularyWord(
@@ -58,7 +61,7 @@ describe('VocabularyUseCase', () => {
         nativeLang: 'ru',
         contextSentence: 'The sunset was beautiful.',
       }),
-    ).rejects.toThrow('Word already exists in vocabulary');
+    ).rejects.toThrow(VOCABULARY_DUPLICATE_ERROR);
 
     expect(repo.create).not.toHaveBeenCalled();
   });
@@ -178,6 +181,21 @@ describe('VocabularyUseCase', () => {
       translation: 'красивый',
       word: 'beautiful',
     });
+  });
+
+  it('update passes the optional word through to the repository', async () => {
+    await useCase.update('id-1', {
+      word: 'refined',
+      translation: 'новый',
+      contextSentence: 'новый контекст',
+    });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      'id-1',
+      'новый',
+      'новый контекст',
+      'refined',
+    );
   });
 
   it('delete delegates to repository', async () => {

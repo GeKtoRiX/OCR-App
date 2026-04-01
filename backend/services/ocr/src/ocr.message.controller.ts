@@ -2,7 +2,7 @@ import { Controller } from '@nestjs/common';
 import { MessagePattern, RpcException } from '@nestjs/microservices';
 import {
   ILmStudioHealthPort,
-  IPaddleOcrHealthPort,
+  IOcrHealthPort,
   OCR_PATTERNS,
   OcrHealthResponse,
   ProcessImagePayload,
@@ -16,7 +16,7 @@ const LM_STUDIO_SMOKE_ONLY = process.env.LM_STUDIO_SMOKE_ONLY === 'true';
 export class OcrMessageController {
   constructor(
     private readonly processImage: ProcessImageUseCase,
-    private readonly paddleOcrHealth: IPaddleOcrHealthPort,
+    private readonly ocrHealth: IOcrHealthPort,
     private readonly lmStudioHealth: ILmStudioHealthPort,
   ) {}
 
@@ -41,6 +41,7 @@ export class OcrMessageController {
         rawText: result.rawText,
         markdown: result.markdown,
         filename: payload.filename,
+        blocks: result.blocks,
       };
     } catch (error) {
       const message =
@@ -54,30 +55,30 @@ export class OcrMessageController {
 
   @MessagePattern(OCR_PATTERNS.CHECK_HEALTH)
   async healthCheck(): Promise<OcrHealthResponse> {
-    const [paddleOcrReachable, lmStudioReachable] = await Promise.all([
-      this.safeIsReachable(this.paddleOcrHealth),
+    const [ocrReachable, lmStudioReachable] = await Promise.all([
+      this.safeIsReachable(this.ocrHealth),
       LM_STUDIO_SMOKE_ONLY
         ? Promise.resolve(false)
         : this.safeIsReachable(this.lmStudioHealth),
     ]);
 
-    const [paddleOcrModels, lmStudioModels, paddleOcrDevice] =
+    const [ocrModels, lmStudioModels, ocrDevice] =
       await Promise.all([
-        paddleOcrReachable
-          ? this.safeListModels(this.paddleOcrHealth)
+        ocrReachable
+          ? this.safeListModels(this.ocrHealth)
           : Promise.resolve([]),
         !LM_STUDIO_SMOKE_ONLY && lmStudioReachable
           ? this.safeListModels(this.lmStudioHealth)
           : Promise.resolve([]),
-        paddleOcrReachable
-          ? this.paddleOcrHealth.getDevice()
+        ocrReachable
+          ? this.ocrHealth.getDevice()
           : Promise.resolve(null),
       ]);
 
     return {
-      paddleOcrReachable,
-      paddleOcrModels,
-      paddleOcrDevice,
+      ocrReachable,
+      ocrModels,
+      ocrDevice,
       lmStudioReachable,
       lmStudioModels,
     };

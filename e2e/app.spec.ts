@@ -12,36 +12,6 @@ function mark(step: string) {
   console.log(`[browser-e2e] ${step}`);
 }
 
-function createReferenceWavBuffer(): Buffer {
-  const sampleRate = 24_000;
-  const seconds = 1;
-  const sampleCount = sampleRate * seconds;
-  const pcm = Buffer.alloc(sampleCount * 2);
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    const sample = Math.round(
-      10_000 * Math.sin((2 * Math.PI * 440 * index) / sampleRate),
-    );
-    pcm.writeInt16LE(sample, index * 2);
-  }
-
-  const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm.length, 4);
-  wav.write('WAVE', 8);
-  wav.write('fmt ', 12);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * 2, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm.length, 40);
-  pcm.copy(wav, 44);
-  return wav;
-}
 
 async function uploadAndRecognize(page: Page) {
   mark('upload:start');
@@ -55,14 +25,6 @@ async function uploadAndRecognize(page: Page) {
   mark('upload:recognized');
 }
 
-async function openTtsPanel(page: Page) {
-  mark('tts:panel:open');
-  const toggle = page.getByTestId('result-tts-toggle');
-  await expect(toggle).toBeVisible();
-  await toggle.click();
-  await expect(page.getByTestId('tts-generate-button')).toBeVisible();
-  mark('tts:panel:opened');
-}
 
 async function selectHistoryEntry(page: Page, filename: string) {
   await page.getByRole('button', {
@@ -102,6 +64,16 @@ async function openSavedDocument(page: Page, filename: string) {
   await selectSavedDocument(page, filename);
   await expectSavedResultMode(page);
   mark(`saved:opened:${filename}`);
+}
+
+async function saveCurrentResultAsDocument(page: Page) {
+  mark('document:save:start');
+  await page.getByTestId('result-tab-markdown').click();
+  await page.getByTestId('result-save-button').click();
+  await expect(page.getByTestId('result-save-button')).toContainText('Saved', {
+    timeout: 30_000,
+  });
+  mark('document:save:done');
 }
 
 async function openSessionDocument(page: Page, filename: string) {
@@ -219,48 +191,38 @@ async function completePracticeFlow(page: Page) {
   }
 }
 
-async function generateTts(
-  page: Page,
-  engine: 'supertone' | 'piper' | 'kokoro' | 'f5',
-) {
-  const timeout = engine === 'f5' ? 300_000 : 180_000;
-  mark(`tts:${engine}:start`);
-  await page.getByTestId(`tts-engine-${engine}`).click();
 
-  if (engine === 'f5') {
-    await page.locator('#f5-ref-audio').setInputFiles({
-      name: 'reference.wav',
-      mimeType: 'audio/wav',
-      buffer: createReferenceWavBuffer(),
-    });
-    await page.locator('#f5-ref-text').fill('This is a short reference clip.');
-  }
+async function saveVocabularyFromOverlay(page: Page) {
+  const overlay = page.getByTestId('save-vocabulary-overlay');
+  const editedWord = `playwright-vocab-${Date.now()}`;
+  const editedTranslation = 'проверено через playwright';
+  const editedContext = 'Playwright updated this context before saving.';
 
-  const player = page.getByTestId('tts-audio-player');
-  const responsePromise = page.waitForResponse(
-    response =>
-      response.url().includes('/api/tts') &&
-      response.request().method() === 'POST',
-    { timeout },
-  );
+  mark('vocab-overlay:open');
+  await page.getByTestId('result-save-vocabulary-button').click();
+  await expect(overlay).toBeVisible({ timeout: 120_000 });
 
-  mark(`tts:${engine}:click-generate`);
-  await page.getByTestId('tts-generate-button').click();
-  const response = await responsePromise;
-  expect(response.ok()).toBe(true);
-  mark(`tts:${engine}:response-ok`);
-  mark(`tts:${engine}:wait-button-enabled`);
-  await expect(page.getByTestId('tts-generate-button')).toBeEnabled({
-    timeout,
-  });
-  mark(`tts:${engine}:button-enabled`);
-  await expect(player).toBeVisible({
-    timeout,
-  });
-  mark(`tts:${engine}:player-visible`);
-  await expect(player).toHaveAttribute('src', /.+/, { timeout });
-  mark(`tts:${engine}:src-present`);
-  mark(`tts:${engine}:done`);
+  const listItems = overlay.getByTestId('save-vocab-list-item');
+  await expect(listItems.first()).toBeVisible({ timeout: 120_000 });
+  await expect(overlay.getByTestId('save-vocab-editor')).toBeVisible();
+
+  mark('vocab-overlay:edit');
+  await overlay.getByTestId('save-vocab-editor-word').fill(editedWord);
+  await overlay.getByTestId('save-vocab-editor-type').selectOption('expression');
+  await overlay.getByTestId('save-vocab-editor-translation').fill(editedTranslation);
+  await overlay.getByTestId('save-vocab-editor-context').fill(editedContext);
+
+  mark('vocab-overlay:confirm');
+  await overlay.getByRole('button', { name: 'Confirm Save' }).click();
+  await expect(overlay.getByText('Saved:')).toBeVisible({ timeout: 120_000 });
+  await overlay.getByRole('button', { name: 'Done' }).click();
+  await expect(overlay).toBeHidden({ timeout: 30_000 });
+  mark('vocab-overlay:saved');
+
+  return {
+    editedWord,
+    editedTranslation,
+  };
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -288,7 +250,7 @@ test('handles OCR copy and saved document CRUD in the browser', async ({
   await uploadAndRecognize(page);
 
   const healthLabel = await page.getByTestId('health-light').getAttribute('aria-label');
-  expect(healthLabel).toContain('PaddleOCR');
+  expect(healthLabel).toContain('OCR');
 
   mark('crud:copy-raw');
   await page.getByTestId('result-tab-raw').click();
@@ -364,19 +326,24 @@ test('adds vocabulary via context menu and completes practice flow', async ({
   await expect(page.getByTestId('practice-view')).toBeHidden();
 });
 
-test('generates TTS audio for all engines from the OCR result', async ({ page }) => {
+test('saves edited vocabulary from the review overlay into the real vocabulary list', async ({
+  page,
+}) => {
   await uploadAndRecognize(page);
-  await expectSessionResultMode(page);
+  await saveCurrentResultAsDocument(page);
+  await openSavedDocument(page, 'image_test.jpg');
 
-  await page.getByTestId('result-edit-toggle').click();
-  const editor = page.getByTestId('result-editor');
-  await editor.fill('Hello from the browser TTS test. This sample is intentionally short.');
-  await page.getByTestId('result-edit-toggle').click();
+  const { editedWord, editedTranslation } = await saveVocabularyFromOverlay(page);
+  const vocabularyPanel = page.getByTestId('vocabulary-panel');
 
-  await openTtsPanel(page);
-
-  await generateTts(page, 'supertone');
-  await generateTts(page, 'piper');
-  await generateTts(page, 'kokoro');
-  await generateTts(page, 'f5');
+  await page.getByTestId('history-tab-vocab').click();
+  await expect(
+    vocabularyPanel.getByText(editedWord, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    vocabularyPanel.getByText(editedTranslation, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(vocabularyPanel.getByText('Expression', { exact: true })).toBeVisible();
 });
+
+// TTS engine tests live in playwright.tts.config.ts — not part of the OCR browser e2e suite.

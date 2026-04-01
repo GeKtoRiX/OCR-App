@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    exclude: ['ckeditor5', '@ckeditor/ckeditor5-react'],
+  },
   server: {
     port: 5173,
     proxy: {
@@ -18,6 +21,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           react: ['react', 'react-dom'],
+          ckeditor: ['ckeditor5', '@ckeditor/ckeditor5-react'],
         },
       },
     },

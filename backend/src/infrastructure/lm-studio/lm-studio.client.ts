@@ -9,7 +9,10 @@ import { LMStudioConfig } from '../config/lm-studio.config';
 
 interface ChatCompletionResponse {
   choices: Array<{
-    message: { content: string };
+    message: {
+      content?: string;
+      reasoning_content?: string;
+    };
   }>;
 }
 
@@ -23,6 +26,8 @@ interface ChatCompletionStreamParams {
 interface ModelsResponse {
   data: Array<{ id: string }>;
 }
+
+const HEALTH_CHECK_TIMEOUT_MS = 5000;
 
 @Injectable()
 export class LMStudioClient
@@ -66,7 +71,18 @@ export class LMStudioClient
     if (!data.choices?.length) {
       throw new Error('LM Studio returned an empty choices array');
     }
-    return data.choices[0].message.content;
+    const message = data.choices[0].message;
+    const content = message.content?.trim();
+    if (content) {
+      return content;
+    }
+
+    const reasoning = message.reasoning_content?.trim();
+    if (reasoning) {
+      return reasoning;
+    }
+
+    throw new Error('LM Studio returned an empty message');
   }
 
   async *chatCompletionStream(
@@ -131,7 +147,7 @@ export class LMStudioClient
 
   async listModels(): Promise<string[]> {
     const response = await fetch(this.modelsUrl, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
     });
 
     if (!response.ok) {

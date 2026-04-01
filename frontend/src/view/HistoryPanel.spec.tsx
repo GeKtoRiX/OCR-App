@@ -34,7 +34,15 @@ vi.mock('../features/practice/practice.store', () => ({
 
 const makeEntry = (id: string, filename = `${id}.png`): HistoryEntry => ({
   id,
+  type: 'image',
   file: new File(['data'], filename, { type: 'image/png' }),
+  result: { rawText: 'raw text', markdown: '# markdown', filename },
+  processedAt: new Date(),
+});
+
+const makeTextEntry = (id: string, filename = `${id}.md`): HistoryEntry => ({
+  id,
+  type: 'text',
   result: { rawText: 'raw text', markdown: '# markdown', filename },
   processedAt: new Date(),
 });
@@ -58,12 +66,21 @@ function defaultStores() {
       saveStatus: 'idle' as const,
       error: null,
       activeSavedId: null,
+      vocabularyReviewStatus: 'idle' as const,
+      vocabularyReviewDocumentId: null,
+      vocabularyReviewCandidates: [],
+      vocabularyReviewError: null,
+      vocabularyReviewLlmApplied: false,
+      vocabularyConfirmResult: null,
       load: vi.fn(),
       save: vi.fn(),
       update: vi.fn(),
       remove: vi.fn().mockResolvedValue(true),
       selectDocument: vi.fn(),
       clearSelection: vi.fn(),
+      prepareVocabulary: vi.fn().mockResolvedValue([]),
+      confirmVocabulary: vi.fn().mockResolvedValue(null),
+      clearVocabularyReview: vi.fn(),
     },
     vocab: {
       words: [],
@@ -81,7 +98,7 @@ function defaultStores() {
     },
     health: {
       color: 'blue' as const,
-      tooltip: 'PaddleOCR GPU ✓ | LM Studio ✓',
+      tooltip: 'OCR GPU ✓ | LM Studio ✓',
     },
     practice: {
       start: vi.fn().mockResolvedValue(undefined),
@@ -104,7 +121,7 @@ describe('HistoryPanel', () => {
   it('shows the empty session state when no entries exist', () => {
     render(<HistoryPanel />);
 
-    expect(screen.getByText('No images processed yet.')).toBeInTheDocument();
+    expect(screen.getByText('No session results yet.')).toBeInTheDocument();
   });
 
   it('renders session items and marks the active entry when no saved doc is selected', () => {
@@ -151,13 +168,13 @@ describe('HistoryPanel', () => {
   it('renders derived health label and tooltip', () => {
     storeMocks.mockHealth = {
       color: 'red',
-      tooltip: 'PaddleOCR unreachable',
+      tooltip: 'OCR unavailable',
     };
 
     const { container } = render(<HistoryPanel />);
 
     expect(container.querySelector('.status-light--red')).toBeInTheDocument();
-    expect(screen.getByLabelText('Service issue. PaddleOCR unreachable')).toBeInTheDocument();
+    expect(screen.getByLabelText('Service issue. OCR unavailable')).toBeInTheDocument();
   });
 
   it('shows saved documents on the Saved tab and wires select/delete', async () => {
@@ -169,6 +186,9 @@ describe('HistoryPanel', () => {
         filename: 'saved.png',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
       },
     ];
 
@@ -226,6 +246,40 @@ describe('HistoryPanel', () => {
     expect(storeMocks.mockPractice.start).toHaveBeenCalledWith('en', 'ru');
   });
 
+  it('updates a vocabulary word from the vocab tab inline editor', async () => {
+    const user = userEvent.setup();
+    storeMocks.mockVocab.words = [
+      {
+        id: 'w1',
+        word: 'hello',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello there.',
+        sourceDocumentId: null,
+        intervalDays: 1,
+        easinessFactor: 2.5,
+        repetitions: 1,
+        nextReviewAt: '2024-01-01T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ];
+
+    render(<HistoryPanel />);
+    await user.click(screen.getByText('Vocab (1)'));
+    await user.click(screen.getByTitle('Edit'));
+
+    await user.clear(screen.getByTestId('vocab-edit-word'));
+    await user.type(screen.getByTestId('vocab-edit-word'), 'hi');
+    await user.clear(screen.getByTestId('vocab-edit-translation'));
+    await user.type(screen.getByTestId('vocab-edit-translation'), 'здравствуй');
+    await user.click(screen.getByTestId('vocab-edit-save'));
+
+    expect(storeMocks.mockVocab.updateWord).toHaveBeenCalledWith('w1', 'hi', 'здравствуй');
+  });
+
   it('revokes thumbnail URLs on unmount', () => {
     storeMocks.mockOcr.entries = [makeEntry('thumb-test')];
 
@@ -233,5 +287,14 @@ describe('HistoryPanel', () => {
     unmount();
 
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumb-url');
+  });
+
+  it('renders a document icon for text entries without creating a thumbnail URL', () => {
+    storeMocks.mockOcr.entries = [makeTextEntry('text-entry', 'notes.md')];
+
+    render(<HistoryPanel />);
+
+    expect(screen.getByText('📄')).toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });

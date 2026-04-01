@@ -11,7 +11,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { lastValueFrom } from 'rxjs';
 import {
   AddVocabularyPayload,
   DeleteVocabularyPayload,
@@ -22,7 +21,7 @@ import {
   VOCABULARY_PATTERNS,
   VocabularyItemDto,
 } from '@ocr-app/shared';
-import { asUpstreamHttpError } from '../upstream-http-error';
+import { gatewaySend } from '../gateway-send';
 
 type VocabType =
   | 'word'
@@ -117,10 +116,11 @@ export class GatewayVocabularyController {
   @Put(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { translation?: string; contextSentence?: string },
+    @Body() body: { word?: string; translation?: string; contextSentence?: string },
   ): Promise<VocabularyItemDto> {
     const payload: UpdateVocabularyPayload = {
       id,
+      word: body.word?.trim(),
       translation: body.translation ?? '',
       contextSentence: body.contextSentence ?? '',
     };
@@ -151,16 +151,7 @@ export class GatewayVocabularyController {
     }
   }
 
-  private async send<TPayload, TResult>(
-    pattern: string,
-    payload: TPayload,
-  ): Promise<TResult> {
-    try {
-      return await lastValueFrom(
-        this.vocabularyClient.send<TResult, TPayload>(pattern, payload),
-      );
-    } catch (error) {
-      throw asUpstreamHttpError(error, 'Vocabulary service request failed');
-    }
+  private send<TPayload, TResult>(pattern: string, payload: TPayload): Promise<TResult> {
+    return gatewaySend(this.vocabularyClient, pattern, payload, 'Vocabulary service request failed');
   }
 }

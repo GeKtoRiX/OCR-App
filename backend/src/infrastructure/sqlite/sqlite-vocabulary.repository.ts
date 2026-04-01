@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import {
   IVocabularyRepository,
   CreateVocabularyInput,
+  VOCABULARY_DUPLICATE_ERROR,
 } from '../../domain/ports/vocabulary-repository.port';
 import {
   VocabularyWord,
@@ -28,9 +29,6 @@ interface VocabularyRow {
   next_review_at: string;
 }
 
-const DUPLICATE_VOCABULARY_ERROR =
-  'Vocabulary word already exists for this language pair';
-
 @Injectable()
 export class SqliteVocabularyRepository
   extends IVocabularyRepository
@@ -46,6 +44,7 @@ export class SqliteVocabularyRepository
     selectDueByLang: Database.Statement;
     updateSrs: Database.Statement;
     updateFields: Database.Statement;
+    updateFieldsWithWord: Database.Statement;
     deleteById: Database.Statement;
   };
 
@@ -104,6 +103,9 @@ export class SqliteVocabularyRepository
       updateFields: db.prepare(
         'UPDATE vocabulary SET translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
       ),
+      updateFieldsWithWord: db.prepare(
+        'UPDATE vocabulary SET word = ?, translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
+      ),
       deleteById: db.prepare('DELETE FROM vocabulary WHERE id = ?'),
     };
   }
@@ -142,7 +144,7 @@ export class SqliteVocabularyRepository
       nativeLang,
     ) as VocabularyRow | undefined;
     if (existing) {
-      throw new Error(DUPLICATE_VOCABULARY_ERROR);
+      throw new Error(VOCABULARY_DUPLICATE_ERROR);
     }
 
     const id = crypto.randomUUID();
@@ -157,7 +159,7 @@ export class SqliteVocabularyRepository
         error instanceof Error &&
         error.message.includes('UNIQUE constraint failed')
       ) {
-        throw new Error(DUPLICATE_VOCABULARY_ERROR);
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
       }
       throw error;
     }
@@ -172,6 +174,24 @@ export class SqliteVocabularyRepository
 
     const now = new Date().toISOString();
     const results: VocabularyWord[] = [];
+    const seenPairs = new Set<string>();
+
+    for (const item of inputs) {
+      const pairKey = `${item.word}::${item.targetLang}::${item.nativeLang}`;
+      if (seenPairs.has(pairKey)) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+      seenPairs.add(pairKey);
+
+      const existing = this.stmts.selectByWord.get(
+        item.word,
+        item.targetLang,
+        item.nativeLang,
+      ) as VocabularyRow | undefined;
+      if (existing) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+    }
 
     const insertMany = this.connection.db.transaction(
       (items: CreateVocabularyInput[]) => {
@@ -193,7 +213,18 @@ export class SqliteVocabularyRepository
       },
     );
 
-    insertMany(inputs);
+    try {
+      insertMany(inputs);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed')
+      ) {
+        throw new Error(VOCABULARY_DUPLICATE_ERROR);
+      }
+      throw error;
+    }
+
     return results;
   }
 
@@ -210,6 +241,15 @@ export class SqliteVocabularyRepository
   async findById(id: string): Promise<VocabularyWord | null> {
     const row = this.stmts.selectById.get(id) as VocabularyRow | undefined;
     return row ? this.toEntity(row) : null;
+  }
+
+  async findByIds(ids: string[]): Promise<VocabularyWord[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.connection.db
+      .prepare(`SELECT * FROM vocabulary WHERE id IN (${placeholders})`)
+      .all(...ids) as VocabularyRow[];
+    return rows.map((r) => this.toEntity(r));
   }
 
   async findByWord(
@@ -250,11 +290,12 @@ export class SqliteVocabularyRepository
     id: string,
     translation: string,
     contextSentence: string,
+    word?: string,
   ): Promise<VocabularyWord | null> {
     const now = new Date().toISOString();
-    const result = this.stmts.updateFields.run(
-      translation, contextSentence, now, id,
-    );
+    const result = word
+      ? this.stmts.updateFieldsWithWord.run(word.trim(), translation, contextSentence, now, id)
+      : this.stmts.updateFields.run(translation, contextSentence, now, id);
     if (result.changes === 0) return null;
     return this.findById(id);
   }

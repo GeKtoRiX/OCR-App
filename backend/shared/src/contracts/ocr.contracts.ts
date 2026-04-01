@@ -9,18 +9,34 @@ export interface ProcessImagePayload {
   filename: string;
 }
 
+export interface OcrLine {
+  text: string;
+  bbox: number[];
+  confidence?: number;
+}
+
+export interface OcrBlock {
+  type: string;
+  bbox: number[];
+  text: string;
+  html?: string;
+  lines?: OcrLine[];
+  score?: number | null;
+}
+
 export interface ProcessImageResponse {
   rawText: string;
   markdown: string;
   filename: string;
+  blocks?: OcrBlock[];
 }
 
 export interface OcrHealthPayload {}
 
 export interface OcrHealthResponse {
-  paddleOcrReachable: boolean;
-  paddleOcrModels: string[];
-  paddleOcrDevice: 'gpu' | 'cpu' | null;
+  ocrReachable: boolean;
+  ocrModels: string[];
+  ocrDevice: 'gpu' | 'cpu' | null;
   lmStudioReachable: boolean;
   lmStudioModels: string[];
 }

@@ -11,6 +11,7 @@ Permitted top-level paths:
 - `services/`
 - `scripts/`
 - `docs/`
+- `e2e/`
 - `data/`
 - `logs/`
 - `.pids/`
@@ -22,6 +23,8 @@ Permitted top-level paths:
 - `structure.md`
 - `package.json`
 - `package-lock.json`
+- `playwright.config.ts`
+- `playwright.save-vocabulary.config.ts`
 - `tsconfig.base.json`
 - `.gitignore`
 - `.env`
@@ -139,6 +142,13 @@ Frontend source lives under `frontend/src/`.
 - `services/ocr/paddleocr-service/requirements.txt`
 - `services/ocr/paddleocr-service/models/`
 
+### NLP
+
+- `services/nlp/stanza-service/main.py`
+- `services/nlp/stanza-service/requirements.txt`
+- `services/nlp/bert-service/main.py`
+- `services/nlp/bert-service/requirements.txt`
+
 ### TTS
 
 Supertone + Piper:
@@ -154,22 +164,6 @@ Kokoro:
 - `services/tts/kokoro-service/smoke_test.py`
 - `services/tts/kokoro-service/requirements.txt`
 - `services/tts/kokoro-service/models/`
-
-F5:
-
-- `services/tts/f5-service/main.py`
-- `services/tts/f5-service/smoke_test.py`
-- `services/tts/f5-service/requirements.txt`
-- `services/tts/f5-service/models/`
-
-Voxtral:
-
-- `services/tts/voxtral-service/main.py`
-- `services/tts/voxtral-service/smoke_test.py`
-- `services/tts/voxtral-service/requirements.txt`
-- `services/tts/voxtral-service/Dockerfile`
-- `services/tts/voxtral-service/patch_voxtral_runtime.py`
-- `services/tts/voxtral-service/models/`
 
 ## Scripts
 
@@ -187,6 +181,7 @@ Launcher scripts:
 Automation:
 
 - `scripts/e2e/prepare-browser-env.sh`
+- `scripts/e2e/prepare-save-vocabulary-env.sh`
 - `scripts/e2e/stop-browser-env.sh`
 - `scripts/perf/api-benchmark.mjs`
 - `scripts/perf/browser-benchmark.mjs`
@@ -225,9 +220,12 @@ These paths may exist at runtime but are not source of truth:
 - `test-results/`
 - `.tools/`
 
-## Audit Snapshot - 2026-03-27
+## Audit Snapshot - 2026-03-31
 
 - Gateway/services/shared split is present and active.
 - Frontend uses feature-oriented folders with Zustand stores, not MVVM.
-- Voxtral is present as an optional TTS adapter sidecar.
+- Stanza is present as an optional NLP sidecar for document vocabulary extraction (port `:8501`).
+- BERT MLM scorer sidecar added (`prajjwal1/bert-tiny`, port `:8502`, English-only, optional).
+- Vocabulary extraction pipeline order: Stanza (or heuristic fallback) → BERT scoring → `DocumentVocabCandidate` construction.
 - Launcher-side TTS defaults are controlled through `scripts/linux/tts-models.conf`.
+- `Save Vocabulary` uses document-scoped candidate preparation plus a confirm-before-save review overlay.

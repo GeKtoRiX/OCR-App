@@ -6,7 +6,6 @@ import {
   Post,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { lastValueFrom } from 'rxjs';
 import {
   AGENTIC_PATTERNS,
   AgenticArchitecturePayload,
@@ -14,7 +13,7 @@ import {
   AgenticDeployPayload,
   AgenticDeployResponse,
 } from '@ocr-app/shared';
-import { asUpstreamHttpError } from '../upstream-http-error';
+import { gatewaySend } from '../gateway-send';
 
 @Controller('api/agents')
 export class GatewayAgenticController {
@@ -51,16 +50,7 @@ export class GatewayAgenticController {
     );
   }
 
-  private async send<TPayload, TResult>(
-    pattern: string,
-    payload: TPayload,
-  ): Promise<TResult> {
-    try {
-      return await lastValueFrom(
-        this.agenticClient.send<TResult, TPayload>(pattern, payload),
-      );
-    } catch (error) {
-      throw asUpstreamHttpError(error, 'Agentic service request failed');
-    }
+  private send<TPayload, TResult>(pattern: string, payload: TPayload): Promise<TResult> {
+    return gatewaySend(this.agenticClient, pattern, payload, 'Agentic service request failed');
   }
 }

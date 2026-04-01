@@ -101,3 +101,64 @@
   margin-top: 0.9rem;
   color: var(--text-faint);
 }
+
+.text-input-panel {
+  border: 1.5px dashed var(--border-accent);
+  border-radius: 16px;
+  padding: 1rem;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 0.9rem;
+  background: var(--bg-code);
+  flex: 1;
+}
+
+.text-input-panel__intro h3 {
+  font-family: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
+  line-height: 1.15;
+  margin: 0.75rem 0 0.6rem;
+  color: var(--text);
+}
+
+.text-input-panel__intro p {
+  color: var(--text-muted);
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+
+.text-input-panel__field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.text-input-panel__field--grow {
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.text-input-panel__field span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.text-input-panel__field input,
+.text-input-panel__field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--text);
+  padding: 0.8rem 0.9rem;
+}
+
+.text-input-panel__field textarea {
+  min-height: 120px;
+  height: 100%;
+  resize: none;
+}
+

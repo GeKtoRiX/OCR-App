@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
 import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
 import { IVocabularyLlmService } from '../../domain/ports/vocabulary-llm-service.port';
-import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import {
   StartPracticeInput,
   SubmitAnswerInput,
@@ -93,12 +92,7 @@ export class PracticeUseCase {
   ): Promise<SessionAnalysisOutput> {
     const attempts = await this.sessionRepo.findAttemptsBySession(sessionId);
     const vocabIds = [...new Set(attempts.map((a) => a.vocabularyId))];
-    const wordsResult = await Promise.all(
-      vocabIds.map((id) => this.vocabRepo.findById(id)),
-    );
-    const words = wordsResult.filter(
-      (w): w is VocabularyWord => w !== null,
-    );
+    const words = await this.vocabRepo.findByIds(vocabIds);
 
     const analysis = await this.llmService.analyzeSession(words, attempts);
 

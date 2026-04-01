@@ -170,7 +170,7 @@ describe('useVocabContextMenu', () => {
     });
 
     act(() => {
-      result.current.handleVocabAdd('привет');
+      result.current.handleVocabAdd('Hello', 'привет', 'Hello world.', 'word');
     });
 
     expect(onAddVocabulary).toHaveBeenCalledWith(

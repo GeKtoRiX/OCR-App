@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ResultPanel } from './ResultPanel';
 
@@ -9,6 +9,45 @@ vi.mock('../shared/lib/clipboard', () => ({
 
 vi.mock('../shared/api', () => ({
   generateSpeech: vi.fn(),
+}));
+
+vi.mock('ckeditor5', () => {
+  const stub = () => class {};
+  return {
+    Alignment: stub(), Autoformat: stub(), AutoImage: stub(), AutoLink: stub(),
+    AutoMediaEmbed: stub(), BlockQuote: stub(), Bold: stub(),
+    ClassicEditor: stub(), Code: stub(), CodeBlock: stub(),
+    Essentials: stub(), FindAndReplace: stub(), Heading: stub(),
+    Highlight: stub(), HorizontalLine: stub(),
+    Image: stub(), ImageCaption: stub(), ImageInsert: stub(),
+    ImageResize: stub(), ImageStyle: stub(), ImageToolbar: stub(),
+    Indent: stub(), IndentBlock: stub(), Italic: stub(),
+    Link: stub(), LinkImage: stub(), List: stub(), ListProperties: stub(),
+    Markdown: stub(), MediaEmbed: stub(), PageBreak: stub(), Paragraph: stub(),
+    PasteFromOffice: stub(), PictureEditing: stub(), RemoveFormat: stub(),
+    SelectAll: stub(), ShowBlocks: stub(), SourceEditing: stub(),
+    SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
+    Strikethrough: stub(), Subscript: stub(), Superscript: stub(),
+    Table: stub(), TableCaption: stub(), TableCellProperties: stub(),
+    TableColumnResize: stub(), TableProperties: stub(), TableToolbar: stub(),
+    TodoList: stub(), Underline: stub(),
+  };
+});
+
+vi.mock('@ckeditor/ckeditor5-react', () => ({
+  CKEditor: ({
+    data,
+    onChange,
+  }: {
+    data: string;
+    onChange: (e: unknown, ed: { getData: () => string }) => void;
+  }) => (
+    <textarea
+      data-testid="result-editor"
+      value={data}
+      onChange={e => onChange({}, { getData: () => e.target.value })}
+    />
+  ),
 }));
 
 import { copyToClipboard } from '../shared/lib/clipboard';
@@ -95,37 +134,6 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Generate')).toBeInTheDocument();
   });
 
-  it('should expose f5 as a TTS engine option', async () => {
-    const user = userEvent.setup();
-    render(<ResultPanel result={result} />);
-
-    await user.click(screen.getByText('🔊 TTS'));
-    // "F5" matches both the engine button and the supertone voice chip "F5";
-    // target the engine button specifically.
-    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
-    await user.click(engineBtn);
-
-    expect(screen.getByLabelText('Reference Audio')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter the transcript of the reference audio')).toBeInTheDocument();
-  });
-
-  it('should expose voxtral as a TTS engine option with preset voices only', async () => {
-    const user = userEvent.setup();
-    render(<ResultPanel result={result} />);
-
-    await user.click(screen.getByText('🔊 TTS'));
-    await user.click(screen.getByRole('button', { name: 'Voxtral' }));
-
-    expect(screen.getByTitle('Casual — casual_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Casual — casual_male')).toBeInTheDocument();
-    expect(screen.getByTitle('Cheerful — cheerful_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Neutral — neutral_female')).toBeInTheDocument();
-    expect(screen.getByTitle('Neutral — neutral_male')).toBeInTheDocument();
-    expect(screen.queryByTitle('German — de_female')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Spanish — es_female')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Reference Audio')).not.toBeInTheDocument();
-  });
-
   it('should reset to original content when result prop changes', () => {
     const { rerender } = render(<ResultPanel result={result} />);
 
@@ -137,14 +145,14 @@ describe('ResultPanel', () => {
   it('should render save button when onSave is provided', () => {
     render(<ResultPanel result={result} onSave={vi.fn()} saveStatus="idle" />);
 
-    expect(screen.getByTitle('Save to database')).toBeInTheDocument();
+    expect(screen.getByText('Save Document')).toBeInTheDocument();
   });
 
   it('should call onSave with markdown content when save button is clicked', () => {
     const onSave = vi.fn();
     render(<ResultPanel result={result} onSave={onSave} saveStatus="idle" />);
 
-    fireEvent.click(screen.getByTitle('Save to database'));
+    fireEvent.click(screen.getByText('Save Document'));
 
     expect(onSave).toHaveBeenCalledWith('# Markdown content');
   });
@@ -158,7 +166,7 @@ describe('ResultPanel', () => {
   it('should not show save button when isSavedDocument is true', () => {
     render(<ResultPanel result={result} onSave={vi.fn()} saveStatus="idle" isSavedDocument />);
 
-    expect(screen.queryByTitle('Save to database')).not.toBeInTheDocument();
+    expect(screen.queryByText('Save Document')).not.toBeInTheDocument();
   });
 
   it('should hide Raw Text tab when isSavedDocument is true', () => {
@@ -236,6 +244,9 @@ describe('ResultPanel', () => {
 
     fireEvent.mouseDown(content, { button: 2 });
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    act(() => {
+      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
+    });
     await user.click(screen.getByText('Word'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));
@@ -276,6 +287,9 @@ describe('ResultPanel', () => {
     selection?.removeAllRanges();
 
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
+    act(() => {
+      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
+    });
     await user.click(screen.getByText('Word'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));
@@ -294,42 +308,22 @@ describe('ResultPanel', () => {
     render(<ResultPanel result={result} />);
 
     await user.click(screen.getByText('🔊 TTS'));
-
-    await user.click(screen.getByText('ES'));
-    await user.click(screen.getByText('F2'));
-    const supertoneSliders = screen.getAllByRole('slider');
-    fireEvent.change(supertoneSliders[0], { target: { value: '1.35' } });
-    fireEvent.change(supertoneSliders[1], { target: { value: '8' } });
-
-    await user.click(screen.getByText('Piper'));
-    await user.click(screen.getByText('Amy'));
-    await user.clear(screen.getByPlaceholderText('e.g. en_US-amy-medium'));
-    await user.type(screen.getByPlaceholderText('e.g. en_US-amy-medium'), 'en_US-lessac-high');
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '1.2' } });
-
-    await user.click(screen.getByText('Kokoro'));
     await user.click(screen.getByText('Fable'));
     fireEvent.change(screen.getByRole('slider'), { target: { value: '1.15' } });
-
-    const engineBtn = screen.getAllByText('F5').find(el => el.classList.contains('tts-panel__engine-btn'))!;
-    await user.click(engineBtn);
-    const fileInput = screen.getByLabelText('Reference Audio');
-    const file = new File(['wav'], 'reference.wav', { type: 'audio/wav' });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-    await user.type(screen.getByPlaceholderText('Enter the transcript of the reference audio'), 'Reference transcript');
-    const checkboxes = screen.getAllByRole('checkbox');
-    await user.click(checkboxes[0]);
-    expect(screen.getByPlaceholderText('Reference text will be detected from the uploaded audio')).toBeDisabled();
-    await user.click(checkboxes[0]);
-    await user.click(checkboxes[1]);
-
-    await user.click(screen.getByText('Supertone'));
     await user.click(screen.getByText('Generate'));
 
     await waitFor(() => {
       expect(mockGenerateSpeech).toHaveBeenCalled();
     });
     expect(await screen.findByTitle('Download WAV')).toBeInTheDocument();
+    expect(mockGenerateSpeech).toHaveBeenCalledWith(
+      '# Markdown content',
+      expect.objectContaining({
+        engine: 'kokoro',
+        voice: 'bm_fable',
+        speed: 1.15,
+      }),
+    );
 
     await user.click(screen.getByText('1.5×'));
 

@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
+import {
+  IVocabularyRepository,
+  VOCABULARY_DUPLICATE_ERROR,
+} from '../../domain/ports/vocabulary-repository.port';
 import {
   AddVocabularyInput,
   UpdateVocabularyInput,
   VocabularyOutput,
 } from '../dto/vocabulary.dto';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
-
-export const VOCABULARY_DUPLICATE_ERROR = 'Word already exists in vocabulary';
 
 @Injectable()
 export class VocabularyUseCase {
@@ -82,6 +83,11 @@ export class VocabularyUseCase {
     return word ? this.toOutput(word) : null;
   }
 
+  async findByIds(ids: string[]): Promise<VocabularyOutput[]> {
+    const words = await this.repository.findByIds(ids);
+    return words.map((w) => this.toOutput(w));
+  }
+
   async findByWord(
     word: string,
     targetLang: string,
@@ -104,6 +110,7 @@ export class VocabularyUseCase {
       id,
       input.translation,
       input.contextSentence,
+      input.word,
     );
     return word ? this.toOutput(word) : null;
   }

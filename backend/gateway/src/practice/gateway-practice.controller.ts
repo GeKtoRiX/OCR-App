@@ -9,7 +9,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { lastValueFrom } from 'rxjs';
 import {
   CompletePracticePayload,
   CompletePracticeResponse,
@@ -21,7 +20,7 @@ import {
   SubmitPracticeAnswerResponse,
   VOCABULARY_PATTERNS,
 } from '@ocr-app/shared';
-import { asUpstreamHttpError } from '../upstream-http-error';
+import { gatewaySend } from '../gateway-send';
 
 type ExerciseType =
   | 'fill_blank'
@@ -108,16 +107,7 @@ export class GatewayPracticeController {
     );
   }
 
-  private async send<TPayload, TResult>(
-    pattern: string,
-    payload: TPayload,
-  ): Promise<TResult> {
-    try {
-      return await lastValueFrom(
-        this.vocabularyClient.send<TResult, TPayload>(pattern, payload),
-      );
-    } catch (error) {
-      throw asUpstreamHttpError(error, 'Practice service request failed');
-    }
+  private send<TPayload, TResult>(pattern: string, payload: TPayload): Promise<TResult> {
+    return gatewaySend(this.vocabularyClient, pattern, payload, 'Practice service request failed');
   }
 }

@@ -8,20 +8,21 @@ const baseProps = {
   y: 80,
   selectedText: 'hello',
   vocabType: 'word' as const,
+  contextSentence: '',
   isDuplicate: false,
   onAdd: vi.fn(),
   onClose: vi.fn(),
 };
 
 describe('VocabAddForm', () => {
-  it('renders selected word and vocab type', () => {
+  it('renders selected word as editable input and default vocab type', () => {
     render(<VocabAddForm {...baseProps} />);
 
-    expect(screen.getByText('hello')).toBeInTheDocument();
-    expect(screen.getByText('Word')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('hello')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Word')).toBeInTheDocument();
   });
 
-  it('submits translation through onAdd', async () => {
+  it('submits word, translation, context and type through onAdd', async () => {
     const user = userEvent.setup();
     const onAdd = vi.fn();
     render(<VocabAddForm {...baseProps} onAdd={onAdd} />);
@@ -29,7 +30,27 @@ describe('VocabAddForm', () => {
     await user.type(screen.getByPlaceholderText('Translation...'), 'привет');
     await user.click(screen.getByText('Add'));
 
-    expect(onAdd).toHaveBeenCalledWith('привет');
+    expect(onAdd).toHaveBeenCalledWith('hello', 'привет', '', 'word');
+  });
+
+  it('allows editing the word before submitting', async () => {
+    const user = userEvent.setup();
+    const onAdd = vi.fn();
+    render(<VocabAddForm {...baseProps} onAdd={onAdd} />);
+
+    const wordInput = screen.getByDisplayValue('hello');
+    await user.clear(wordInput);
+    await user.type(wordInput, 'hi');
+    await user.type(screen.getByPlaceholderText('Translation...'), 'привет');
+    await user.click(screen.getByText('Add'));
+
+    expect(onAdd).toHaveBeenCalledWith('hi', 'привет', '', 'word');
+  });
+
+  it('pre-fills context sentence when provided', () => {
+    render(<VocabAddForm {...baseProps} contextSentence="Hello world." />);
+
+    expect(screen.getByDisplayValue('Hello world.')).toBeInTheDocument();
   });
 
   it('closes when close button is clicked', async () => {
@@ -42,10 +63,16 @@ describe('VocabAddForm', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('shows duplicate warning instead of the input form', () => {
+  it('shows duplicate warning but still allows submission', () => {
     render(<VocabAddForm {...baseProps} isDuplicate />);
 
     expect(screen.getByTestId('duplicate-warning')).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Translation...')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Translation...')).toBeInTheDocument();
+  });
+
+  it('disables Add button when word or translation is empty', () => {
+    render(<VocabAddForm {...baseProps} />);
+
+    expect(screen.getByText('Add')).toBeDisabled();
   });
 });

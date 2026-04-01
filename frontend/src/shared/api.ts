@@ -3,6 +3,9 @@ import type {
   HealthResponse,
   TtsSettings,
   SavedDocument,
+  DocumentVocabCandidate,
+  PreparedDocumentVocabularyResponse,
+  ConfirmDocumentVocabularyResult,
   VocabularyWord,
   VocabType,
   Exercise,
@@ -11,7 +14,6 @@ import type {
 } from './types';
 
 const BASE = '/api';
-const CYRILLIC_RE = /[\u0400-\u04FF]/;
 
 async function getErrorMessage(response: Response): Promise<string> {
   const body = await response
@@ -55,38 +57,12 @@ export async function generateSpeech(
   settings: TtsSettings,
   signal?: AbortSignal,
 ): Promise<Blob> {
-  if (settings.engine === 'kokoro' && CYRILLIC_RE.test(text)) {
-    throw new Error(
-      'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
-    );
-  }
-
-  const request =
-    settings.engine === 'f5'
-      ? (() => {
-          const body = new FormData();
-          body.set('text', text);
-          body.set('engine', settings.engine);
-          body.set('refText', settings.refText);
-          body.set('autoTranscribe', String(settings.autoTranscribe));
-          body.set('removeSilence', String(settings.removeSilence));
-          if (settings.refAudioFile) {
-            body.set('refAudio', settings.refAudioFile);
-          }
-          return {
-            method: 'POST',
-            body,
-            signal,
-          };
-        })()
-      : {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, ...settings }),
-          signal,
-        };
-
-  const res = await fetch(`${BASE}/tts`, request);
+  const res = await fetch(`${BASE}/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, ...settings }),
+    signal,
+  });
 
   if (!res.ok) {
     throw new Error(await getErrorMessage(res));
@@ -138,6 +114,52 @@ export async function deleteDocument(id: string): Promise<void> {
   if (!res.ok) throw new Error(await getErrorMessage(res));
 }
 
+export async function prepareDocumentVocabulary(input: {
+  id: string;
+  llmReview: boolean;
+  targetLang: string;
+  nativeLang: string;
+  selectedCandidateIds?: string[];
+}): Promise<PreparedDocumentVocabularyResponse> {
+  const res = await fetch(`${BASE}/documents/${input.id}/vocabulary/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      llmReview: input.llmReview,
+      targetLang: input.targetLang,
+      nativeLang: input.nativeLang,
+      ...(input.selectedCandidateIds ? { selectedCandidateIds: input.selectedCandidateIds } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
+}
+
+export async function confirmDocumentVocabulary(input: {
+  id: string;
+  targetLang: string;
+  nativeLang: string;
+  items: Array<{
+    candidateId: string;
+    word: string;
+    vocabType: VocabType;
+    translation: string;
+    contextSentence: string;
+  }>;
+}): Promise<ConfirmDocumentVocabularyResult> {
+  const res = await fetch(`${BASE}/documents/${input.id}/vocabulary/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      targetLang: input.targetLang,
+      nativeLang: input.nativeLang,
+      items: input.items,
+    }),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
+}
+
 // ── Vocabulary API ──
 
 export async function addVocabularyWord(input: {
@@ -184,11 +206,12 @@ export async function updateVocabularyWord(
   id: string,
   translation: string,
   contextSentence: string,
+  word?: string,
 ): Promise<VocabularyWord> {
   const res = await fetch(`${BASE}/vocabulary/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ translation, contextSentence }),
+    body: JSON.stringify({ word, translation, contextSentence }),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();

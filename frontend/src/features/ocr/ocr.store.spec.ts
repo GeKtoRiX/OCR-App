@@ -38,9 +38,33 @@ describe('useOcrStore', () => {
     expect(useOcrStore.getState().activeHistoryId).toBe('entry-1');
     expect(useOcrStore.getState().entries[0]).toMatchObject({
       id: 'entry-1',
+      type: 'image',
       file,
       result,
     });
+  });
+
+  it('submitText() stores pasted text as a session entry and active result', () => {
+    useOcrStore.getState().submitText('# Notes', 'notes.md');
+
+    expect(useOcrStore.getState().status).toBe('success');
+    expect(useOcrStore.getState().result).toEqual({
+      rawText: '# Notes',
+      markdown: '# Notes',
+      filename: 'notes.md',
+    });
+    expect(useOcrStore.getState().entries).toHaveLength(1);
+    expect(useOcrStore.getState().entries[0]).toMatchObject({
+      id: 'entry-1',
+      type: 'text',
+      result: {
+        rawText: '# Notes',
+        markdown: '# Notes',
+        filename: 'notes.md',
+      },
+    });
+    expect(useOcrStore.getState().entries[0]).not.toHaveProperty('file');
+    expect(useOcrStore.getState().activeHistoryId).toBe('entry-1');
   });
 
   it('run() stores an error when OCR fails', async () => {
@@ -61,6 +85,7 @@ describe('useOcrStore', () => {
       entries: [
         {
           id: 'entry-1',
+          type: 'image',
           file: new File(['x'], 'file.png', { type: 'image/png' }),
           result: { rawText: 'raw', markdown: '# raw', filename: 'file.png' },
           processedAt: new Date(),
@@ -83,12 +108,14 @@ describe('useOcrStore', () => {
       entries: [
         {
           id: 'entry-1',
+          type: 'image',
           file: new File(['1'], 'one.png', { type: 'image/png' }),
           result: { rawText: '1', markdown: '# 1', filename: 'one.png' },
           processedAt: new Date(),
         },
         {
           id: 'entry-2',
+          type: 'image',
           file: new File(['2'], 'two.png', { type: 'image/png' }),
           result: { rawText: '2', markdown: '# 2', filename: 'two.png' },
           processedAt: new Date(),

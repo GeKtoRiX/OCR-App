@@ -1,13 +1,23 @@
 import { create } from 'zustand';
 import {
+  confirmDocumentVocabulary,
   createDocument,
   deleteDocument,
   fetchDocuments,
+  prepareDocumentVocabulary,
   updateDocument,
 } from '../../shared/api';
-import type { SavedDocument } from '../../shared/types';
+import { removeAndReselect } from '../../shared/lib/collection';
+import { toErrorMessage } from '../../shared/lib/errors';
+import type {
+  ConfirmDocumentVocabularyResult,
+  DocumentVocabCandidate,
+  SavedDocument,
+  VocabType,
+} from '../../shared/types';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type VocabularyReviewStatus = 'idle' | 'preparing' | 'reviewing' | 'ready' | 'saving' | 'saved' | 'error';
 
 interface DocumentsState {
   documents: SavedDocument[];
@@ -15,6 +25,12 @@ interface DocumentsState {
   saveStatus: SaveStatus;
   error: string | null;
   activeSavedId: string | null;
+  vocabularyReviewStatus: VocabularyReviewStatus;
+  vocabularyReviewDocumentId: string | null;
+  vocabularyReviewCandidates: DocumentVocabCandidate[];
+  vocabularyReviewError: string | null;
+  vocabularyReviewLlmApplied: boolean;
+  vocabularyConfirmResult: ConfirmDocumentVocabularyResult | null;
 }
 
 interface DocumentsActions {
@@ -24,6 +40,25 @@ interface DocumentsActions {
   remove(id: string): Promise<boolean>;
   selectDocument(id: string): void;
   clearSelection(): void;
+  prepareVocabulary(
+    id: string,
+    options: { llmReview: boolean; targetLang: string; nativeLang: string; selectedIds?: string[] },
+  ): Promise<DocumentVocabCandidate[]>;
+  confirmVocabulary(
+    id: string,
+    options: {
+      targetLang: string;
+      nativeLang: string;
+      items: Array<{
+        candidateId: string;
+        word: string;
+        vocabType: VocabType;
+        translation: string;
+        contextSentence: string;
+      }>;
+    },
+  ): Promise<ConfirmDocumentVocabularyResult | null>;
+  clearVocabularyReview(): void;
 }
 
 export type DocumentsStore = DocumentsState & DocumentsActions;
@@ -34,6 +69,12 @@ const initialState: DocumentsState = {
   saveStatus: 'idle',
   error: null,
   activeSavedId: null,
+  vocabularyReviewStatus: 'idle',
+  vocabularyReviewDocumentId: null,
+  vocabularyReviewCandidates: [],
+  vocabularyReviewError: null,
+  vocabularyReviewLlmApplied: false,
+  vocabularyConfirmResult: null,
 };
 
 export const useDocumentsStore = create<DocumentsStore>((set, get) => {
@@ -63,7 +104,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       } catch (error) {
         set({
           loading: false,
-          error: error instanceof Error ? error.message : 'Failed to load documents',
+          error: toErrorMessage(error, 'Failed to load documents'),
         });
       }
     },
@@ -77,13 +118,14 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
           documents: [document, ...state.documents],
           saveStatus: 'saved',
           error: null,
+          activeSavedId: document.id,
         }));
         scheduleSaveStatusReset();
         return document;
       } catch (error) {
         set({
           saveStatus: 'error',
-          error: error instanceof Error ? error.message : 'Failed to save',
+          error: toErrorMessage(error, 'Failed to save'),
         });
         return null;
       }
@@ -98,7 +140,7 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
         }));
         return document;
       } catch (error) {
-        set({ error: error instanceof Error ? error.message : 'Failed to update' });
+        set({ error: toErrorMessage(error, 'Failed to update') });
         return null;
       }
     },
@@ -106,14 +148,22 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
     async remove(id) {
       try {
         await deleteDocument(id);
-        set((state) => ({
-          documents: state.documents.filter((item) => item.id !== id),
-          activeSavedId: state.activeSavedId === id ? null : state.activeSavedId,
-          error: null,
-        }));
+        set((state) => {
+          const { items: documents, activeId: activeSavedId } = removeAndReselect(
+            state.documents,
+            id,
+            state.activeSavedId,
+          );
+
+          return {
+            documents,
+            activeSavedId,
+            error: null,
+          };
+        });
         return true;
       } catch (error) {
-        set({ error: error instanceof Error ? error.message : 'Failed to delete' });
+        set({ error: toErrorMessage(error, 'Failed to delete') });
         return false;
       }
     },
@@ -125,6 +175,105 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
 
     clearSelection() {
       set({ activeSavedId: null });
+    },
+
+    async prepareVocabulary(id, options) {
+      set({
+        vocabularyReviewStatus: options.llmReview ? 'reviewing' : 'preparing',
+        vocabularyReviewDocumentId: id,
+        vocabularyReviewError: null,
+        vocabularyConfirmResult: null,
+      });
+
+      try {
+        if (options.llmReview) {
+          const reviewed = await prepareDocumentVocabulary({
+            id,
+            llmReview: true,
+            targetLang: options.targetLang,
+            nativeLang: options.nativeLang,
+            selectedCandidateIds: options.selectedIds,
+          });
+
+          set((state) => ({
+            documents: state.documents.map((document) =>
+              document.id === id ? reviewed.document : document,
+            ),
+            vocabularyReviewCandidates: reviewed.candidates,
+            vocabularyReviewStatus: 'ready',
+            vocabularyReviewLlmApplied: reviewed.llmReviewApplied,
+            vocabularyReviewError: null,
+          }));
+
+          return reviewed.candidates;
+        }
+
+        const base = await prepareDocumentVocabulary({
+          id,
+          llmReview: false,
+          targetLang: options.targetLang,
+          nativeLang: options.nativeLang,
+        });
+
+        set((state) => ({
+          documents: state.documents.map((document) =>
+            document.id === id ? base.document : document,
+          ),
+          vocabularyReviewCandidates: base.candidates,
+          vocabularyReviewStatus: 'ready',
+          vocabularyReviewLlmApplied: false,
+          vocabularyReviewError: null,
+        }));
+
+        return base.candidates;
+      } catch (error) {
+        set({
+          vocabularyReviewStatus: 'error',
+          vocabularyReviewError: toErrorMessage(error, 'Failed to prepare vocabulary'),
+        });
+        return [];
+      }
+    },
+
+    async confirmVocabulary(id, options) {
+      set({
+        vocabularyReviewStatus: 'saving',
+        vocabularyReviewError: null,
+      });
+
+      try {
+        const result = await confirmDocumentVocabulary({
+          id,
+          targetLang: options.targetLang,
+          nativeLang: options.nativeLang,
+          items: options.items,
+        });
+
+        set({
+          vocabularyReviewStatus: 'saved',
+          vocabularyConfirmResult: result,
+          vocabularyReviewError: null,
+        });
+
+        return result;
+      } catch (error) {
+        set({
+          vocabularyReviewStatus: 'error',
+          vocabularyReviewError: toErrorMessage(error, 'Failed to save vocabulary'),
+        });
+        return null;
+      }
+    },
+
+    clearVocabularyReview() {
+      set({
+        vocabularyReviewStatus: 'idle',
+        vocabularyReviewDocumentId: null,
+        vocabularyReviewCandidates: [],
+        vocabularyReviewError: null,
+        vocabularyReviewLlmApplied: false,
+        vocabularyConfirmResult: null,
+      });
     },
   };
 });

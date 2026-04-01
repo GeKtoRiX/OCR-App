@@ -24,6 +24,8 @@ tmp/
 tmp/test-db/
 tmp/perf/
 services/ocr/paddleocr-service/models/
+services/nlp/stanza-service/models/
+services/nlp/bert-service/models/
 services/tts/supertone-service/models/
 services/tts/kokoro-service/models/
 services/tts/f5-service/models/

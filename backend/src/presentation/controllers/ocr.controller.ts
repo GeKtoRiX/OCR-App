@@ -1,4 +1,5 @@
 import {
+  OnModuleInit,
   Controller,
   Post,
   UploadedFile,
@@ -28,14 +29,17 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const uploadDir = path.join(os.tmpdir(), 'ocr-uploads');
-fs.mkdirSync(uploadDir, { recursive: true });
 
 @Controller('api')
-export class OcrController {
+export class OcrController implements OnModuleInit {
   constructor(
     private readonly processImage: ProcessImageUseCase,
     private readonly ocrConcurrency: OcrConcurrencyService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await fs.promises.mkdir(uploadDir, { recursive: true });
+  }
 
   @Post('ocr')
   @UseInterceptors(
@@ -73,7 +77,10 @@ export class OcrController {
     if (this.ocrConcurrency.isBackpressured()) {
       if (file.path) this.cleanupFile(file.path);
       throw new HttpException(
-        { statusCode: 429, message: 'Too many OCR requests in progress, try again later' },
+        {
+          statusCode: 429,
+          message: 'Too many OCR requests in progress, try again later',
+        },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -94,6 +101,7 @@ export class OcrController {
         rawText: result.rawText,
         markdown: result.markdown,
         filename: file.originalname,
+        blocks: result.blocks,
       };
     } catch (error) {
       const message =

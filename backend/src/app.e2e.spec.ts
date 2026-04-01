@@ -8,7 +8,11 @@ import { AgentEcosystemService } from './agentic/application/agent-ecosystem.ser
 import { HealthCheckUseCase } from './application/use-cases/health-check.use-case';
 
 const mockOCRService = {
-  extractText: jest.fn().mockResolvedValue('Hello from OCR'),
+  extractText: jest.fn().mockResolvedValue({
+    rawText: 'Hello from OCR',
+    markdown: 'Hello from OCR',
+    blocks: [],
+  }),
 };
 
 const mockStructuringService = {
@@ -17,17 +21,13 @@ const mockStructuringService = {
 
 const mockHealthCheckService = {
   execute: jest.fn().mockResolvedValue({
-    paddleOcrReachable: true,
-    paddleOcrModels: ['det', 'rec'],
-    paddleOcrDevice: 'gpu',
+    ocrReachable: true,
+    ocrModels: ['qwen/qwen3.5-9b'],
+    ocrDevice: 'gpu',
     lmStudioReachable: true,
     lmStudioModels: ['qwen/qwen3.5-9b'],
     superToneReachable: true,
     kokoroReachable: true,
-    f5TtsReachable: true,
-    f5TtsDevice: 'gpu',
-    voxtralReachable: false,
-    voxtralDevice: null,
   }),
 };
 
@@ -220,22 +220,22 @@ describe('App E2E (Image Processing)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockOCRService.extractText.mockResolvedValue('Hello from OCR');
+    mockOCRService.extractText.mockResolvedValue({
+      rawText: 'Hello from OCR',
+      markdown: 'Hello from OCR',
+      blocks: [],
+    });
     mockStructuringService.structureAsMarkdown.mockResolvedValue(
       '# Hello from OCR',
     );
     mockHealthCheckService.execute.mockResolvedValue({
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det', 'rec'],
-      paddleOcrDevice: 'gpu',
+      ocrReachable: true,
+      ocrModels: ['qwen/qwen3.5-9b'],
+      ocrDevice: 'gpu',
       lmStudioReachable: true,
       lmStudioModels: ['qwen/qwen3.5-9b'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu',
-      voxtralReachable: false,
-      voxtralDevice: null,
     });
     mockAgentEcosystemService.execute.mockResolvedValue({
       request: 'Design a multi-agent system',
@@ -415,11 +415,8 @@ describe('App E2E (Image Processing)', () => {
       expect(response.body).toHaveProperty('filename');
       expect(response.body.filename).toBe('test.png');
       expect(response.body.rawText).toBe('Hello from OCR');
-      expect(response.body.markdown).toBe('# Hello from OCR');
+      expect(response.body.markdown).toBe('Hello from OCR');
       expect(mockOCRService.extractText).toHaveBeenCalledTimes(1);
-      expect(mockStructuringService.structureAsMarkdown).toHaveBeenCalledWith(
-        'Hello from OCR',
-      );
     });
 
     it('should return 400 when no file is sent', async () => {
@@ -460,17 +457,13 @@ describe('App E2E (Image Processing)', () => {
         .expect(200);
 
       expect(response.body).toEqual({
-        paddleOcrReachable: true,
-        paddleOcrModels: ['det', 'rec'],
-        paddleOcrDevice: 'gpu',
+        ocrReachable: true,
+        ocrModels: ['qwen/qwen3.5-9b'],
+        ocrDevice: 'gpu',
         lmStudioReachable: true,
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,
         kokoroReachable: true,
-        f5TtsReachable: true,
-        f5TtsDevice: 'gpu',
-        voxtralReachable: false,
-        voxtralDevice: null,
       });
     });
 
@@ -478,7 +471,7 @@ describe('App E2E (Image Processing)', () => {
       for (let i = 0; i < 40; i += 1) {
         const response = await request(app.getHttpServer()).get('/api/health');
         expect(response.status).toBe(200);
-        expect(response.body).toHaveProperty('paddleOcrReachable');
+        expect(response.body).toHaveProperty('ocrReachable');
       }
     });
   });

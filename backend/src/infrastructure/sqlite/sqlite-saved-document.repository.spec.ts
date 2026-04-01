@@ -26,6 +26,9 @@ describe('SqliteSavedDocumentRepository', () => {
     expect(doc.filename).toBe('test.png');
     expect(doc.createdAt).toBeDefined();
     expect(doc.updatedAt).toBe(doc.createdAt);
+    expect(doc.analysisStatus).toBe('idle');
+    expect(doc.analysisError).toBeNull();
+    expect(doc.analysisUpdatedAt).toBeNull();
   });
 
   it('findAll returns documents ordered by updatedAt DESC', async () => {
@@ -71,6 +74,7 @@ describe('SqliteSavedDocumentRepository', () => {
     expect(updated!.markdown).toBe('# Updated');
     expect(updated!.filename).toBe('file.png');
     expect(updated!.updatedAt >= created.updatedAt).toBe(true);
+    expect(updated!.analysisStatus).toBe('idle');
   });
 
   it('update returns null for nonexistent id', async () => {

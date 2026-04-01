@@ -11,6 +11,7 @@ export interface AddVocabularyInput {
 }
 
 export interface UpdateVocabularyInput {
+  word?: string;
   translation: string;
   contextSentence: string;
 }

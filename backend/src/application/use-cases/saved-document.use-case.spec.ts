@@ -7,7 +7,7 @@ describe('SavedDocumentUseCase', () => {
   let mockRepo: jest.Mocked<ISavedDocumentRepository>;
 
   const now = '2024-01-01T00:00:00.000Z';
-  const doc = new SavedDocument('id-1', '# Hello', 'test.png', now, now);
+  const doc = new SavedDocument('id-1', '# Hello', 'test.png', now, now, 'idle', null, null);
 
   beforeEach(() => {
     mockRepo = {
@@ -16,7 +16,11 @@ describe('SavedDocumentUseCase', () => {
       findById: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      replaceVocabularyCandidates: jest.fn(),
+      findVocabularyCandidates: jest.fn(),
+      updateAnalysisStatus: jest.fn(),
     } as jest.Mocked<ISavedDocumentRepository>;
+
     useCase = new SavedDocumentUseCase(mockRepo);
   });
 
@@ -36,6 +40,9 @@ describe('SavedDocumentUseCase', () => {
         filename: 'test.png',
         createdAt: now,
         updatedAt: now,
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
       });
     });
   });
@@ -87,6 +94,9 @@ describe('SavedDocumentUseCase', () => {
         'test.png',
         now,
         '2024-01-02T00:00:00.000Z',
+        'idle',
+        null,
+        null,
       );
       mockRepo.update.mockResolvedValue(updated);
 

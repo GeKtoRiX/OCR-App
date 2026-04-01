@@ -104,17 +104,13 @@ describe('API service', () => {
   describe('checkHealth', () => {
     it('should fetch /api/health and return response', async () => {
       const mockResponse = {
-        paddleOcrReachable: true,
-        paddleOcrModels: ['det', 'rec'],
-        paddleOcrDevice: 'gpu',
+        ocrReachable: true,
+        ocrModels: ['qwen/qwen3.5-9b'],
+        ocrDevice: 'gpu',
         lmStudioReachable: true,
         lmStudioModels: ['qwen/qwen3.5-9b'],
         superToneReachable: true,
         kokoroReachable: true,
-        f5TtsReachable: true,
-        f5TtsDevice: 'gpu',
-        voxtralReachable: false,
-        voxtralDevice: null,
       };
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -188,22 +184,6 @@ describe('API service', () => {
       await expect(generateSpeech('text', settings)).rejects.toThrow('TTS sidecar down');
     });
 
-    it('should reject kokoro requests with Cyrillic text before fetch', async () => {
-      global.fetch = vi.fn();
-
-      await expect(
-        generateSpeech('Привет мир', {
-          engine: 'kokoro',
-          voice: 'af_heart',
-          speed: 1.0,
-        }),
-      ).rejects.toThrow(
-        'Kokoro in this stack supports English voices only. Use another TTS engine for Cyrillic text.',
-      );
-
-      expect(global.fetch).not.toHaveBeenCalled();
-    });
-
     it('should fall back to statusText when json parsing fails', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -214,65 +194,20 @@ describe('API service', () => {
 
       await expect(generateSpeech('text', settings)).rejects.toThrow('Internal Server Error');
     });
-
-    it('should POST FormData for f5 requests', async () => {
-      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
-      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
-
-      const result = await generateSpeech('hello world', {
-        engine: 'f5',
-        refText: 'Reference text',
-        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
-        autoTranscribe: false,
-        removeSilence: true,
-      });
-
-      expect(result).toBe(fakeBlob);
-      expect(global.fetch).toHaveBeenCalledWith(
-        '/api/tts',
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.any(FormData),
-        }),
-      );
-      const form = (global.fetch as any).mock.calls[0][1].body as FormData;
-      expect(form.get('engine')).toBe('f5');
-      expect(form.get('refText')).toBe('Reference text');
-      expect(form.get('autoTranscribe')).toBe('false');
-      expect(form.get('removeSilence')).toBe('true');
-      expect(form.get('refAudio')).toBeInstanceOf(File);
-    });
-
-    it('should POST JSON for voxtral requests', async () => {
-      const fakeBlob = new Blob(['audio'], { type: 'audio/wav' });
-      global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => fakeBlob });
-
-      const result = await generateSpeech('hello world', {
-        engine: 'voxtral',
-        voice: 'casual_male',
-        format: 'wav',
-      });
-
-      expect(result).toBe(fakeBlob);
-      expect(global.fetch).toHaveBeenCalledWith(
-        '/api/tts',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: 'hello world',
-            engine: 'voxtral',
-            voice: 'casual_male',
-            format: 'wav',
-          }),
-        }),
-      );
-    });
   });
 
   describe('createDocument', () => {
     it('should POST to /api/documents and return saved document', async () => {
-      const mockDoc = { id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await createDocument('# Hi', 'a.png');
@@ -300,7 +235,16 @@ describe('API service', () => {
 
   describe('fetchDocuments', () => {
     it('should GET /api/documents and return list', async () => {
-      const mockDocs = [{ id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' }];
+      const mockDocs = [{
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      }];
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDocs });
 
       const result = await fetchDocuments();
@@ -312,7 +256,16 @@ describe('API service', () => {
 
   describe('fetchDocument', () => {
     it('should GET /api/documents/:id and return document', async () => {
-      const mockDoc = { id: '1', markdown: '# Hi', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Hi',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await fetchDocument('1');
@@ -333,7 +286,16 @@ describe('API service', () => {
 
   describe('updateDocument', () => {
     it('should PUT to /api/documents/:id and return updated document', async () => {
-      const mockDoc = { id: '1', markdown: '# Updated', filename: 'a.png', createdAt: '', updatedAt: '' };
+      const mockDoc = {
+        id: '1',
+        markdown: '# Updated',
+        filename: 'a.png',
+        createdAt: '',
+        updatedAt: '',
+        analysisStatus: 'idle',
+        analysisError: null,
+        analysisUpdatedAt: null,
+      };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
       const result = await updateDocument('1', '# Updated');
@@ -472,6 +434,39 @@ describe('API service', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             translation: 'здравствуй',
+            contextSentence: 'Hello again.',
+          }),
+        }),
+      );
+    });
+
+    it('should include the edited word when updating vocabulary', async () => {
+      const mockWord = {
+        id: 'word-1',
+        word: 'hi',
+        vocabType: 'word',
+        translation: 'привет',
+        targetLang: 'en',
+        nativeLang: 'ru',
+        contextSentence: 'Hello again.',
+        sourceDocumentId: null,
+        intervalDays: 2,
+        easinessFactor: 2.6,
+        repetitions: 1,
+        nextReviewAt: '2026-03-22T00:00:00.000Z',
+        createdAt: '2026-03-21T00:00:00.000Z',
+        updatedAt: '2026-03-21T01:00:00.000Z',
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockWord });
+
+      await updateVocabularyWord('word-1', 'привет', 'Hello again.', 'hi');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/vocabulary/word-1',
+        expect.objectContaining({
+          body: JSON.stringify({
+            word: 'hi',
+            translation: 'привет',
             contextSentence: 'Hello again.',
           }),
         }),

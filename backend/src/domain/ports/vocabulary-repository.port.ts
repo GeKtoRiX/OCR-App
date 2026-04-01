@@ -1,5 +1,8 @@
 import { VocabularyWord, VocabType } from '../entities/vocabulary-word.entity';
 
+export const VOCABULARY_DUPLICATE_ERROR =
+  'Word already exists in vocabulary';
+
 export interface CreateVocabularyInput {
   word: string;
   vocabType: VocabType;
@@ -26,6 +29,7 @@ export abstract class IVocabularyRepository {
     nativeLang?: string,
   ): Promise<VocabularyWord[]>;
   abstract findById(id: string): Promise<VocabularyWord | null>;
+  abstract findByIds(ids: string[]): Promise<VocabularyWord[]>;
   abstract findByWord(
     word: string,
     targetLang: string,
@@ -43,6 +47,7 @@ export abstract class IVocabularyRepository {
     id: string,
     translation: string,
     contextSentence: string,
+    word?: string,
   ): Promise<VocabularyWord | null>;
   abstract delete(id: string): Promise<boolean>;
 }

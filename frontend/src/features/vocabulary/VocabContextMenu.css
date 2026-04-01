@@ -1,26 +1,72 @@
 .vocab-context-menu {
   position: fixed;
   z-index: 1000;
-  background: var(--surface-2, #2a2a2a);
+  background: var(--bg-raised, #2a2a2a);
   border: 1px solid var(--border, #444);
   border-radius: 8px;
   padding: 4px 0;
-  min-width: 180px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
-.vocab-context-menu__title {
-  padding: 6px 12px;
-  font-size: 0.75rem;
+/* Main row */
+.vocab-context-menu__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.12s;
+  user-select: none;
+}
+
+.vocab-context-menu__row:hover,
+.vocab-context-menu__row--active {
+  background: var(--accent-dim, rgba(74, 111, 165, 0.2));
+}
+
+.vocab-context-menu__label {
+  font-size: 0.875rem;
+  color: var(--text, #e0e0e0);
+}
+
+.vocab-context-menu__arrow {
+  font-size: 1rem;
   color: var(--text-muted, #888);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  margin-left: 0.5rem;
+  line-height: 1;
+}
+
+/* Submenu */
+.vocab-context-menu__submenu {
+  position: absolute;
+  top: -4px;
+  left: calc(100% + 4px);
+  background: var(--bg-raised, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 1001;
+}
+
+/* If the submenu would go off the right edge, it can be repositioned via JS.
+   As a CSS fallback we also support left-side expansion. */
+@media (max-width: 500px) {
+  .vocab-context-menu__submenu {
+    left: auto;
+    right: calc(100% + 4px);
+  }
 }
 
 .vocab-context-menu__item {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 14px;
   background: none;
   border: none;
   color: var(--text, #e0e0e0);
@@ -28,8 +74,10 @@
   text-align: left;
   cursor: pointer;
   transition: background 0.1s;
+  white-space: nowrap;
 }
 
 .vocab-context-menu__item:hover {
-  background: var(--surface-3, #3a3a3a);
+  background: var(--accent-dim, rgba(74, 111, 165, 0.2));
+  color: var(--accent, #4a6fa5);
 }

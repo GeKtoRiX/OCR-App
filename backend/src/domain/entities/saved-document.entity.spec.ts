@@ -8,6 +8,9 @@ describe('SavedDocument', () => {
       'test.png',
       '2024-01-01T00:00:00.000Z',
       '2024-01-01T00:00:00.000Z',
+      'idle',
+      null,
+      null,
     );
 
     expect(doc.id).toBe('id-1');
@@ -15,5 +18,8 @@ describe('SavedDocument', () => {
     expect(doc.filename).toBe('test.png');
     expect(doc.createdAt).toBe('2024-01-01T00:00:00.000Z');
     expect(doc.updatedAt).toBe('2024-01-01T00:00:00.000Z');
+    expect(doc.analysisStatus).toBe('idle');
+    expect(doc.analysisError).toBeNull();
+    expect(doc.analysisUpdatedAt).toBeNull();
   });
 });

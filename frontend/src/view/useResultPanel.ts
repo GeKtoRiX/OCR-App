@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { OcrResponse, VocabType } from '../shared/types';
 import { copyToClipboard } from '../shared/lib/clipboard';
-import { useTts } from '../features/tts/useTts';
-import { useVocabContextMenu } from '../features/vocabulary/useVocabContextMenu';
+import { useTts } from '../features/tts';
+import { useVocabContextMenu } from '../features/vocabulary';
 
 interface UseResultPanelOptions {
   result: OcrResponse;
@@ -65,7 +65,7 @@ export function useResultPanel({
     contentRef,
     contentText: activeContent,
     existingWordsSet,
-    onAddVocabulary: !isEditing && tab === 'markdown' ? onAddVocabulary : undefined,
+    onAddVocabulary: tab === 'markdown' ? onAddVocabulary : undefined,
   });
 
   return {
@@ -82,6 +82,7 @@ export function useResultPanel({
     contentRef,
     tts,
     vocabCtx,
+    triggerVocabFromEditor: vocabCtx.triggerContextMenu,
     handleCopy,
     showRawTab: !isSavedDocument,
     rawCharCount: editedRaw.length,

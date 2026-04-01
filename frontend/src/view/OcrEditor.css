@@ -1,0 +1,230 @@
+/* ── Editor wrapper (editor + AI panel side by side) ─────── */
+.ocr-editor-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.ocr-editor {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+}
+
+/* ── AI toggle bar ────────────────────────────────────────── */
+.ocr-editor__ai-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.3rem;
+}
+
+.ocr-editor__ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.ocr-editor__ai-btn:hover,
+.ocr-editor__ai-btn--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ── CKEditor Toolbar ─────────────────────────────────────── */
+.ocr-editor .ck.ck-toolbar {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  border-radius: 14px 14px 0 0;
+  padding: 0.2rem 0.4rem;
+  flex-wrap: wrap;
+}
+
+.ocr-editor .ck.ck-toolbar .ck-toolbar__items {
+  flex-wrap: wrap;
+}
+
+.ocr-editor .ck.ck-toolbar .ck-toolbar__items .ck.ck-button {
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 0.2rem;
+  min-width: 24px;
+}
+
+.ocr-editor .ck.ck-toolbar .ck.ck-button:hover:not(.ck-disabled),
+.ocr-editor .ck.ck-toolbar .ck.ck-button.ck-on {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Toolbar separator */
+.ocr-editor .ck.ck-toolbar .ck-toolbar__separator {
+  background: var(--border);
+}
+
+/* Toolbar group (overflow) */
+.ocr-editor .ck.ck-toolbar__grouped-dropdown .ck-dropdown__button {
+  color: var(--text-muted);
+}
+
+/* ── Dropdowns ────────────────────────────────────────────── */
+.ocr-editor .ck.ck-dropdown .ck-dropdown__panel {
+  background: var(--bg-raised);
+  border-color: var(--border);
+}
+
+.ocr-editor .ck.ck-list__item .ck-button {
+  color: var(--text);
+}
+
+.ocr-editor .ck.ck-list__item .ck-button:hover,
+.ocr-editor .ck.ck-list__item .ck-button.ck-on {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Heading dropdown */
+.ocr-editor .ck.ck-heading_heading1 { font-size: 1.2em; font-weight: 700; }
+.ocr-editor .ck.ck-heading_heading2 { font-size: 1.1em; font-weight: 600; }
+.ocr-editor .ck.ck-heading_heading3 { font-size: 1.0em; font-weight: 600; }
+
+/* ── Editable content area ────────────────────────────────── */
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable {
+  background: var(--bg-code);
+  color: #c8d6e0;
+  border-color: var(--border-accent);
+  border-radius: 0 0 14px 14px;
+  min-height: 12rem;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+}
+
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable.ck-focused {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+/* ── Content typography ───────────────────────────────────── */
+.ocr-editor .ck-content p,
+.ocr-editor .ck-content li,
+.ocr-editor .ck-content blockquote {
+  color: #c8d6e0;
+}
+
+.ocr-editor .ck-content h1,
+.ocr-editor .ck-content h2,
+.ocr-editor .ck-content h3,
+.ocr-editor .ck-content h4 {
+  color: var(--text);
+}
+
+.ocr-editor .ck-content blockquote {
+  border-left-color: var(--border-accent);
+}
+
+.ocr-editor .ck-content code {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c8d6e0;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.ocr-editor .ck-content pre {
+  background: rgba(0, 0, 0, 0.25);
+  color: #c8d6e0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* Tables */
+.ocr-editor .ck-content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ocr-editor .ck-content td,
+.ocr-editor .ck-content th {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.6em;
+  color: #c8d6e0;
+}
+
+.ocr-editor .ck-content th {
+  background: var(--bg-raised);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Todo list */
+.ocr-editor .ck-content .todo-list .todo-list__label > input[type=checkbox] {
+  accent-color: var(--accent);
+}
+
+/* Highlight */
+.ocr-editor .ck-content .marker-yellow { background: rgba(255, 220, 50, 0.3); }
+.ocr-editor .ck-content .marker-green  { background: rgba(80, 200, 120, 0.3); }
+.ocr-editor .ck-content .marker-pink   { background: rgba(240, 100, 140, 0.3); }
+.ocr-editor .ck-content .marker-blue   { background: rgba(60, 140, 240, 0.3); }
+
+/* Horizontal rule */
+.ocr-editor .ck-content hr {
+  border: none;
+  border-top: 1px solid var(--border-accent);
+  margin: 1rem 0;
+}
+
+/* ── Tooltip ──────────────────────────────────────────────── */
+.ocr-editor .ck.ck-tooltip .ck-tooltip__text {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.ocr-editor .ck.ck-tooltip .ck-tooltip__text::before {
+  border-bottom-color: var(--bg-raised);
+}
+
+/* ── Balloon / floating toolbar ───────────────────────────── */
+.ck.ck-balloon-panel {
+  background: var(--bg-raised) !important;
+  border-color: var(--border) !important;
+}
+
+.ck.ck-balloon-panel .ck.ck-toolbar {
+  background: var(--bg-raised);
+  border: none;
+}
+
+/* ── Source editing mode ──────────────────────────────────── */
+.ocr-editor .ck-source-editing-area textarea {
+  background: var(--bg-code) !important;
+  color: #c8d6e0 !important;
+  font-family: "Cascadia Code", "Fira Code", monospace !important;
+  font-size: 0.88rem !important;
+  border-color: var(--border-accent) !important;
+}
+
+/* ── Find & Replace panel ─────────────────────────────────── */
+.ocr-editor .ck.ck-find-and-replace-form {
+  background: var(--bg-raised);
+  border-color: var(--border);
+}
+
+.ocr-editor .ck.ck-find-and-replace-form input {
+  background: var(--bg-code);
+  color: var(--text);
+  border-color: var(--border);
+}

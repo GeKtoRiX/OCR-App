@@ -1,13 +1,15 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useDocumentsStore } from './features/documents/documents.store';
-import { POLL_INTERVAL_MS, useHealthStore } from './features/health/health.store';
+import { useHealthStore } from './features/health/health.store';
 import { DropZone } from './features/ocr/DropZone';
 import { useImageUpload } from './features/ocr/useImageUpload';
 import { useOcrStore } from './features/ocr/ocr.store';
+import { TextInputPanel } from './features/ocr/TextInputPanel';
+import { useTextInput } from './features/ocr/useTextInput';
 import { usePracticeStore } from './features/practice/practice.store';
+import { SaveVocabularyOverlay } from './features/vocabulary/SaveVocabularyOverlay';
 import { useVocabularyStore } from './features/vocabulary/vocabulary.store';
-import { checkHealth } from './shared/api';
-import { computeStatus } from './shared/lib/health-status';
+import { formatFileSize } from './shared/lib/format';
 import type { VocabType } from './shared/types';
 import { StatusBar } from './ui/StatusBar';
 import { ResultPanel } from './view/ResultPanel';
@@ -19,20 +21,16 @@ const PracticeView = lazy(() =>
   import('./features/practice/PracticeView').then((module) => ({ default: module.PracticeView })),
 );
 
-function formatFileSize(size: number) {
-  if (size < 1024 * 1024) {
-    return `${Math.round(size / 1024)} KB`;
-  }
-
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export default function App() {
+  const [saveVocabularyDocumentId, setSaveVocabularyDocumentId] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<'image' | 'text'>('image');
   const upload = useImageUpload();
+  const textInput = useTextInput();
   const ocr = useOcrStore();
   const docs = useDocumentsStore();
   const vocab = useVocabularyStore();
   const practice = usePracticeStore();
+  const health = useHealthStore();
   const loadDocuments = docs.load;
   const loadVocabulary = vocab.load;
 
@@ -45,33 +43,8 @@ export default function App() {
   }, [loadVocabulary]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function pollHealth() {
-      try {
-        const health = await checkHealth();
-        if (!cancelled) {
-          useHealthStore.setState(computeStatus(health));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          useHealthStore.setState({
-            color: 'red',
-            tooltip: `Health check failed: ${message}`,
-          });
-        }
-      }
-    }
-
-    void pollHealth();
-    const intervalId = window.setInterval(() => void pollHealth(), POLL_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+    return health.startPolling();
+  }, [health.startPolling]);
 
   const isProcessing = ocr.status === 'loading';
 
@@ -93,21 +66,67 @@ export default function App() {
     ? `${formatFileSize(upload.file.size)} · ${upload.file.type || 'image'}`
     : null;
 
+  const uploadBadge =
+    inputMode === 'image'
+      ? upload.file
+        ? 'File selected'
+        : 'Awaiting file'
+      : textInput.canSubmit
+        ? 'Text ready'
+        : 'Awaiting text';
+
   const handleProcess = () => {
     if (!upload.file) {
       return;
     }
 
+    docs.clearSelection();
     void ocr.run(upload.file);
   };
 
   const handleReset = () => {
-    upload.clear();
+    if (inputMode === 'image') {
+      upload.clear();
+    } else {
+      textInput.clear();
+    }
     ocr.reset();
+  };
+
+  const handleLoadText = () => {
+    if (!textInput.canSubmit) {
+      return;
+    }
+
+    docs.clearSelection();
+    ocr.submitText(textInput.text, textInput.filename);
+    textInput.clear();
+  };
+
+  const handleInputModeChange = (nextMode: 'image' | 'text') => {
+    if (nextMode === inputMode) {
+      return;
+    }
+
+    if (nextMode === 'image') {
+      textInput.clear();
+    } else {
+      upload.clear();
+    }
+
+    setInputMode(nextMode);
   };
 
   const handleSave = (markdown: string, filename: string) => {
     void docs.save(markdown, filename);
+  };
+
+  const handleSaveVocabulary = () => {
+    if (!activeSavedDoc) {
+      return;
+    }
+    docs.clearVocabularyReview();
+    setSaveVocabularyDocumentId(activeSavedDoc.id);
   };
 
   const handleUpdate = docs.activeSavedId
@@ -122,7 +141,13 @@ export default function App() {
     translation: string,
     contextSentence: string,
   ) => {
-    void vocab.addWord(word, vocabType, translation, contextSentence);
+    void vocab.addWord(
+      word,
+      vocabType,
+      translation,
+      contextSentence,
+      activeSavedDoc?.id,
+    );
   };
 
   const handlePracticeReset = () => {
@@ -137,36 +162,86 @@ export default function App() {
           <div className="panel__heading">
             <div>
               <span className="panel__eyebrow">Upload</span>
-              <h2>Prepare source image</h2>
+              <h2>Prepare source</h2>
             </div>
-            <span className={`panel__badge ${upload.file ? 'panel__badge--ready' : ''}`}>
-              {upload.file ? 'File selected' : 'Awaiting file'}
+            <span className={`panel__badge ${uploadBadge !== 'Awaiting file' && uploadBadge !== 'Awaiting text' ? 'panel__badge--ready' : ''}`}>
+              {uploadBadge}
             </span>
           </div>
 
-          <DropZone
-            preview={upload.preview}
-            fileName={upload.file?.name ?? null}
-            fileMeta={fileMeta}
-            onFileChange={upload.onFileChange}
-            onDrop={upload.onDrop}
-            disabled={isProcessing}
-          />
-
-          {upload.error && <div className="inline-alert inline-alert--error">{upload.error}</div>}
-
-          <div className="app__actions">
+          <div className="mode-toggle" role="tablist" aria-label="Input mode">
             <button
-              className="btn btn--primary"
-              onClick={handleProcess}
-              disabled={!upload.file || isProcessing}
+              className={`mode-toggle__btn ${inputMode === 'image' ? 'mode-toggle__btn--active' : ''}`}
+              onClick={() => handleInputModeChange('image')}
+              disabled={isProcessing}
+              role="tab"
+              aria-selected={inputMode === 'image'}
             >
-              {isProcessing ? 'Processing…' : 'Recognize'}
+              Image OCR
             </button>
-            <button className="btn btn--secondary" onClick={handleReset} disabled={isProcessing}>
-              Clear
+            <button
+              className={`mode-toggle__btn ${inputMode === 'text' ? 'mode-toggle__btn--active' : ''}`}
+              onClick={() => handleInputModeChange('text')}
+              disabled={isProcessing}
+              role="tab"
+              aria-selected={inputMode === 'text'}
+            >
+              Paste Text
             </button>
           </div>
+
+          {inputMode === 'image' ? (
+            <>
+              <DropZone
+                preview={upload.preview}
+                fileName={upload.file?.name ?? null}
+                fileMeta={fileMeta}
+                onFileChange={upload.onFileChange}
+                onDrop={upload.onDrop}
+                disabled={isProcessing}
+              />
+
+              {upload.error && <div className="inline-alert inline-alert--error">{upload.error}</div>}
+
+              <div className="app__actions">
+                <button
+                  className="btn btn--primary"
+                  onClick={handleProcess}
+                  disabled={!upload.file || isProcessing}
+                >
+                  {isProcessing ? 'Processing…' : 'Recognize'}
+                </button>
+                <button className="btn btn--secondary" onClick={handleReset} disabled={isProcessing}>
+                  Clear
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <TextInputPanel
+                text={textInput.text}
+                filename={textInput.filename}
+                canSubmit={textInput.canSubmit}
+                disabled={isProcessing}
+                onTextChange={textInput.setText}
+                onFilenameChange={textInput.setFilename}
+                onSubmit={handleLoadText}
+              />
+
+              <div className="app__actions">
+                <button
+                  className="btn btn--primary"
+                  onClick={handleLoadText}
+                  disabled={!textInput.canSubmit || isProcessing}
+                >
+                  Load Text
+                </button>
+                <button className="btn btn--secondary" onClick={handleReset} disabled={isProcessing}>
+                  Clear
+                </button>
+              </div>
+            </>
+          )}
 
           <StatusBar status={ocr.status} error={ocr.error} />
         </section>
@@ -192,9 +267,16 @@ export default function App() {
             <ResultPanel
               result={displayedResult}
               onSave={(markdown) => handleSave(markdown, displayedResult.filename)}
+              onSaveVocabulary={activeSavedDoc ? handleSaveVocabulary : undefined}
               saveStatus={docs.saveStatus}
               onUpdate={handleUpdate}
               isSavedDocument={activeSavedDoc !== null}
+              vocabularyDisabled={
+                activeSavedDoc === null ||
+                docs.vocabularyReviewStatus === 'preparing' ||
+                docs.vocabularyReviewStatus === 'reviewing' ||
+                docs.vocabularyReviewStatus === 'saving'
+              }
               existingWordsSet={vocab.existingWordsSet}
               onAddVocabulary={handleAddVocabulary}
             />
@@ -227,6 +309,40 @@ export default function App() {
             onReset={handlePracticeReset}
           />
         </Suspense>
+      )}
+
+      {activeSavedDoc && saveVocabularyDocumentId === activeSavedDoc.id && (
+        <SaveVocabularyOverlay
+          document={activeSavedDoc}
+          langPair={vocab.langPair}
+          status={docs.vocabularyReviewStatus}
+          candidates={docs.vocabularyReviewCandidates}
+          error={docs.vocabularyReviewError}
+          llmReviewApplied={docs.vocabularyReviewLlmApplied}
+          confirmResult={docs.vocabularyConfirmResult}
+          onPrepare={(llmReview, selectedIds) =>
+            docs.prepareVocabulary(activeSavedDoc.id, {
+              llmReview,
+              targetLang: vocab.langPair.targetLang,
+              nativeLang: vocab.langPair.nativeLang,
+              selectedIds,
+            })
+          }
+          onConfirm={async (items) => {
+            const result = await docs.confirmVocabulary(activeSavedDoc.id, {
+              targetLang: vocab.langPair.targetLang,
+              nativeLang: vocab.langPair.nativeLang,
+              items,
+            });
+            if (result) {
+              await vocab.refresh();
+            }
+          }}
+          onClose={() => {
+            docs.clearVocabularyReview();
+            setSaveVocabularyDocumentId(null);
+          }}
+        />
       )}
     </div>
   );

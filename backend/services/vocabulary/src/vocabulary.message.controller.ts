@@ -6,6 +6,8 @@ import {
   CompletePracticeResponse,
   DeleteVocabularyPayload,
   FindAllVocabularyPayload,
+  FindVocabularyByIdsPayload,
+  FindVocabularyByWordPayload,
   FindDueVocabularyPayload,
   FindVocabularyByIdPayload,
   PracticeSessionsPayload,
@@ -20,9 +22,9 @@ import {
 } from '@ocr-app/shared';
 import { PracticeUseCase } from '@backend/application/use-cases/practice.use-case';
 import {
-  VOCABULARY_DUPLICATE_ERROR,
   VocabularyUseCase,
 } from '@backend/application/use-cases/vocabulary.use-case';
+import { VOCABULARY_DUPLICATE_ERROR } from '@backend/domain/ports/vocabulary-repository.port';
 
 @Controller()
 export class VocabularyMessageController {
@@ -74,6 +76,22 @@ export class VocabularyMessageController {
       throw new RpcException({ statusCode: 404, message: 'Word not found' });
     }
     return word;
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_IDS)
+  async findByIds(payload: FindVocabularyByIdsPayload): Promise<VocabularyItemDto[]> {
+    return this.vocabularyUseCase.findByIds(payload.ids);
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_WORD)
+  async findByWord(
+    payload: FindVocabularyByWordPayload,
+  ): Promise<VocabularyItemDto | null> {
+    return this.vocabularyUseCase.findByWord(
+      payload.word,
+      payload.targetLang,
+      payload.nativeLang,
+    );
   }
 
   @MessagePattern(VOCABULARY_PATTERNS.UPDATE)

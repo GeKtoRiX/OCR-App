@@ -7,9 +7,10 @@ OCR Web App is a local-first OCR and study workflow:
 - OCR extraction from images through PaddleOCR
 - Markdown structuring through LM Studio
 - saved documents in SQLite
+- document-scoped vocabulary candidate review before DB writes
 - vocabulary capture with SM-2 scheduling
 - practice sessions generated through LM Studio
-- TTS through Supertone/Piper, Kokoro, F5, and Voxtral
+- TTS through Supertone/Piper and Kokoro
 - optional agentic planning/deployment endpoints backed by the OpenAI Agents SDK
 
 The current backend runtime is no longer a single NestJS process. It is split into an HTTP gateway plus multiple TCP services.
@@ -27,11 +28,11 @@ The current backend runtime is no longer a single NestJS process. It is split in
 - Frontend: React 18 + Vite 6 + TypeScript
 - Frontend state: Zustand stores plus local orchestration hooks
 - OCR: PaddleOCR Python FastAPI sidecar on `:8000`
+- NLP: optional Stanza FastAPI sidecar on `:8501` with heuristic fallback in the document service
+- NLP scoring: optional BERT FastAPI sidecar on `:8502` (`prajjwal1/bert-tiny`, English-only MLM scoring)
 - TTS:
   - Supertone + Piper sidecar on `:8100`
   - Kokoro sidecar on `:8200`
-  - F5 sidecar on `:8300`
-  - Voxtral adapter on `:8400`
 - LLM: LM Studio OpenAI-compatible API on `:1234`
 - Persistence: SQLite via `better-sqlite3`
 - Agentic: `@openai/agents`
@@ -71,8 +72,8 @@ Main files:
 Each TCP service is a thin Nest app that reuses the implementation under `backend/src`:
 
 - OCR service binds OCR + LM Studio structuring
-- TTS service binds all TTS ports including Voxtral
-- document service binds saved document persistence
+- TTS service binds the configured TTS ports
+- document service binds saved document persistence plus document-scoped vocabulary candidate preparation
 - vocabulary service binds vocabulary + practice persistence and LM Studio exercise generation
 - agentic service binds `backend/src/agentic/*`
 
@@ -123,7 +124,7 @@ The `agentic` bounded context remains isolated from the OCR/TTS/document/vocabul
 1. Gateway receives `GET /api/health`.
 2. Gateway asks OCR service and TTS service over TCP.
 3. OCR service reports PaddleOCR + LM Studio health.
-4. TTS service reports Supertone, Kokoro, F5, and Voxtral health.
+4. TTS service reports Supertone and Kokoro health.
 5. Gateway merges the payloads.
 
 Current response fields:
@@ -135,22 +136,15 @@ Current response fields:
 - `lmStudioModels`
 - `superToneReachable`
 - `kokoroReachable`
-- `f5TtsReachable`
-- `f5TtsDevice`
-- `voxtralReachable`
-- `voxtralDevice`
 
 ### TTS
 
 Gateway `POST /api/tts` accepts:
 
-- JSON for `supertone`, `piper`, `kokoro`, `voxtral`
-- multipart for `f5`
+- JSON for `supertone`, `piper`, `kokoro`
 
 `SynthesizeSpeechUseCase` routes by engine:
 
-- `voxtral` -> `IVoxtralTtsPort`
-- `f5` -> `IF5TtsPort`
 - `kokoro` -> `IKokoroPort`
 - default / `supertone` / `piper` -> `ISupertonePort`
 
@@ -158,13 +152,24 @@ TTS validation at the gateway:
 
 - `text` required
 - max text length `5000`
-- F5 `refAudio` limited to `50 MB`
 
 ### Document / Vocabulary / Practice
 
 - documents and vocabulary/practice are split into separate services
 - document DB defaults to `data/documents.sqlite`
 - vocabulary/practice DB defaults to `data/vocabulary.sqlite`
+- document vocabulary extraction prefers the Stanza sidecar and falls back to heuristics when it is unavailable
+- when `targetLang` is `en`, BERT sidecar scores extracted candidates (MLM probability) and adjusts `selectedByDefault`; degrades silently if unavailable
+
+### Save Vocabulary
+
+1. `Save Document` persists OCR/Markdown output.
+2. `Save Vocabulary` is available only for saved documents.
+3. document service extracts vocabulary candidates via Stanza sidecar (or heuristic fallback).
+4. for English target language, BERT sidecar scores candidates and adjusts `selectedByDefault`.
+5. optional LLM review refines the prepared list.
+6. frontend opens a review overlay with an embedded editor.
+7. only confirmed items are written into the shared vocabulary store.
 
 ### Agentic
 
@@ -207,15 +212,16 @@ Current frontend architecture is not MVVM anymore. It is a feature-oriented layo
 ### Frontend Stores
 
 - `ocr.store.ts`: OCR request state + session history
-- `documents.store.ts`: saved documents + active saved selection
+- `documents.store.ts`: saved documents + active saved selection + vocabulary review state
 - `vocabulary.store.ts`: words, due count, language pair
 - `practice.store.ts`: current session and exercise flow
 - `health.store.ts`: lamp color and tooltip
 
+The result panel now exposes separate `Save Document` and `Save Vocabulary` actions.
+
 ### Frontend TTS Notes
 
-- Voxtral is available as a frontend engine
-- the frontend currently exposes only English Voxtral preset voices
+- the result panel currently exposes Kokoro only
 - Kokoro is blocked client-side for Cyrillic input
 
 ## Launcher Notes
@@ -234,18 +240,23 @@ Shared logic:
 Launcher-side TTS defaults:
 
 - configured in `scripts/linux/tts-models.conf`
-- current default is Voxtral only
+- current default is Kokoro only
 
 ## Important Commands
 
 ```bash
 npm run build
+npm run dev:stanza
+npm run smoke:stanza
+npm run dev:bert
+npm run smoke:bert
 npm run test:frontend
 npm run test:backend
 npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 ```
 
 Manual prod-style boot:
@@ -277,4 +288,3 @@ node backend/dist/gateway/main.js
 - `agentic` still requires `OPENAI_API_KEY`; there is no graceful degraded HTTP response yet.
 - Build artifacts are not source of truth.
 - LM Studio smoke-only mode exists for browser/perf automation via `LM_STUDIO_SMOKE_ONLY=true`.
-- Voxtral remains optional and may stay unavailable on some AMD/ROCm setups.

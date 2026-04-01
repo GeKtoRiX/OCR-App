@@ -11,37 +11,6 @@ const outputPath = path.join(rootDir, 'tmp/perf/browser-benchmark.json');
 const coldIterations = Number(process.env.PERF_COLD_ITERATIONS ?? 1);
 const warmIterations = Number(process.env.PERF_WARM_ITERATIONS ?? 2);
 
-function createReferenceWavBuffer() {
-  const sampleRate = 24_000;
-  const seconds = 1;
-  const sampleCount = sampleRate * seconds;
-  const pcm = Buffer.alloc(sampleCount * 2);
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    const sample = Math.round(
-      10_000 * Math.sin((2 * Math.PI * 440 * index) / sampleRate),
-    );
-    pcm.writeInt16LE(sample, index * 2);
-  }
-
-  const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm.length, 4);
-  wav.write('WAVE', 8);
-  wav.write('fmt ', 12);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * 2, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm.length, 40);
-  pcm.copy(wav, 44);
-  return wav;
-}
-
 async function uploadAndRecognize(page) {
   const startedAt = nowMs();
   await page.locator('input[type="file"]').waitFor({ state: 'attached' });
@@ -64,17 +33,8 @@ async function prepareTtsText(page) {
 }
 
 async function measureTts(page, engine) {
-  const timeout = engine === 'f5' ? 300_000 : 180_000;
+  const timeout = 180_000;
   await page.getByTestId(`tts-engine-${engine}`).click();
-
-  if (engine === 'f5') {
-    await page.locator('#f5-ref-audio').setInputFiles({
-      name: 'reference.wav',
-      mimeType: 'audio/wav',
-      buffer: createReferenceWavBuffer(),
-    });
-    await page.locator('#f5-ref-text').fill('This is a short reference clip.');
-  }
 
   const startedAt = nowMs();
   const responsePromise = page.waitForResponse(
@@ -115,7 +75,6 @@ function summarizeExtra(measurements, iterations, summarizeDurations) {
       supertone: summarizeDurations(collectMetric(measurements, 'supertoneMs'), iterations),
       piper: summarizeDurations(collectMetric(measurements, 'piperMs'), iterations),
       kokoro: summarizeDurations(collectMetric(measurements, 'kokoroMs'), iterations),
-      f5: summarizeDurations(collectMetric(measurements, 'f5Ms'), iterations),
     },
     totalWorkflow: summarizeDurations(collectMetric(measurements, 'totalMs'), iterations),
   };
@@ -178,7 +137,6 @@ async function runWorkflow(iterations) {
         const supertoneMs = await measureTts(page, 'supertone');
         const piperMs = await measureTts(page, 'piper');
         const kokoroMs = await measureTts(page, 'kokoro');
-        const f5Ms = await measureTts(page, 'f5');
 
         measurements[iteration] = {
           pageLoadMs,
@@ -186,14 +144,12 @@ async function runWorkflow(iterations) {
           supertoneMs,
           piperMs,
           kokoroMs,
-          f5Ms,
           totalMs:
             pageLoadMs +
             uploadToResultMs +
             supertoneMs +
             piperMs +
-            kokoroMs +
-            f5Ms,
+            kokoroMs,
         };
       } finally {
         await browser.close();

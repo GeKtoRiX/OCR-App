@@ -3,31 +3,15 @@
  * Replaces unsafe `as` type assertions with shape checks.
  */
 
-export interface PaddleOcrExtractResult {
-  text: string | null;
-}
-
-export function validatePaddleOcrExtractResponse(
-  body: unknown,
-): PaddleOcrExtractResult {
-  if (body === null || typeof body !== 'object') {
-    throw new Error('PaddleOCR response is not an object');
-  }
-  const obj = body as Record<string, unknown>;
-  const text =
-    typeof obj.text === 'string' ? obj.text : null;
-  return { text };
-}
-
-export interface F5HealthBody {
+export interface TtsHealthBody {
   ready: boolean;
   device: 'gpu' | 'cpu' | null;
 }
 
-function validateTtsHealthResponse(
+export function validateTtsHealthResponse(
   body: unknown,
   label: string,
-): F5HealthBody {
+): TtsHealthBody {
   if (body === null || typeof body !== 'object') {
     throw new Error(`${label} health response is not an object`);
   }
@@ -37,16 +21,4 @@ function validateTtsHealthResponse(
     device:
       obj.device === 'gpu' || obj.device === 'cpu' ? obj.device : null,
   };
-}
-
-export function validateF5HealthResponse(body: unknown): F5HealthBody {
-  return validateTtsHealthResponse(body, 'F5');
-}
-
-export interface VoxtralHealthBody extends F5HealthBody {}
-
-export function validateVoxtralHealthResponse(
-  body: unknown,
-): VoxtralHealthBody {
-  return validateTtsHealthResponse(body, 'Voxtral');
 }

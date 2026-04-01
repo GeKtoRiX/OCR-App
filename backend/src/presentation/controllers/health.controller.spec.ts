@@ -12,17 +12,13 @@ describe('HealthController', () => {
 
   it('should return health data when all services are reachable', async () => {
     const result = {
-      paddleOcrReachable: true,
-      paddleOcrModels: ['det'],
-      paddleOcrDevice: 'gpu' as const,
+      ocrReachable: true,
+      ocrModels: ['qwen/qwen3.5-9b'],
+      ocrDevice: null,
       lmStudioReachable: true,
       lmStudioModels: ['qwen/qwen3.5-9b'],
       superToneReachable: true,
       kokoroReachable: true,
-      f5TtsReachable: true,
-      f5TtsDevice: 'gpu' as const,
-      voxtralReachable: false,
-      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 
@@ -33,17 +29,13 @@ describe('HealthController', () => {
 
   it('should return health data with unreachable services (always 200)', async () => {
     const result = {
-      paddleOcrReachable: false,
-      paddleOcrModels: [],
-      paddleOcrDevice: null,
+      ocrReachable: false,
+      ocrModels: [],
+      ocrDevice: null,
       lmStudioReachable: false,
       lmStudioModels: [],
       superToneReachable: false,
       kokoroReachable: false,
-      f5TtsReachable: false,
-      f5TtsDevice: null,
-      voxtralReachable: false,
-      voxtralDevice: null,
     };
     mockHealthCheck.execute.mockResolvedValue(result);
 

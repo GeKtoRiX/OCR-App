@@ -11,26 +11,38 @@ npm install
 Set up the required Python sidecars manually under:
 
 - `services/ocr/paddleocr-service/.venv`
+- `services/nlp/stanza-service/.venv`
+- `services/nlp/bert-service/.venv`
 - `services/tts/supertone-service/.venv`
 - `services/tts/kokoro-service/.venv`
-- `services/tts/f5-service/.venv`
-- `services/tts/voxtral-service/.venv`
+
+For the BERT sidecar, create the venv and pre-download the model (first run downloads ~1.3 GB):
+
+```bash
+cd services/nlp/bert-service
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+BERT_MODEL_DIR="${PWD}/models" .venv/bin/python -c \
+  "from transformers import BertForMaskedLM, BertTokenizerFast; \
+   BertTokenizerFast.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
+   BertForMaskedLM.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
+   print('OK')"
+```
 
 ## Development Commands
 
 ```bash
 npm run dev:frontend
 npm run dev:paddleocr
+npm run dev:stanza
+npm run dev:bert
 npm run dev:supertone
 npm run dev:kokoro
-npm run dev:f5
-npm run dev:voxtral
 
 npm run smoke:paddleocr
+npm run smoke:stanza
+npm run smoke:bert
 npm run smoke:supertone
 npm run smoke:kokoro
-npm run smoke:f5
-npm run smoke:voxtral
 npm run smoke:lmstudio
 npm run smoke:all
 ```
@@ -52,6 +64,7 @@ npm run test:e2e:api
 npm run test:e2e:integration
 npm run test:e2e:launcher
 npm run test:e2e:browser
+npm run test:e2e:browser:vocab
 ```
 
 ## Perf
@@ -63,6 +76,8 @@ npm run perf:phase4
 ```
 
 `test:e2e:browser` and `perf:phase4` may run with `LM_STUDIO_SMOKE_ONLY=true`.
+
+`test:e2e:browser:vocab` is the lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`.
 
 ## Production-Style Start
 
@@ -102,7 +117,7 @@ Lifecycle:
 Notes:
 
 - launcher defaults are controlled in `scripts/linux/tts-models.conf`
-- current default is Voxtral only
+- current default is Kokoro only
 - logs go to `logs/`
 - pid files go to `.pids/`
 
@@ -148,26 +163,6 @@ curl -X POST http://localhost:3000/api/tts \
   --output speech.wav
 ```
 
-### TTS - F5
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -F "text=Hello world" \
-  -F "engine=f5" \
-  -F "refText=Reference transcript" \
-  -F "refAudio=@reference.wav" \
-  --output speech.wav
-```
-
-### TTS - Voxtral
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"voxtral","voice":"casual_female","format":"wav"}' \
-  --output speech.wav
-```
-
 ### Documents
 
 ```bash
@@ -183,6 +178,14 @@ curl -X PUT http://localhost:3000/api/documents/<id> \
   -d '{"markdown":"# Updated"}'
 
 curl -X DELETE http://localhost:3000/api/documents/<id>
+
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/prepare \
+  -H "Content-Type: application/json" \
+  -d '{"llmReview":true,"targetLang":"en","nativeLang":"ru"}'
+
+curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"targetLang":"en","nativeLang":"ru","items":[{"candidateId":"<candidate-id>","word":"give up","vocabType":"phrasal_verb","translation":"сдаваться","contextSentence":"She gave up too early."}]}'
 ```
 
 ### Vocabulary
@@ -237,8 +240,9 @@ curl -X POST http://localhost:3000/api/agents/deploy \
 
 - base OCR requires PaddleOCR and LM Studio
 - TTS is optional for OCR, but the TTS service process still starts in backend-enabled stacks
-- Voxtral is optional and may remain unavailable on unsupported ROCm setups
-- F5 is treated as GPU-only in this project
 - Piper is served through the Supertone sidecar
-- frontend currently exposes only English Voxtral presets
+- the result panel currently exposes Kokoro
 - Kokoro rejects Cyrillic text on the frontend
+- BERT sidecar is optional; vocabulary pipeline degrades gracefully to Stanza-only when it is unavailable
+- BERT scoring is English-only (`targetLang === 'en'`); other languages skip the sidecar call entirely
+- BERT model is cached under `services/nlp/bert-service/models/` and excluded from git

@@ -111,6 +111,16 @@ export function useVocabContextMenu({
     selectionSnapshotRef.current = readRenderedSelectionSnapshot();
   }, [readRenderedSelectionSnapshot]);
 
+  // Direct trigger for CKEditor or other custom selection sources
+  const triggerContextMenu = useCallback(
+    (x: number, y: number, selectedText: string, contextSentence: string) => {
+      if (!onAddVocabulary || !selectedText.trim()) return;
+      setContextMenu({ x, y, selectedText, contextSentence });
+      setVocabForm(null);
+    },
+    [onAddVocabulary],
+  );
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLTextAreaElement>) => {
       if (!onAddVocabulary) return;
@@ -185,14 +195,9 @@ export function useVocabContextMenu({
   );
 
   const handleVocabAdd = useCallback(
-    (translation: string) => {
+    (word: string, translation: string, contextSentence: string, vocabType: VocabType) => {
       if (!vocabForm || !onAddVocabulary) return;
-      onAddVocabulary(
-        vocabForm.selectedText,
-        vocabForm.vocabType,
-        translation,
-        vocabForm.contextSentence,
-      );
+      onAddVocabulary(word, vocabType, translation, contextSentence);
       setVocabForm(null);
     },
     [vocabForm, onAddVocabulary],
@@ -216,6 +221,7 @@ export function useVocabContextMenu({
     handleRenderedContextMenu,
     handleVocabTypeSelect,
     handleVocabAdd,
+    triggerContextMenu,
     closeContextMenu,
     closeVocabForm,
   };

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import compression from 'compression';
 import { Agent, setGlobalDispatcher } from 'undici';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { RpcExceptionFilter } from './filters/rpc-exception.filter';
@@ -13,6 +14,8 @@ setGlobalDispatcher(
   }),
 );
 
+const logger = new Logger('Bootstrap');
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(compression({ threshold: 1024 }));
@@ -20,7 +23,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`OCR Gateway running on http://localhost:${port}`);
+  logger.log(`OCR Gateway running on http://localhost:${port}`);
 }
 
 bootstrap();

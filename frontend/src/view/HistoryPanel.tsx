@@ -23,6 +23,11 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!entry.file) {
+      setThumbUrl(null);
+      return;
+    }
+
     const url = URL.createObjectURL(entry.file);
     setThumbUrl(url);
     return () => URL.revokeObjectURL(url);
@@ -45,7 +50,13 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
       aria-pressed={isActive}
     >
       <div className="history-item__thumb">
-        {thumbUrl && <img src={thumbUrl} alt={entry.result.filename} />}
+        {thumbUrl ? (
+          <img src={thumbUrl} alt={entry.result.filename} />
+        ) : (
+          <span className="history-item__icon" aria-hidden="true">
+            📄
+          </span>
+        )}
       </div>
       <div className="history-item__body">
         <span className="history-item__name">{entry.result.filename}</span>
@@ -59,7 +70,7 @@ function HistoryItem({ entry, isActive, onSelect, onDelete }: ItemProps) {
           event.stopPropagation();
           onDelete(entry.id);
         }}
-        title="Delete screenshot"
+        title="Delete session result"
         aria-label={`Delete ${entry.result.filename}`}
       >
         🗑
@@ -100,7 +111,7 @@ function SavedItem({ doc, isActive, onSelect, onDelete }: SavedItemProps) {
       <div className="history-item__body">
         <span className="history-item__name">{doc.filename}</span>
         <span className="history-item__stats">
-          {doc.markdown.length.toLocaleString('en-US')} chars · {date}
+          {doc.markdown.length.toLocaleString('en-US')} chars · {doc.analysisStatus} · {date}
         </span>
       </div>
       <button
@@ -147,6 +158,10 @@ export function HistoryPanel() {
     void vocab.removeWord(id);
   };
 
+  const handleVocabUpdate = (id: string, word: string, translation: string) => {
+    void vocab.updateWord(id, word, translation);
+  };
+
   const handleStartPractice = () => {
     void practice.start(vocab.langPair.targetLang, vocab.langPair.nativeLang);
   };
@@ -190,8 +205,8 @@ export function HistoryPanel() {
       {tab === 'session' ? (
         ocr.entries.length === 0 ? (
           <div className="history-empty">
-            <p>No images processed yet.</p>
-            <p>Recognize an image to see it here.</p>
+            <p>No session results yet.</p>
+            <p>Recognize an image or load pasted text to see it here.</p>
           </div>
         ) : (
           <ul className="history-list">
@@ -214,20 +229,27 @@ export function HistoryPanel() {
         ) : docs.documents.length === 0 ? (
           <div className="history-empty">
             <p>No saved documents yet.</p>
-            <p>Use 💾 Save to keep OCR results.</p>
+            <p>Use Save Document to keep OCR or pasted text results.</p>
           </div>
         ) : (
-          <ul className="history-list">
-            {docs.documents.map((doc) => (
-              <SavedItem
-                key={doc.id}
-                doc={doc}
-                isActive={doc.id === docs.activeSavedId}
-                onSelect={handleSelectSaved}
-                onDelete={handleDeleteSaved}
-              />
-            ))}
-          </ul>
+          <>
+            {docs.error && (
+              <div className="history-empty" style={{ color: 'var(--error, #f87171)', borderStyle: 'solid' }}>
+                {docs.error}
+              </div>
+            )}
+            <ul className="history-list">
+              {docs.documents.map((doc) => (
+                <SavedItem
+                  key={doc.id}
+                  doc={doc}
+                  isActive={doc.id === docs.activeSavedId}
+                  onSelect={handleSelectSaved}
+                  onDelete={handleDeleteSaved}
+                />
+              ))}
+            </ul>
+          </>
         )
       ) : (
         <VocabularyPanel
@@ -237,6 +259,7 @@ export function HistoryPanel() {
           dueCount={vocab.dueCount}
           onLangPairChange={vocab.setLangPair}
           onDelete={handleVocabDelete}
+          onUpdate={handleVocabUpdate}
           onStartPractice={handleStartPractice}
         />
       )}

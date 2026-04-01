@@ -11,37 +11,6 @@ const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 const coldIterations = Number(process.env.PERF_COLD_ITERATIONS ?? 1);
 const warmIterations = Number(process.env.PERF_WARM_ITERATIONS ?? 3);
 
-function createReferenceWavBuffer() {
-  const sampleRate = 24_000;
-  const seconds = 1;
-  const sampleCount = sampleRate * seconds;
-  const pcm = Buffer.alloc(sampleCount * 2);
-
-  for (let index = 0; index < sampleCount; index += 1) {
-    const sample = Math.round(
-      10_000 * Math.sin((2 * Math.PI * 440 * index) / sampleRate),
-    );
-    pcm.writeInt16LE(sample, index * 2);
-  }
-
-  const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(36 + pcm.length, 4);
-  wav.write('WAVE', 8);
-  wav.write('fmt ', 12);
-  wav.writeUInt32LE(16, 16);
-  wav.writeUInt16LE(1, 20);
-  wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * 2, 28);
-  wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(pcm.length, 40);
-  pcm.copy(wav, 44);
-  return wav;
-}
-
 async function assertOk(response, label) {
   if (!response.ok) {
     throw new Error(`${label} failed with ${response.status}: ${await response.text()}`);
@@ -75,33 +44,19 @@ async function benchmarkOcr() {
 }
 
 async function benchmarkTts(engine) {
-  const referenceWav = createReferenceWavBuffer();
-
   return benchmark(`tts:${engine}`, async () => {
-    const isF5 = engine === 'f5';
-    const request = isF5
-      ? (() => {
-          const form = new FormData();
-          form.set('text', `Performance benchmark for ${engine}.`);
-          form.set('engine', engine);
-          form.set('refText', 'This is a short reference clip.');
-          form.set('autoTranscribe', 'false');
-          form.set('removeSilence', 'false');
-          form.set('refAudio', new Blob([referenceWav], { type: 'audio/wav' }), 'reference.wav');
-          return { method: 'POST', body: form };
-        })()
-      : {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: `Performance benchmark for ${engine}.`,
-            engine,
-            voice: engine === 'kokoro' ? 'af_heart' : engine === 'piper' ? 'en_US-ryan-high' : 'M1',
-            lang: 'en',
-            speed: 1.0,
-            totalSteps: 5,
-          }),
-        };
+    const request = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `Performance benchmark for ${engine}.`,
+        engine,
+        voice: engine === 'kokoro' ? 'af_heart' : engine === 'piper' ? 'en_US-ryan-high' : 'M1',
+        lang: 'en',
+        speed: 1.0,
+        totalSteps: 5,
+      }),
+    };
 
     const response = await fetch(`${baseUrl}/api/tts`, request);
     await assertOk(response, `tts:${engine}`);
@@ -224,7 +179,6 @@ async function main() {
         supertone: await benchmarkTts('supertone'),
         piper: await benchmarkTts('piper'),
         kokoro: await benchmarkTts('kokoro'),
-        f5: await benchmarkTts('f5'),
       },
       documentsCrud: await benchmarkDocuments(),
       vocabularyAndPractice: await benchmarkVocabularyAndPractice(),

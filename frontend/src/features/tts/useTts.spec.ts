@@ -22,11 +22,9 @@ describe('useTts', () => {
 
     expect(result.current.ttsOpen).toBe(false);
     expect(result.current.ttsSettings).toEqual({
-      engine: 'supertone',
-      voice: 'M1',
-      lang: 'en',
-      speed: 1.05,
-      totalSteps: 5,
+      engine: 'kokoro',
+      voice: 'af_heart',
+      speed: 1.0,
     });
     expect(result.current.ttsStatus).toBe('idle');
     expect(result.current.ttsError).toBeNull();
@@ -72,7 +70,7 @@ describe('useTts', () => {
 
       expect(mockGenerateSpeech).toHaveBeenCalledWith(
         'my text',
-        expect.objectContaining({ engine: 'supertone', voice: 'M1' }),
+        expect.objectContaining({ engine: 'kokoro', voice: 'af_heart' }),
       );
     });
 
@@ -154,31 +152,6 @@ describe('useTts', () => {
       expect(result.current.ttsSettings.voice).toBe(result.current.kokoroVoice);
     });
 
-    it('should switch to f5 with reference voice defaults', () => {
-      const { result } = renderHook(() => useTts('text', 'file.png'));
-
-      act(() => { result.current.setEngine('f5'); });
-
-      expect(result.current.ttsSettings).toEqual({
-        engine: 'f5',
-        refText: '',
-        refAudioFile: null,
-        autoTranscribe: false,
-        removeSilence: false,
-      });
-    });
-
-    it('should switch to voxtral with preset voice defaults', () => {
-      const { result } = renderHook(() => useTts('text', 'file.png'));
-
-      act(() => { result.current.setEngine('voxtral'); });
-
-      expect(result.current.ttsSettings).toEqual({
-        engine: 'voxtral',
-        voice: 'casual_female',
-        format: 'wav',
-      });
-    });
   });
 
   it('should sync custom piperVoice into settings for the API call', async () => {
@@ -221,107 +194,20 @@ describe('useTts', () => {
     );
   });
 
-  it('should send f5 settings to the API call', async () => {
-    mockGenerateSpeech.mockResolvedValue(new Blob());
-    const refAudioFile = new File(['wav'], 'reference.wav', { type: 'audio/wav' });
-
-    const { result } = renderHook(() => useTts('text', 'file.png'));
+  it('should reject Kokoro generation for Cyrillic text before calling the API', async () => {
+    const { result } = renderHook(() => useTts('Привет мир', 'file.png'));
 
     act(() => {
-      result.current.setEngine('f5');
-      result.current.setTtsSettings({
-        engine: 'f5',
-        refText: 'Reference text',
-        refAudioFile,
-        autoTranscribe: false,
-        removeSilence: true,
-      });
+      result.current.setEngine('kokoro');
     });
 
     await act(async () => {
       await result.current.handleGenerate();
     });
 
-    expect(mockGenerateSpeech).toHaveBeenCalledWith(
-      'text',
-      expect.objectContaining({
-        engine: 'f5',
-        refText: 'Reference text',
-        refAudioFile,
-        autoTranscribe: false,
-        removeSilence: true,
-      }),
-    );
-  });
-
-  it('should sync voxtralVoice into settings for the API call', async () => {
-    mockGenerateSpeech.mockResolvedValue(new Blob());
-
-    const { result } = renderHook(() => useTts('text', 'file.png'));
-
-    act(() => {
-      result.current.setEngine('voxtral');
-      result.current.setVoxtralVoice('casual_male');
-    });
-
-    await act(async () => {
-      await result.current.handleGenerate();
-    });
-
-    expect(mockGenerateSpeech).toHaveBeenCalledWith(
-      'text',
-      expect.objectContaining({
-        engine: 'voxtral',
-        voice: 'casual_male',
-        format: 'wav',
-      }),
-    );
-  });
-
-  it('should disable f5 generation until required fields are provided', () => {
-    const { result } = renderHook(() => useTts('text', 'file.png'));
-
-    act(() => { result.current.setEngine('f5'); });
-    expect(result.current.canGenerate).toBe(false);
-
-    act(() => {
-      result.current.setTtsSettings({
-        engine: 'f5',
-        refText: 'Reference text',
-        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
-        autoTranscribe: false,
-        removeSilence: false,
-      });
-    });
-
-    expect(result.current.canGenerate).toBe(true);
-  });
-
-  it('should allow f5 generation with autoTranscribe and no refText', () => {
-    const { result } = renderHook(() => useTts('text', 'file.png'));
-
-    act(() => {
-      result.current.setEngine('f5');
-      result.current.setTtsSettings({
-        engine: 'f5',
-        refText: '',
-        refAudioFile: new File(['wav'], 'reference.wav', { type: 'audio/wav' }),
-        autoTranscribe: true,
-        removeSilence: false,
-      });
-    });
-
-    expect(result.current.canGenerate).toBe(true);
-  });
-
-  it('should allow voxtral generation without reference audio', () => {
-    const { result } = renderHook(() => useTts('text', 'file.png'));
-
-    act(() => {
-      result.current.setEngine('voxtral');
-    });
-
-    expect(result.current.canGenerate).toBe(true);
+    expect(result.current.ttsStatus).toBe('error');
+    expect(result.current.ttsError).toContain('Kokoro');
+    expect(mockGenerateSpeech).not.toHaveBeenCalled();
   });
 
   it('should revoke blob URL on unmount', async () => {

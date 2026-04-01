@@ -83,9 +83,9 @@
 - Decision: create `backend/shared` as workspace package `@ocr-app/shared` and move process-boundary exports there.
 - Consequence: gateway and services communicate only through shared contracts; contract changes now require synchronized updates across gateway, services, frontend wrappers, and documentation.
 
-## ADR-012: Keep Voxtral Optional And Non-Blocking For The Baseline Stack
+## ADR-012: BERT MLM Sidecar For Contextual Vocabulary Scoring (English Only)
 
 - Status: accepted
-- Context: Voxtral adds significant capability, but its local ROCm path is still more fragile than the baseline OCR and non-Voxtral TTS flows.
-- Decision: integrate Voxtral as a separate optional adapter sidecar and expose its health independently without making it block baseline stack readiness.
-- Consequence: health payloads include `voxtralReachable` and `voxtralDevice`, the frontend can expose Voxtral separately, and launcher defaults can enable or disable it without redefining the baseline OCR path.
+- Context: the Stanza + wordfreq pipeline filters vocabulary candidates by frequency but lacks context sensitivity. A common word used in an unusual idiom or phrase has a low MLM probability — making it a better study candidate than frequency alone would indicate. `bert-large-cased` (340 M parameters, cased for proper-noun accuracy) was chosen as the scorer model.
+- Decision: add `services/nlp/bert-service/` as a new optional FastAPI sidecar (port `:8502`). The `DocumentVocabularyExtractorService` calls `POST /score` with raw Stanza payloads before constructing `DocumentVocabCandidate` objects. Words with `bertProb >= 0.15` get `selectedByDefault: false`. The call is skipped when `targetLang !== 'en'` and degrades silently on any network or model failure.
+- Consequence: the vocabulary extraction pipeline now has three ordered stages — Stanza (or heuristic) → BERT scoring → candidate build. BERT scoring is English-only. The 1.3 GB model cache must be excluded from git and pre-downloaded once per installation. Launcher scripts must start the sidecar as an optional Step 1e.
