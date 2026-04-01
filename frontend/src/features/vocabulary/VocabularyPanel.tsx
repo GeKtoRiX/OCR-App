@@ -76,10 +76,10 @@ export function VocabularyPanel({
         <button
           className="vocab-panel__practice-btn"
           onClick={onStartPractice}
-          disabled={dueCount === 0}
+          disabled={words.length === 0}
           data-testid="vocab-practice-button"
         >
-          Practice {dueCount > 0 && <span className="vocab-panel__badge">{dueCount}</span>}
+          Practice {words.length > 0 && <span className="vocab-panel__badge">{words.length}</span>}
         </button>
       </div>
 

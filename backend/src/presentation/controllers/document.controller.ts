@@ -12,6 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { SavedDocumentUseCase } from '../../application/use-cases/saved-document.use-case';
+import { hasDocumentContent } from '@ocr-app/shared';
 import {
   CreateDocumentDto,
   UpdateDocumentDto,
@@ -30,14 +31,15 @@ export class DocumentController {
   async create(
     @Body() body: CreateDocumentDto,
   ): Promise<SavedDocumentResponseDto> {
-    if (!body.markdown || !body.markdown.trim()) {
-      throw new BadRequestException('markdown is required');
+    if (!hasDocumentContent(body)) {
+      throw new BadRequestException('markdown or richTextHtml is required');
     }
     if (!body.filename || !body.filename.trim()) {
       throw new BadRequestException('filename is required');
     }
     return this.savedDocumentUseCase.create({
       markdown: body.markdown,
+      richTextHtml: body.richTextHtml,
       filename: body.filename,
     });
   }
@@ -63,11 +65,12 @@ export class DocumentController {
     @Param('id') id: string,
     @Body() body: UpdateDocumentDto,
   ): Promise<SavedDocumentResponseDto> {
-    if (!body.markdown || !body.markdown.trim()) {
-      throw new BadRequestException('markdown is required');
+    if (!hasDocumentContent(body)) {
+      throw new BadRequestException('markdown or richTextHtml is required');
     }
     const doc = await this.savedDocumentUseCase.update(id, {
       markdown: body.markdown,
+      richTextHtml: body.richTextHtml,
     });
     if (!doc) {
       throw new HttpException('Document not found', HttpStatus.NOT_FOUND);

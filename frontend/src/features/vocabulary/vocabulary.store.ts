@@ -64,7 +64,7 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
     try {
       const [words, dueWords] = await Promise.all([
         fetchVocabulary(langPair.targetLang, langPair.nativeLang),
-        fetchDueVocabulary(),
+        fetchDueVocabulary(langPair.targetLang, langPair.nativeLang),
       ]);
 
       set({

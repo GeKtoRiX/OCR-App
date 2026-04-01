@@ -1,9 +1,44 @@
 import type { ExerciseType } from '../../domain/entities/exercise-attempt.entity';
+import type { PracticeBatchMode } from '@ocr-app/shared';
+
+export type { PracticeBatchMode };
 
 export interface StartPracticeInput {
   targetLang?: string;
   nativeLang?: string;
   wordLimit?: number;
+}
+
+export interface PracticePreviewWordOutput {
+  id: string;
+  word: string;
+  translation: string;
+  contextSentence: string;
+  attemptCount: number;
+  incorrectCount: number;
+}
+
+export interface PracticePlanInput {
+  targetLang?: string;
+  nativeLang?: string;
+  wordLimit?: number;
+}
+
+export interface PracticePlanOutput {
+  sessionId: string;
+  batchSize: number;
+  initialBatchMode: Exclude<PracticeBatchMode, 'retry'>;
+  allWords: PracticePreviewWordOutput[];
+  previewWords: PracticePreviewWordOutput[];
+}
+
+export interface GeneratePracticeRoundInput {
+  sessionId: string;
+  vocabularyIds: string[];
+}
+
+export interface GeneratePracticeRoundOutput {
+  exercises: ExerciseOutput[];
 }
 
 export interface SubmitAnswerInput {

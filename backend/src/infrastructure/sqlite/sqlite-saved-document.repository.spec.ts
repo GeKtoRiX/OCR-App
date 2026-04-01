@@ -19,10 +19,15 @@ describe('SqliteSavedDocumentRepository', () => {
   });
 
   it('creates a document and returns it', async () => {
-    const doc = await repo.create('# Hello', 'test.png');
+    const doc = await repo.create({
+      markdown: '# Hello',
+      richTextHtml: null,
+      filename: 'test.png',
+    });
 
     expect(doc.id).toBeDefined();
     expect(doc.markdown).toBe('# Hello');
+    expect(doc.richTextHtml).toBeNull();
     expect(doc.filename).toBe('test.png');
     expect(doc.createdAt).toBeDefined();
     expect(doc.updatedAt).toBe(doc.createdAt);
@@ -32,10 +37,10 @@ describe('SqliteSavedDocumentRepository', () => {
   });
 
   it('findAll returns documents ordered by updatedAt DESC', async () => {
-    const first = await repo.create('First', 'a.png');
-    await repo.create('Second', 'b.png');
+    const first = await repo.create({ markdown: 'First', richTextHtml: null, filename: 'a.png' });
+    await repo.create({ markdown: 'Second', richTextHtml: null, filename: 'b.png' });
     // Update the first doc so its updatedAt is newest
-    await repo.update(first.id, 'First updated');
+    await repo.update(first.id, { markdown: 'First updated', richTextHtml: null });
 
     const docs = await repo.findAll();
 
@@ -50,7 +55,7 @@ describe('SqliteSavedDocumentRepository', () => {
   });
 
   it('findById returns document when found', async () => {
-    const created = await repo.create('# Test', 'img.png');
+    const created = await repo.create({ markdown: '# Test', richTextHtml: null, filename: 'img.png' });
 
     const found = await repo.findById(created.id);
 
@@ -66,9 +71,9 @@ describe('SqliteSavedDocumentRepository', () => {
   });
 
   it('update modifies markdown and updatedAt', async () => {
-    const created = await repo.create('original', 'file.png');
+    const created = await repo.create({ markdown: 'original', richTextHtml: null, filename: 'file.png' });
 
-    const updated = await repo.update(created.id, '# Updated');
+    const updated = await repo.update(created.id, { markdown: '# Updated', richTextHtml: null });
 
     expect(updated).not.toBeNull();
     expect(updated!.markdown).toBe('# Updated');
@@ -78,13 +83,13 @@ describe('SqliteSavedDocumentRepository', () => {
   });
 
   it('update returns null for nonexistent id', async () => {
-    const result = await repo.update('missing', 'text');
+    const result = await repo.update('missing', { markdown: 'text', richTextHtml: null });
 
     expect(result).toBeNull();
   });
 
   it('delete removes document and returns true', async () => {
-    const created = await repo.create('to delete', 'del.png');
+    const created = await repo.create({ markdown: 'to delete', richTextHtml: null, filename: 'del.png' });
 
     const deleted = await repo.delete(created.id);
 
@@ -96,5 +101,15 @@ describe('SqliteSavedDocumentRepository', () => {
     const result = await repo.delete('missing');
 
     expect(result).toBe(false);
+  });
+
+  it('persists richTextHtml when provided', async () => {
+    const created = await repo.create({
+      markdown: 'Hello world',
+      richTextHtml: '<p><strong>Hello</strong> world</p>',
+      filename: 'rich.html',
+    });
+
+    expect(created.richTextHtml).toBe('<p><strong>Hello</strong> world</p>');
   });
 });

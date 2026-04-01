@@ -56,6 +56,7 @@ export default function App() {
     ? {
         rawText: activeSavedDoc.markdown,
         markdown: activeSavedDoc.markdown,
+        richTextHtml: activeSavedDoc.richTextHtml,
         filename: activeSavedDoc.filename,
       }
     : ocr.activeHistoryId !== null
@@ -117,8 +118,8 @@ export default function App() {
     setInputMode(nextMode);
   };
 
-  const handleSave = (markdown: string, filename: string) => {
-    void docs.save(markdown, filename);
+  const handleSave = (input: { markdown?: string; richTextHtml?: string | null }, filename: string) => {
+    void docs.save({ ...input, filename });
   };
 
   const handleSaveVocabulary = () => {
@@ -130,8 +131,8 @@ export default function App() {
   };
 
   const handleUpdate = docs.activeSavedId
-    ? (markdown: string) => {
-        void docs.update(docs.activeSavedId!, markdown);
+    ? (input: { markdown?: string; richTextHtml?: string | null }) => {
+        void docs.update(docs.activeSavedId!, input);
       }
     : undefined;
 
@@ -266,7 +267,7 @@ export default function App() {
           {displayedResult ? (
             <ResultPanel
               result={displayedResult}
-              onSave={(markdown) => handleSave(markdown, displayedResult.filename)}
+              onSave={(input) => handleSave(input, displayedResult.filename)}
               onSaveVocabulary={activeSavedDoc ? handleSaveVocabulary : undefined}
               saveStatus={docs.saveStatus}
               onUpdate={handleUpdate}
@@ -303,7 +304,11 @@ export default function App() {
             isLastExercise={practice.isLastExercise}
             analysis={practice.analysis}
             error={practice.error}
+            previewWords={practice.previewWords}
+            currentBatchMode={practice.currentBatchMode}
+            hasRecordedAnswers={practice.answers.length > 0}
             onAnswer={(answer) => void practice.answer(answer)}
+            onReady={() => void practice.ready()}
             onNext={practice.next}
             onComplete={() => void practice.complete()}
             onReset={handlePracticeReset}

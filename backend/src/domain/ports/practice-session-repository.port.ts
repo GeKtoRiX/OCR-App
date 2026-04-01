@@ -1,6 +1,12 @@
 import { PracticeSession } from '../entities/practice-session.entity';
 import { ExerciseAttempt, ExerciseType, ErrorPosition } from '../entities/exercise-attempt.entity';
 
+export interface VocabularyAttemptStats {
+  vocabularyId: string;
+  attemptCount: number;
+  incorrectCount: number;
+}
+
 export abstract class IPracticeSessionRepository {
   abstract createSession(
     targetLang: string,
@@ -29,6 +35,9 @@ export abstract class IPracticeSessionRepository {
   abstract findAttemptsByVocabulary(
     vocabularyId: string,
   ): Promise<ExerciseAttempt[]>;
+  abstract findVocabularyStats(
+    vocabularyIds: string[],
+  ): Promise<VocabularyAttemptStats[]>;
   abstract updateAttemptMnemonic(
     attemptId: string,
     mnemonicSentence: string,

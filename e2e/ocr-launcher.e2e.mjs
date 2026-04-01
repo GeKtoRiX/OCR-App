@@ -226,6 +226,10 @@ function ttsInactivePorts(conf) {
   return ports;
 }
 
+function ocrStartsSupertone(conf) {
+  return conf.TTS_ENABLE_SUPERTONE || conf.TTS_ENABLE_KOKORO;
+}
+
 // ─── Readiness checks ──────────────────────────────────────────────────────────
 
 async function checkEnabledTtsEngines(conf) {
@@ -265,6 +269,15 @@ async function waitForOcrReady(launcher) {
   const conf = await parseTtsConf();
 
   await waitForCondition(async () => {
+    if (ocrStartsSupertone(conf)) {
+      const r = await fetchJson(`http://127.0.0.1:${SUPERTONE_PORT}/health`);
+      assert.equal(r.ready, true, 'Supertone must report ready');
+      assert.equal(r.piper?.ready, true, 'Piper must report ready');
+      assert.ok(
+        Array.isArray(r.piper?.available_voices) && r.piper.available_voices.length > 0,
+        'Piper must expose at least one voice',
+      );
+    }
     if (conf.TTS_ENABLE_KOKORO) {
       const r = await fetchJson(`http://127.0.0.1:${KOKORO_PORT}/health`);
       assert.equal(r.ready, true, 'Kokoro must report ready');
@@ -383,10 +396,11 @@ test('ocr.sh starts OCR mode when LM Studio is ready', { timeout: 12 * 60 * 1000
     await waitForOcrReady(ocr);
 
     const activePorts = [LM_PORT, APP_PORT];
+    if (ocrStartsSupertone(conf)) activePorts.push(SUPERTONE_PORT);
     if (conf.TTS_ENABLE_KOKORO) activePorts.push(KOKORO_PORT);
 
     const closedPorts = [];
-    if (!conf.TTS_ENABLE_SUPERTONE) closedPorts.push(SUPERTONE_PORT);
+    if (!ocrStartsSupertone(conf)) closedPorts.push(SUPERTONE_PORT);
     if (!conf.TTS_ENABLE_KOKORO) closedPorts.push(KOKORO_PORT);
 
     await assertPortsState(activePorts, closedPorts, 'ocr-mode');

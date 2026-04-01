@@ -77,20 +77,41 @@ describe('VocabularyPanel', () => {
     expect(onLangPairChange).toHaveBeenLastCalledWith({ targetLang: 'en', nativeLang: 'de' });
   });
 
-  it('disables practice button when no words are due', () => {
-    render(<VocabularyPanel {...baseProps} dueCount={0} />);
+  it('disables practice button when there are no words', () => {
+    render(<VocabularyPanel {...baseProps} />);
 
     expect(screen.getByText('Practice')).toBeDisabled();
   });
 
-  it('starts practice when due words exist', async () => {
+  it('starts practice when vocabulary words exist', async () => {
     const user = userEvent.setup();
     const onStartPractice = vi.fn();
-    render(<VocabularyPanel {...baseProps} dueCount={3} onStartPractice={onStartPractice} />);
+    render(
+      <VocabularyPanel
+        {...baseProps}
+        onStartPractice={onStartPractice}
+        words={[{
+          id: 'word-1',
+          word: 'hello',
+          vocabType: 'word',
+          translation: 'привет',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: 'Hello there.',
+          sourceDocumentId: null,
+          intervalDays: 2,
+          easinessFactor: 2.5,
+          repetitions: 1,
+          nextReviewAt: '2026-03-21T00:00:00.000Z',
+          createdAt: '2026-03-21T00:00:00.000Z',
+          updatedAt: '2026-03-21T00:00:00.000Z',
+        }]}
+      />,
+    );
 
     const practiceButton = screen.getByText('Practice');
     expect(practiceButton).not.toBeDisabled();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
 
     await user.click(practiceButton);
 

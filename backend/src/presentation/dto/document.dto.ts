@@ -1,15 +1,18 @@
 export class CreateDocumentDto {
-  markdown!: string;
+  markdown?: string;
+  richTextHtml?: string | null;
   filename!: string;
 }
 
 export class UpdateDocumentDto {
-  markdown!: string;
+  markdown?: string;
+  richTextHtml?: string | null;
 }
 
 export class SavedDocumentResponseDto {
   id!: string;
   markdown!: string;
+  richTextHtml!: string | null;
   filename!: string;
   createdAt!: string;
   updatedAt!: string;

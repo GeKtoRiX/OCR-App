@@ -7,6 +7,7 @@ import {
   DOCUMENT_PATTERNS,
   DeleteDocumentPayload,
   FindDocumentByIdPayload,
+  hasDocumentContent,
   PrepareDocumentVocabularyPayload,
   PreparedDocumentVocabularyDto,
   SavedDocumentDto,
@@ -26,8 +27,8 @@ export class DocumentMessageController {
   async create(
     payload: CreateDocumentPayload,
   ): Promise<SavedDocumentDto> {
-    if (!payload.markdown?.trim()) {
-      throw new RpcException({ statusCode: 400, message: 'markdown is required' });
+    if (!hasDocumentContent(payload)) {
+      throw new RpcException({ statusCode: 400, message: 'markdown or richTextHtml is required' });
     }
     if (!payload.filename?.trim()) {
       throw new RpcException({ statusCode: 400, message: 'filename is required' });
@@ -55,8 +56,8 @@ export class DocumentMessageController {
   async update(
     payload: UpdateDocumentPayload,
   ): Promise<SavedDocumentDto> {
-    if (!payload.markdown?.trim()) {
-      throw new RpcException({ statusCode: 400, message: 'markdown is required' });
+    if (!hasDocumentContent(payload)) {
+      throw new RpcException({ statusCode: 400, message: 'markdown or richTextHtml is required' });
     }
     const doc = await this.savedDocumentUseCase.update(payload.id, payload);
     if (!doc) {

@@ -151,13 +151,13 @@ describe('VocabularyUseCase', () => {
   it('findDueForReview uses default limit of 10', async () => {
     await useCase.findDueForReview();
 
-    expect(repo.findDueForReview).toHaveBeenCalledWith(10);
+    expect(repo.findDueForReview).toHaveBeenCalledWith(10, undefined, undefined);
   });
 
   it('findDueForReview passes through an explicit limit', async () => {
     await useCase.findDueForReview(3);
 
-    expect(repo.findDueForReview).toHaveBeenCalledWith(3);
+    expect(repo.findDueForReview).toHaveBeenCalledWith(3, undefined, undefined);
   });
 
   it('update returns null when not found', async () => {

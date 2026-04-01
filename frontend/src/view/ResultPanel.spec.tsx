@@ -15,22 +15,22 @@ vi.mock('ckeditor5', () => {
   const stub = () => class {};
   return {
     Alignment: stub(), Autoformat: stub(), AutoImage: stub(), AutoLink: stub(),
-    AutoMediaEmbed: stub(), BlockQuote: stub(), Bold: stub(),
-    ClassicEditor: stub(), Code: stub(), CodeBlock: stub(),
-    Essentials: stub(), FindAndReplace: stub(), Heading: stub(),
-    Highlight: stub(), HorizontalLine: stub(),
-    Image: stub(), ImageCaption: stub(), ImageInsert: stub(),
-    ImageResize: stub(), ImageStyle: stub(), ImageToolbar: stub(),
-    Indent: stub(), IndentBlock: stub(), Italic: stub(),
-    Link: stub(), LinkImage: stub(), List: stub(), ListProperties: stub(),
-    Markdown: stub(), MediaEmbed: stub(), PageBreak: stub(), Paragraph: stub(),
-    PasteFromOffice: stub(), PictureEditing: stub(), RemoveFormat: stub(),
-    SelectAll: stub(), ShowBlocks: stub(), SourceEditing: stub(),
-    SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
-    Strikethrough: stub(), Subscript: stub(), Superscript: stub(),
-    Table: stub(), TableCaption: stub(), TableCellProperties: stub(),
-    TableColumnResize: stub(), TableProperties: stub(), TableToolbar: stub(),
-    TodoList: stub(), Underline: stub(),
+    AutoMediaEmbed: stub(), Autosave: stub(), BlockQuote: stub(), Bold: stub(),
+    Bookmark: stub(), ClassicEditor: stub(), Code: stub(), CodeBlock: stub(), Essentials: stub(),
+    FindAndReplace: stub(), FontBackgroundColor: stub(), FontColor: stub(),
+    FontFamily: stub(), FontSize: stub(), Fullscreen: stub(), GeneralHtmlSupport: stub(), Heading: stub(),
+    Highlight: stub(), HorizontalLine: stub(), HtmlComment: stub(), HtmlEmbed: stub(),
+    Image: stub(), ImageCaption: stub(), ImageInsert: stub(), ImageResize: stub(),
+    ImageStyle: stub(), ImageToolbar: stub(), ImageUpload: stub(), Indent: stub(),
+    IndentBlock: stub(), Italic: stub(), Link: stub(), LinkImage: stub(),
+    List: stub(), ListProperties: stub(), MediaEmbed: stub(), Mention: stub(),
+    PageBreak: stub(), Paragraph: stub(), PasteFromOffice: stub(), PictureEditing: stub(),
+    RemoveFormat: stub(), SelectAll: stub(), ShowBlocks: stub(), SimpleUploadAdapter: stub(),
+    SourceEditing: stub(), SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
+    Strikethrough: stub(), Style: stub(), Subscript: stub(), Superscript: stub(),
+    Table: stub(), TableCaption: stub(), TableCellProperties: stub(), TableColumnResize: stub(),
+    TableProperties: stub(), TableToolbar: stub(), TextPartLanguage: stub(), TodoList: stub(), Underline: stub(),
+    WordCount: stub(),
   };
 });
 
@@ -60,6 +60,7 @@ describe('ResultPanel', () => {
   const result = {
     rawText: 'Raw text content',
     markdown: '# Markdown content',
+    richTextHtml: null,
     filename: 'test.png',
   };
 
@@ -73,7 +74,7 @@ describe('ResultPanel', () => {
   it('should show markdown tab content by default', () => {
     render(<ResultPanel result={result} />);
 
-    expect(screen.getByText('# Markdown content')).toBeInTheDocument();
+    expect(screen.getByText('Markdown content')).toBeInTheDocument();
   });
 
   it('should switch to raw text tab', async () => {
@@ -89,7 +90,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel result={result} />);
     fireEvent.click(screen.getByText('Copy'));
 
-    expect(mockCopy).toHaveBeenCalledWith('# Markdown content');
+    expect(mockCopy).toHaveBeenCalledWith('Markdown content');
   });
 
   it('should copy raw text when on raw tab', () => {
@@ -103,7 +104,7 @@ describe('ResultPanel', () => {
   it('should render tab buttons and filename', () => {
     render(<ResultPanel result={result} />);
 
-    expect(screen.getByText('Markdown')).toBeInTheDocument();
+    expect(screen.getByText('Formatted')).toBeInTheDocument();
     expect(screen.getByText('Raw Text')).toBeInTheDocument();
     expect(screen.getByText('test.png')).toBeInTheDocument();
   });
@@ -112,7 +113,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel result={result} />);
 
     expect(screen.getByText(/Raw:/)).toBeInTheDocument();
-    expect(screen.getByText(/Markdown:/)).toBeInTheDocument();
+    expect(screen.getByText(/Formatted:/)).toBeInTheDocument();
   });
 
   it('should enter edit mode and show textarea', async () => {
@@ -137,9 +138,9 @@ describe('ResultPanel', () => {
   it('should reset to original content when result prop changes', () => {
     const { rerender } = render(<ResultPanel result={result} />);
 
-    rerender(<ResultPanel result={{ rawText: 'New raw', markdown: '# New', filename: 'new.png' }} />);
+    rerender(<ResultPanel result={{ rawText: 'New raw', markdown: '# New', richTextHtml: null, filename: 'new.png' }} />);
 
-    expect(screen.getByText('# New')).toBeInTheDocument();
+    expect(screen.getByText('New')).toBeInTheDocument();
   });
 
   it('should render save button when onSave is provided', () => {
@@ -148,13 +149,15 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Save Document')).toBeInTheDocument();
   });
 
-  it('should call onSave with markdown content when save button is clicked', () => {
+  it('should call onSave with rich text HTML when save button is clicked', () => {
     const onSave = vi.fn();
     render(<ResultPanel result={result} onSave={onSave} saveStatus="idle" />);
 
     fireEvent.click(screen.getByText('Save Document'));
 
-    expect(onSave).toHaveBeenCalledWith('# Markdown content');
+    expect(onSave).toHaveBeenCalledWith({
+      richTextHtml: '<h1>Markdown content</h1>',
+    });
   });
 
   it('should show "Saved ✓" when saveStatus is saved', () => {
@@ -175,7 +178,7 @@ describe('ResultPanel', () => {
     expect(screen.queryByText('Raw Text')).not.toBeInTheDocument();
   });
 
-  it('should update a saved document with edited markdown', async () => {
+  it('should update a saved document with edited rich text HTML', async () => {
     const user = userEvent.setup();
     const onUpdate = vi.fn();
     render(
@@ -189,10 +192,12 @@ describe('ResultPanel', () => {
     await user.click(screen.getByText('Edit'));
     const editor = screen.getByRole('textbox');
     await user.clear(editor);
-    await user.type(editor, '# Updated markdown');
+    await user.type(editor, '<p>Updated markdown</p>');
     await user.click(screen.getByTitle('Update saved document'));
 
-    expect(onUpdate).toHaveBeenCalledWith('# Updated markdown');
+    expect(onUpdate).toHaveBeenCalledWith({
+      richTextHtml: '<p>Updated markdown</p>',
+    });
   });
 
   it('should not allow adding vocabulary in edit mode', async () => {
@@ -230,10 +235,10 @@ describe('ResultPanel', () => {
     );
 
     const content = screen.getByTestId('result-content');
-    const textNode = content.firstChild;
+    const textNode = content.querySelector('h1')?.firstChild;
     expect(textNode).not.toBeNull();
 
-    const start = result.markdown.indexOf('Markdown');
+    const start = 'Markdown content'.indexOf('Markdown');
     const end = start + 'Markdown'.length;
     const selection = window.getSelection();
     const range = document.createRange();
@@ -255,7 +260,7 @@ describe('ResultPanel', () => {
       'Markdown',
       'word',
       'перевод',
-      '# Markdown content',
+      'Markdown content',
     );
   });
 
@@ -271,9 +276,9 @@ describe('ResultPanel', () => {
     );
 
     const content = screen.getByTestId('result-content');
-    const textNode = content.firstChild;
+    const textNode = content.querySelector('h1')?.firstChild;
     expect(textNode).not.toBeNull();
-    const start = result.markdown.indexOf('Markdown');
+    const start = 'Markdown content'.indexOf('Markdown');
     const end = start + 'Markdown'.length;
 
     const selection = window.getSelection();
@@ -298,7 +303,7 @@ describe('ResultPanel', () => {
       'Markdown',
       'word',
       'перевод',
-      '# Markdown content',
+      'Markdown content',
     );
   });
 
@@ -317,7 +322,7 @@ describe('ResultPanel', () => {
     });
     expect(await screen.findByTitle('Download WAV')).toBeInTheDocument();
     expect(mockGenerateSpeech).toHaveBeenCalledWith(
-      '# Markdown content',
+      'Markdown content',
       expect.objectContaining({
         engine: 'kokoro',
         voice: 'bm_fable',

@@ -23,3 +23,4 @@ export * from './contracts/document.contracts';
 export * from './contracts/ocr.contracts';
 export * from './contracts/tts.contracts';
 export * from './contracts/vocabulary.contracts';
+export * from './utils/document-validation';

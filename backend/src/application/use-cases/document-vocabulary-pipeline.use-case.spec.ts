@@ -14,7 +14,7 @@ describe('DocumentVocabularyPipelineUseCase', () => {
   let mockVocabularyExtractor: jest.Mocked<IDocumentVocabularyExtractor>;
 
   const now = '2024-01-01T00:00:00.000Z';
-  const doc = new SavedDocument('id-1', '# Hello', 'test.png', now, now, 'idle', null, null);
+  const doc = new SavedDocument('id-1', '# Hello', null, 'test.png', now, now, 'idle', null, null);
 
   beforeEach(() => {
     mockRepo = {

@@ -177,12 +177,13 @@ describe('HistoryPanel', () => {
     expect(screen.getByLabelText('Service issue. OCR unavailable')).toBeInTheDocument();
   });
 
-  it('shows saved documents on the Saved tab and wires select/delete', async () => {
+  it('shows saved documents on the Files tab and wires select/delete', async () => {
     const user = userEvent.setup();
     storeMocks.mockDocs.documents = [
       {
         id: 's1',
         markdown: '# Saved',
+        richTextHtml: null,
         filename: 'saved.png',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -193,7 +194,7 @@ describe('HistoryPanel', () => {
     ];
 
     render(<HistoryPanel />);
-    await user.click(screen.getByText('Saved (1)'));
+    await user.click(screen.getByText('Files (1)'));
 
     expect(screen.getByText('saved.png')).toBeInTheDocument();
 
@@ -204,7 +205,7 @@ describe('HistoryPanel', () => {
     expect(storeMocks.mockDocs.remove).toHaveBeenCalledWith('s1');
   });
 
-  it('shows the vocab tab and wires language change, delete, and practice start', async () => {
+  it('shows the vocabulary tab and wires language change, delete, and practice start', async () => {
     const user = userEvent.setup();
     storeMocks.mockVocab.words = [
       {
@@ -227,7 +228,7 @@ describe('HistoryPanel', () => {
     storeMocks.mockVocab.dueCount = 3;
 
     render(<HistoryPanel />);
-    await user.click(screen.getByText('Vocab (1)'));
+    await user.click(screen.getByText('Vocabulary (1)'));
 
     expect(screen.getByText('hello')).toBeInTheDocument();
 
@@ -268,7 +269,7 @@ describe('HistoryPanel', () => {
     ];
 
     render(<HistoryPanel />);
-    await user.click(screen.getByText('Vocab (1)'));
+    await user.click(screen.getByText('Vocabulary (1)'));
     await user.click(screen.getByTitle('Edit'));
 
     await user.clear(screen.getByTestId('vocab-edit-word'));

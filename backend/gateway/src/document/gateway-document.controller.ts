@@ -17,6 +17,7 @@ import {
   DeleteDocumentPayload,
   DOCUMENT_PATTERNS,
   FindDocumentByIdPayload,
+  hasDocumentContent,
   PrepareDocumentVocabularyPayload,
   PreparedDocumentVocabularyDto,
   SavedDocumentDto,
@@ -33,8 +34,8 @@ export class GatewayDocumentController {
 
   @Post()
   async create(@Body() body: CreateDocumentPayload): Promise<SavedDocumentDto> {
-    if (!body.markdown?.trim()) {
-      throw new BadRequestException('markdown is required');
+    if (!hasDocumentContent(body)) {
+      throw new BadRequestException('markdown or richTextHtml is required');
     }
     if (!body.filename?.trim()) {
       throw new BadRequestException('filename is required');
@@ -61,15 +62,14 @@ export class GatewayDocumentController {
   @Put(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { markdown: string },
+    @Body() body: Omit<UpdateDocumentPayload, 'id'>,
   ): Promise<SavedDocumentDto> {
-    if (!body.markdown?.trim()) {
-      throw new BadRequestException('markdown is required');
+    if (!hasDocumentContent(body)) {
+      throw new BadRequestException('markdown or richTextHtml is required');
     }
-    const payload: UpdateDocumentPayload = { id, markdown: body.markdown };
     return this.send<UpdateDocumentPayload, SavedDocumentDto>(
       DOCUMENT_PATTERNS.UPDATE,
-      payload,
+      { ...body, id },
     );
   }
 

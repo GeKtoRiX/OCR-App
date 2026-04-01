@@ -1,9 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
 import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
+import type { VocabularyAttemptStats } from '../../domain/ports/practice-session-repository.port';
 import { IVocabularyLlmService } from '../../domain/ports/vocabulary-llm-service.port';
 import {
   StartPracticeInput,
+  PracticePlanInput,
+  PracticePlanOutput,
+  PracticePreviewWordOutput,
+  GeneratePracticeRoundInput,
+  GeneratePracticeRoundOutput,
   SubmitAnswerInput,
   ExerciseOutput,
   SubmitAnswerOutput,
@@ -15,6 +21,37 @@ import {
   computeQualityRating,
 } from '../utils/sm2';
 import type { ExerciseType } from '../../domain/entities/exercise-attempt.entity';
+import type { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
+
+function toPreviewWord(
+  word: VocabularyWord,
+  stats: VocabularyAttemptStats | undefined,
+): PracticePreviewWordOutput {
+  return {
+    id: word.id,
+    word: word.word,
+    translation: word.translation,
+    contextSentence: word.contextSentence,
+    attemptCount: stats?.attemptCount ?? 0,
+    incorrectCount: stats?.incorrectCount ?? 0,
+  };
+}
+
+function pickHardestWords(
+  words: PracticePreviewWordOutput[],
+  limit: number,
+): PracticePreviewWordOutput[] {
+  return [...words]
+    .map((word) => ({ word, tieBreaker: Math.random() }))
+    .sort((left, right) => {
+      if (right.word.incorrectCount !== left.word.incorrectCount) {
+        return right.word.incorrectCount - left.word.incorrectCount;
+      }
+      return left.tieBreaker - right.tieBreaker;
+    })
+    .slice(0, limit)
+    .map((entry) => entry.word);
+}
 
 @Injectable()
 export class PracticeUseCase {
@@ -50,6 +87,103 @@ export class PracticeUseCase {
     }));
 
     return { sessionId: session.id, exercises };
+  }
+
+  async planPractice(
+    input: PracticePlanInput,
+  ): Promise<PracticePlanOutput> {
+    const batchSize = input.wordLimit ?? 10;
+    const words = await this.vocabRepo.findAll(input.targetLang, input.nativeLang);
+    if (words.length === 0) {
+      throw new Error('No vocabulary words available');
+    }
+
+    const stats = await this.sessionRepo.findVocabularyStats(words.map((word) => word.id));
+    const statsByVocabularyId = new Map(stats.map((item) => [item.vocabularyId, item]));
+    const allWords = words.map((word) => toPreviewWord(word, statsByVocabularyId.get(word.id)));
+    const unseenWords = allWords.filter((word) => word.attemptCount === 0);
+    const session = await this.sessionRepo.createSession(
+      input.targetLang ?? 'en',
+      input.nativeLang ?? 'ru',
+    );
+
+    if (unseenWords.length > 0) {
+      return {
+        sessionId: session.id,
+        batchSize,
+        initialBatchMode: 'unseen',
+        allWords,
+        previewWords: unseenWords.slice(0, batchSize),
+      };
+    }
+
+    return {
+      sessionId: session.id,
+      batchSize,
+      initialBatchMode: 'hardest',
+      allWords,
+      previewWords: pickHardestWords(allWords, batchSize),
+    };
+  }
+
+  async generatePracticeRound(
+    input: GeneratePracticeRoundInput,
+  ): Promise<GeneratePracticeRoundOutput> {
+    const session = await this.sessionRepo.findSessionById(input.sessionId);
+    if (!session) {
+      throw new Error('Practice session not found');
+    }
+
+    if (!Array.isArray(input.vocabularyIds) || input.vocabularyIds.length === 0) {
+      throw new Error('vocabularyIds must be a non-empty array');
+    }
+
+    const uniqueVocabularyIds = [...new Set(input.vocabularyIds)];
+    const words = await this.vocabRepo.findByIds(uniqueVocabularyIds);
+    const wordsById = new Map(words.map((word) => [word.id, word]));
+    const orderedWords = uniqueVocabularyIds
+      .map((vocabularyId) => wordsById.get(vocabularyId))
+      .filter((word): word is VocabularyWord => Boolean(word));
+
+    if (orderedWords.length !== uniqueVocabularyIds.length) {
+      throw new Error('One or more vocabulary words were not found');
+    }
+
+    const generated = await this.llmService.generateExercises(
+      orderedWords,
+      orderedWords.length,
+    );
+    const generatedByVocabularyId = new Map<string, ExerciseOutput>();
+
+    for (const exercise of generated) {
+      if (!generatedByVocabularyId.has(exercise.vocabularyId)) {
+        generatedByVocabularyId.set(exercise.vocabularyId, {
+          vocabularyId: exercise.vocabularyId,
+          word: exercise.word,
+          exerciseType: exercise.exerciseType,
+          prompt: exercise.prompt,
+          correctAnswer: exercise.correctAnswer,
+          options: exercise.options,
+        });
+      }
+    }
+
+    const exercises = orderedWords.map((word) => {
+      const generatedExercise = generatedByVocabularyId.get(word.id);
+      if (generatedExercise) {
+        return generatedExercise;
+      }
+
+      return {
+        vocabularyId: word.id,
+        word: word.word,
+        exerciseType: 'spelling' as const,
+        prompt: `Translate: ${word.translation}`,
+        correctAnswer: word.word,
+      };
+    });
+
+    return { exercises };
   }
 
   async submitAnswer(input: SubmitAnswerInput): Promise<SubmitAnswerOutput> {

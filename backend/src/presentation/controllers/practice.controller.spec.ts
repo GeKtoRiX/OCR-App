@@ -18,6 +18,40 @@ describe('PracticeController', () => {
           correctAnswer: 'test',
         }],
       }),
+      planPractice: jest.fn().mockResolvedValue({
+        sessionId: 'sess-1',
+        batchSize: 10,
+        initialBatchMode: 'unseen',
+        allWords: [
+          {
+            id: 'v1',
+            word: 'test',
+            translation: 'тест',
+            contextSentence: 'A test sentence.',
+            attemptCount: 0,
+            incorrectCount: 0,
+          },
+        ],
+        previewWords: [
+          {
+            id: 'v1',
+            word: 'test',
+            translation: 'тест',
+            contextSentence: 'A test sentence.',
+            attemptCount: 0,
+            incorrectCount: 0,
+          },
+        ],
+      }),
+      generatePracticeRound: jest.fn().mockResolvedValue({
+        exercises: [{
+          vocabularyId: 'v1',
+          word: 'test',
+          exerciseType: 'spelling',
+          prompt: 'Translate',
+          correctAnswer: 'test',
+        }],
+      }),
       submitAnswer: jest.fn().mockResolvedValue({
         isCorrect: true,
         errorPosition: null,
@@ -85,6 +119,48 @@ describe('PracticeController', () => {
         status: HttpStatus.BAD_GATEWAY,
         message: 'Failed to start practice',
       });
+    });
+  });
+
+  describe('plan', () => {
+    it('returns a practice preview batch', async () => {
+      const result = await controller.plan({
+        targetLang: 'en',
+        nativeLang: 'ru',
+        wordLimit: 10,
+      });
+
+      expect(result.sessionId).toBe('sess-1');
+      expect(result.previewWords).toHaveLength(1);
+      expect(useCase.planPractice).toHaveBeenCalledWith({
+        targetLang: 'en',
+        nativeLang: 'ru',
+        wordLimit: 10,
+      });
+    });
+  });
+
+  describe('round', () => {
+    it('creates a practice round for requested vocabulary ids', async () => {
+      const result = await controller.round({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1'],
+      });
+
+      expect(result.exercises).toHaveLength(1);
+      expect(useCase.generatePracticeRound).toHaveBeenCalledWith({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1'],
+      });
+    });
+
+    it('rejects missing round payload fields', async () => {
+      await expect(
+        controller.round({
+          sessionId: '',
+          vocabularyIds: [],
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

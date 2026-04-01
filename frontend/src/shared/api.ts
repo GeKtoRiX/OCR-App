@@ -9,6 +9,7 @@ import type {
   VocabularyWord,
   VocabType,
   Exercise,
+  PracticePlanResponse,
   AnswerResult,
   SessionAnalysis,
 } from './types';
@@ -72,13 +73,16 @@ export async function generateSpeech(
 }
 
 export async function createDocument(
-  markdown: string,
-  filename: string,
+  input: {
+    markdown?: string;
+    richTextHtml?: string | null;
+    filename: string;
+  },
 ): Promise<SavedDocument> {
   const res = await fetch(`${BASE}/documents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ markdown, filename }),
+    body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();
@@ -98,12 +102,15 @@ export async function fetchDocument(id: string): Promise<SavedDocument> {
 
 export async function updateDocument(
   id: string,
-  markdown: string,
+  input: {
+    markdown?: string;
+    richTextHtml?: string | null;
+  },
 ): Promise<SavedDocument> {
   const res = await fetch(`${BASE}/documents/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ markdown }),
+    body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();
@@ -194,9 +201,15 @@ export async function fetchVocabulary(
 }
 
 export async function fetchDueVocabulary(
+  targetLang?: string,
+  nativeLang?: string,
   limit?: number,
 ): Promise<VocabularyWord[]> {
-  const qs = limit ? `?limit=${limit}` : '';
+  const params = new URLSearchParams();
+  if (targetLang) params.set('targetLang', targetLang);
+  if (nativeLang) params.set('nativeLang', nativeLang);
+  if (limit) params.set('limit', String(limit));
+  const qs = params.size ? `?${params}` : '';
   const res = await fetch(`${BASE}/vocabulary/review/due${qs}`);
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();
@@ -233,6 +246,33 @@ export async function startPractice(input?: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input ?? {}),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
+}
+
+export async function planPractice(input?: {
+  targetLang?: string;
+  nativeLang?: string;
+  wordLimit?: number;
+}): Promise<PracticePlanResponse> {
+  const res = await fetch(`${BASE}/practice/plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input ?? {}),
+  });
+  if (!res.ok) throw new Error(await getErrorMessage(res));
+  return res.json();
+}
+
+export async function generatePracticeRound(input: {
+  sessionId: string;
+  vocabularyIds: string[];
+}): Promise<{ exercises: Exercise[] }> {
+  const res = await fetch(`${BASE}/practice/round`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();

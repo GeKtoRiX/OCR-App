@@ -137,13 +137,109 @@
 .result__content {
   padding: 1rem 1.1rem;
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
   font-size: 0.88rem;
   line-height: 1.65;
   background: var(--bg-code);
   border-radius: 14px;
   color: #c8d6e0;
   border: 1px solid var(--border);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.result__content:empty::before {
+  content: "No content";
+  color: var(--text-muted);
+}
+
+.result__content--raw {
+  white-space: pre-wrap;
   font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+}
+
+.result__content p,
+.result__content li,
+.result__content blockquote {
+  color: #c8d6e0;
+}
+
+.result__content h1,
+.result__content h2,
+.result__content h3,
+.result__content h4 {
+  color: var(--text);
+}
+
+.result__content blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--border-accent);
+}
+
+.result__content pre,
+.result__content code {
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+}
+
+.result__content pre {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+}
+
+.result__content code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.result__content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.result__content td,
+.result__content th {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.6rem;
+}
+
+.result__content th {
+  color: var(--text);
+  background: var(--bg-raised);
+}
+
+.result__content img,
+.result__content video,
+.result__content iframe {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.result__content iframe {
+  min-height: 260px;
+  border: 0;
+}
+
+.result__content .ck-style-inline-label {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.result__content .ck-style-info-box {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+}
+
+.result__content .ck-style-lead {
+  font-size: 1.05rem;
+  color: var(--text);
 }

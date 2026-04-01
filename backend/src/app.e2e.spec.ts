@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AppModule } from './presentation/app.module';
 import { IOCRService } from './domain/ports/ocr-service.port';
 import { ITextStructuringService } from './domain/ports/text-structuring-service.port';
@@ -447,6 +449,42 @@ describe('App E2E (Image Processing)', () => {
           contentType: 'image/png',
         })
         .expect(502);
+    });
+  });
+
+  describe('POST /api/editor/uploads/images - CKEditor image uploads', () => {
+    it('uploads an image and stores it under /editor-assets', async () => {
+      const uploadResponse = await request(app.getHttpServer())
+        .post('/api/editor/uploads/images')
+        .attach('upload', Buffer.from('fake-inline-image'), {
+          filename: 'editor-image.png',
+          contentType: 'image/png',
+        })
+        .expect(201);
+
+      expect(uploadResponse.body).toHaveProperty('url');
+      expect(uploadResponse.body.url).toMatch(/^\/editor-assets\/.+\.png$/);
+
+      const assetPath = path.join(
+        process.cwd(),
+        'data',
+        'editor-assets',
+        path.basename(uploadResponse.body.url),
+      );
+      await expect(fs.promises.readFile(assetPath)).resolves.toEqual(
+        Buffer.from('fake-inline-image'),
+      );
+      await fs.promises.unlink(assetPath).catch(() => undefined);
+    });
+
+    it('rejects unsupported upload types', async () => {
+      await request(app.getHttpServer())
+        .post('/api/editor/uploads/images')
+        .attach('upload', Buffer.from('not-an-image'), {
+          filename: 'editor-image.txt',
+          contentType: 'text/plain',
+        })
+        .expect(400);
     });
   });
 

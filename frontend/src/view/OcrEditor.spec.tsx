@@ -13,7 +13,7 @@ const ckState = vi.hoisted(() => {
     selectedEnd: 0,
     triggerSelection(text: string) {
       state.selectedText = text;
-      state.selectedStart = state.data.indexOf(text);
+      state.selectedStart = state.data.replace(/<[^>]+>/g, '').indexOf(text);
       state.selectedEnd = state.selectedStart >= 0 ? state.selectedStart + text.length : 0;
       selectionListeners.forEach((listener) => listener());
     },
@@ -22,6 +22,15 @@ const ckState = vi.hoisted(() => {
       setData: (next: string) => {
         state.data = next;
         listeners.forEach((listener) => listener());
+      },
+      plugins: {
+        get: () => ({ wordCountContainer: document.createElement('div') }),
+      },
+      data: {
+        processor: {
+          toView: (html: string) => html,
+        },
+        toModel: (html: string) => html,
       },
       model: {
         document: {
@@ -50,11 +59,24 @@ const ckState = vi.hoisted(() => {
             },
           },
         },
+        insertContent: (content: string, selection: { getFirstRange?: () => { start: number; end: number } | null }) => {
+          const plain = state.data.replace(/<[^>]+>/g, '');
+          const text = content
+            .replace(/<[^>]+>/g, '')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+          const range = selection.getFirstRange?.();
+          const start = range?.start ?? 0;
+          const end = range?.end ?? start;
+          state.data = `<p>${plain.slice(0, start)}${text}${plain.slice(end)}</p>`;
+          state.selectedText = '';
+        },
         change: (callback: (writer: { remove: (range: { start: number; end: number }) => void; insertText: (text: string, position: { offset: number }) => void }) => void) => {
           callback({
-            remove: (range) => {
-              state.data = state.data.slice(0, range.start) + state.data.slice(range.end);
-            },
+            remove: () => {},
             insertText: (text, position) => {
               state.data =
                 state.data.slice(0, position.offset) +
@@ -84,22 +106,22 @@ vi.mock('ckeditor5', () => {
   const stub = () => class {};
   return {
     Alignment: stub(), Autoformat: stub(), AutoImage: stub(), AutoLink: stub(),
-    AutoMediaEmbed: stub(), BlockQuote: stub(), Bold: stub(),
-    ClassicEditor: stub(), Code: stub(), CodeBlock: stub(),
-    Essentials: stub(), FindAndReplace: stub(), Heading: stub(),
-    Highlight: stub(), HorizontalLine: stub(),
-    Image: stub(), ImageCaption: stub(), ImageInsert: stub(),
-    ImageResize: stub(), ImageStyle: stub(), ImageToolbar: stub(),
-    Indent: stub(), IndentBlock: stub(), Italic: stub(),
-    Link: stub(), LinkImage: stub(), List: stub(), ListProperties: stub(),
-    Markdown: stub(), MediaEmbed: stub(), PageBreak: stub(), Paragraph: stub(),
-    PasteFromOffice: stub(), PictureEditing: stub(), RemoveFormat: stub(),
-    SelectAll: stub(), ShowBlocks: stub(), SourceEditing: stub(),
-    SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
-    Strikethrough: stub(), Subscript: stub(), Superscript: stub(),
-    Table: stub(), TableCaption: stub(), TableCellProperties: stub(),
-    TableColumnResize: stub(), TableProperties: stub(), TableToolbar: stub(),
-    TodoList: stub(), Underline: stub(),
+    AutoMediaEmbed: stub(), Autosave: stub(), BlockQuote: stub(), Bold: stub(),
+    Bookmark: stub(), ClassicEditor: stub(), Code: stub(), CodeBlock: stub(), Essentials: stub(),
+    FindAndReplace: stub(), FontBackgroundColor: stub(), FontColor: stub(),
+    FontFamily: stub(), FontSize: stub(), Fullscreen: stub(), GeneralHtmlSupport: stub(), Heading: stub(),
+    Highlight: stub(), HorizontalLine: stub(), HtmlComment: stub(), HtmlEmbed: stub(),
+    Image: stub(), ImageCaption: stub(), ImageInsert: stub(), ImageResize: stub(),
+    ImageStyle: stub(), ImageToolbar: stub(), ImageUpload: stub(), Indent: stub(),
+    IndentBlock: stub(), Italic: stub(), Link: stub(), LinkImage: stub(),
+    List: stub(), ListProperties: stub(), MediaEmbed: stub(), Mention: stub(),
+    PageBreak: stub(), Paragraph: stub(), PasteFromOffice: stub(), PictureEditing: stub(),
+    RemoveFormat: stub(), SelectAll: stub(), ShowBlocks: stub(), SimpleUploadAdapter: stub(),
+    SourceEditing: stub(), SpecialCharacters: stub(), SpecialCharactersEssentials: stub(),
+    Strikethrough: stub(), Style: stub(), Subscript: stub(), Superscript: stub(),
+    Table: stub(), TableCaption: stub(), TableCellProperties: stub(), TableColumnResize: stub(),
+    TableProperties: stub(), TableToolbar: stub(), TextPartLanguage: stub(), TodoList: stub(), Underline: stub(),
+    WordCount: stub(),
   };
 });
 
@@ -114,6 +136,10 @@ vi.mock('@ckeditor/ckeditor5-react', () => ({
     onChange: (event: unknown, editor: typeof ckState.editor) => void;
   }) => {
     ckState.data = data;
+    // Mirror what @ckeditor/ckeditor5-react does: fire onChange via change:data event
+    ckState.editor.model.document.on('change:data', () => {
+      onChange({}, ckState.editor);
+    });
     onReady(ckState.editor);
 
     return (
@@ -123,7 +149,6 @@ vi.mock('@ckeditor/ckeditor5-react', () => ({
           value={ckState.data}
           onChange={(event) => {
             ckState.editor.setData(event.target.value);
-            onChange({}, ckState.editor);
           }}
         />
         <button
@@ -169,27 +194,27 @@ describe('OcrEditor', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
-    render(<OcrEditor value="# Original" onChange={onChange} />);
+    render(<OcrEditor value="<p># Original</p>" onChange={onChange} />);
 
     await user.click(screen.getByTitle('Toggle AI Assistant'));
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument();
 
     await user.click(screen.getByText('Replace All'));
 
-    expect(onChange).toHaveBeenLastCalledWith('# Replaced');
+    expect(onChange).toHaveBeenLastCalledWith('<p># Replaced</p>');
   });
 
   it('replaces only the selected text when AI applies to selection', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
-    render(<OcrEditor value="Alpha beta." onChange={onChange} />);
+    render(<OcrEditor value="<p>Alpha beta.</p>" onChange={onChange} />);
 
     await user.click(screen.getByTestId('ckeditor-select-alpha'));
     await user.click(screen.getByTitle('Toggle AI Assistant'));
     await user.click(screen.getByText('Apply Selection'));
 
-    expect(onChange).toHaveBeenLastCalledWith('AI refined beta.');
+    expect(onChange).toHaveBeenLastCalledWith('<p>AI refined beta.</p>');
   });
 
   it('triggers vocabulary context menu from editor selection with context sentence', async () => {
@@ -198,7 +223,7 @@ describe('OcrEditor', () => {
 
     render(
       <OcrEditor
-        value="Alpha beta. Another sentence."
+        value="<p>Alpha beta. Another sentence.</p>"
         onChange={vi.fn()}
         onVocabContextMenu={onVocabContextMenu}
       />,

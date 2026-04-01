@@ -13,6 +13,8 @@ import {
   fetchDueVocabulary,
   updateVocabularyWord,
   deleteVocabularyWord,
+  planPractice,
+  generatePracticeRound,
   startPractice,
   submitAnswer,
   completePractice,
@@ -201,6 +203,7 @@ describe('API service', () => {
       const mockDoc = {
         id: '1',
         markdown: '# Hi',
+        richTextHtml: null,
         filename: 'a.png',
         createdAt: '',
         updatedAt: '',
@@ -210,7 +213,7 @@ describe('API service', () => {
       };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
-      const result = await createDocument('# Hi', 'a.png');
+      const result = await createDocument({ markdown: '# Hi', filename: 'a.png' });
 
       expect(result).toEqual(mockDoc);
       expect(global.fetch).toHaveBeenCalledWith(
@@ -226,10 +229,10 @@ describe('API service', () => {
     it('should throw on error', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false, status: 400, statusText: 'Bad Request',
-        json: async () => ({ message: 'markdown is required' }),
+        json: async () => ({ message: 'markdown or richTextHtml is required' }),
       });
 
-      await expect(createDocument('', 'a.png')).rejects.toThrow('markdown is required');
+      await expect(createDocument({ filename: 'a.png' })).rejects.toThrow('markdown or richTextHtml is required');
     });
   });
 
@@ -238,6 +241,7 @@ describe('API service', () => {
       const mockDocs = [{
         id: '1',
         markdown: '# Hi',
+        richTextHtml: null,
         filename: 'a.png',
         createdAt: '',
         updatedAt: '',
@@ -259,6 +263,7 @@ describe('API service', () => {
       const mockDoc = {
         id: '1',
         markdown: '# Hi',
+        richTextHtml: null,
         filename: 'a.png',
         createdAt: '',
         updatedAt: '',
@@ -289,6 +294,7 @@ describe('API service', () => {
       const mockDoc = {
         id: '1',
         markdown: '# Updated',
+        richTextHtml: '<p>Updated</p>',
         filename: 'a.png',
         createdAt: '',
         updatedAt: '',
@@ -298,7 +304,7 @@ describe('API service', () => {
       };
       global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockDoc });
 
-      const result = await updateDocument('1', '# Updated');
+      const result = await updateDocument('1', { richTextHtml: '<p>Updated</p>' });
 
       expect(result).toEqual(mockDoc);
       expect(global.fetch).toHaveBeenCalledWith(
@@ -306,7 +312,7 @@ describe('API service', () => {
         expect.objectContaining({
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ markdown: '# Updated' }),
+          body: JSON.stringify({ richTextHtml: '<p>Updated</p>' }),
         }),
       );
     });
@@ -486,6 +492,60 @@ describe('API service', () => {
   });
 
   describe('practice API', () => {
+    it('should POST /api/practice/plan with payload', async () => {
+      const mockPlan = {
+        sessionId: 'session-1',
+        batchSize: 10,
+        initialBatchMode: 'unseen',
+        allWords: [],
+        previewWords: [],
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockPlan });
+
+      const result = await planPractice({ targetLang: 'en', nativeLang: 'ru', wordLimit: 5 });
+
+      expect(result).toEqual(mockPlan);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/plan',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetLang: 'en', nativeLang: 'ru', wordLimit: 5 }),
+        }),
+      );
+    });
+
+    it('should POST /api/practice/round', async () => {
+      const mockRound = {
+        exercises: [{
+          vocabularyId: 'word-1',
+          word: 'hello',
+          exerciseType: 'spelling',
+          prompt: 'Spell hello',
+          correctAnswer: 'hello',
+        }],
+      };
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => mockRound });
+
+      const result = await generatePracticeRound({
+        sessionId: 'session-1',
+        vocabularyIds: ['word-1'],
+      });
+
+      expect(result).toEqual(mockRound);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/practice/round',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: 'session-1',
+            vocabularyIds: ['word-1'],
+          }),
+        }),
+      );
+    });
+
     it('should POST /api/practice/start with payload', async () => {
       const mockSession = {
         sessionId: 'session-1',

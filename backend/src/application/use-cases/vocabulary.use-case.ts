@@ -97,8 +97,12 @@ export class VocabularyUseCase {
     return found ? this.toOutput(found) : null;
   }
 
-  async findDueForReview(limit?: number): Promise<VocabularyOutput[]> {
-    const words = await this.repository.findDueForReview(limit ?? 10);
+  async findDueForReview(
+    limit?: number,
+    targetLang?: string,
+    nativeLang?: string,
+  ): Promise<VocabularyOutput[]> {
+    const words = await this.repository.findDueForReview(limit ?? 10, targetLang, nativeLang);
     return words.map((w) => this.toOutput(w));
   }
 

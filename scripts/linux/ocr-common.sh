@@ -201,7 +201,7 @@ mode_includes_backend() {
 }
 
 supertone_required_in_mode() {
-    mode_includes_tts && supertone_launcher_enabled
+    (mode_includes_tts && supertone_launcher_enabled) || kokoro_required_in_mode
 }
 
 kokoro_required_in_mode() {
@@ -1147,6 +1147,8 @@ compute_mode_lamp() {
     local supertone_enabled=0
     local piper_enabled=0
     local kokoro_enabled=0
+    local ocr_supertone_ready=1
+    local ocr_piper_ready=1
     local ocr_kokoro_ready=1
     local tts_supertone_ready=1
     local tts_piper_ready=1
@@ -1171,6 +1173,8 @@ compute_mode_lamp() {
     supertone_required_in_mode && piper_enabled=1 || true
     kokoro_required_in_mode && kokoro_enabled=1 || true
 
+    [[ ${supertone_enabled} -eq 1 ]] && ocr_supertone_ready=${supertone_ok}
+    [[ ${piper_enabled} -eq 1 ]] && ocr_piper_ready=${piper_ok}
     [[ ${kokoro_enabled} -eq 1 ]] && ocr_kokoro_ready=${kokoro_ok}
     [[ ${supertone_enabled} -eq 1 ]] && tts_supertone_ready=${supertone_ok}
     [[ ${piper_enabled} -eq 1 ]] && tts_piper_ready=${piper_ok}
@@ -1186,10 +1190,10 @@ compute_mode_lamp() {
 
     case "${mode}" in
         ocr)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  OCR mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
+            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_supertone_ready} -eq 1 && ${ocr_piper_ready} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
+                echo "${LAMP_BLUE}  OCR mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
             else
-                echo "${LAMP_GREEN}  OCR mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
+                echo "${LAMP_GREEN}  OCR mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
             fi
             ;;
         tts)
@@ -1218,6 +1222,13 @@ show_health_block() {
         ocr)
             check_lm_studio && ok "LM Studio server" || warn "LM Studio server unreachable"
             check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
+            if supertone_required_in_mode; then
+                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
+                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
+            else
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
+            fi
             if kokoro_required_in_mode; then
                 if check_kokoro; then
                     ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
@@ -1445,18 +1456,16 @@ start_mode_stack() {
         return 1
     fi
 
-    if mode_includes_tts; then
-        if supertone_required_in_mode; then
-            dim "Step 1b: Supertone"
-            if ! start_supertone; then
-                rollback_startup "Supertone failed to start."
-                return 1
-            fi
-        else
-            dim "Supertone/Piper disabled in ${TTS_MODELS_CONFIG_FILE}."
+    if supertone_required_in_mode; then
+        dim "Step 1b: Supertone"
+        if ! start_supertone; then
+            rollback_startup "Supertone failed to start."
+            return 1
         fi
+    elif mode_includes_tts; then
+        dim "Supertone/Piper disabled in ${TTS_MODELS_CONFIG_FILE}."
     else
-        dim "Supertone skipped in OCR mode."
+        dim "Supertone skipped in ${ACTIVE_MODE_LABEL} mode."
     fi
 
     if mode_includes_kokoro; then
@@ -1566,6 +1575,13 @@ cmd_status() {
 
     case "${ACTIVE_MODE:-all}" in
         ocr)
+            if supertone_required_in_mode; then
+                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
+                dim "Piper runs inside the Supertone sidecar"
+            else
+                show_disabled_service "Supertone"
+                show_disabled_service "Piper"
+            fi
             if kokoro_required_in_mode; then
                 show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
             else

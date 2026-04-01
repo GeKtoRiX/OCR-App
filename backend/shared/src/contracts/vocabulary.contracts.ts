@@ -12,6 +12,8 @@ export const VOCABULARY_PATTERNS = {
   UPDATE: 'vocabulary.update',
   DELETE: 'vocabulary.delete',
   PRACTICE_START: 'vocabulary.practice_start',
+  PRACTICE_PLAN: 'vocabulary.practice_plan',
+  PRACTICE_ROUND: 'vocabulary.practice_round',
   PRACTICE_ANSWER: 'vocabulary.practice_answer',
   PRACTICE_COMPLETE: 'vocabulary.practice_complete',
   PRACTICE_SESSIONS: 'vocabulary.practice_sessions',
@@ -87,6 +89,17 @@ export interface StartPracticePayload {
   wordLimit?: number;
 }
 
+export type PracticeBatchMode = 'unseen' | 'retry' | 'hardest';
+
+export interface PracticePreviewWordDto {
+  id: string;
+  word: string;
+  translation: string;
+  contextSentence: string;
+  attemptCount: number;
+  incorrectCount: number;
+}
+
 export interface ExerciseDto {
   vocabularyId: string;
   word: string;
@@ -98,6 +111,29 @@ export interface ExerciseDto {
 
 export interface StartPracticeResponse {
   sessionId: string;
+  exercises: ExerciseDto[];
+}
+
+export interface PracticePlanPayload {
+  targetLang?: string;
+  nativeLang?: string;
+  wordLimit?: number;
+}
+
+export interface PracticePlanResponse {
+  sessionId: string;
+  batchSize: number;
+  initialBatchMode: Exclude<PracticeBatchMode, 'retry'>;
+  allWords: PracticePreviewWordDto[];
+  previewWords: PracticePreviewWordDto[];
+}
+
+export interface GeneratePracticeRoundPayload {
+  sessionId: string;
+  vocabularyIds: string[];
+}
+
+export interface GeneratePracticeRoundResponse {
   exercises: ExerciseDto[];
 }
 

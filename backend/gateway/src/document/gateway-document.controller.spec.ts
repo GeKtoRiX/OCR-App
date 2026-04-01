@@ -7,6 +7,7 @@ describe('GatewayDocumentController', () => {
   const mockDocument = {
     id: 'doc-1',
     markdown: '# Saved',
+    richTextHtml: null,
     filename: 'saved.md',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
@@ -30,10 +31,28 @@ describe('GatewayDocumentController', () => {
       controller.create({ markdown: '   ', filename: 'saved.md' }),
     ).rejects.toThrow(BadRequestException);
     await expect(
+      controller.create({ filename: 'saved.md' } as any),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
       controller.create({ markdown: '# Saved', filename: '   ' }),
     ).rejects.toThrow(BadRequestException);
 
     expect(documentClient.send).not.toHaveBeenCalled();
+  });
+
+  it('forwards HTML-first create requests', async () => {
+    await expect(
+      controller.create({
+        richTextHtml: '<p>Saved as HTML</p>',
+        filename: 'saved.html',
+      }),
+    ).resolves.toEqual(mockDocument);
+
+    expect(documentClient.send).toHaveBeenCalledWith(DOCUMENT_PATTERNS.CREATE, {
+      markdown: undefined,
+      richTextHtml: '<p>Saved as HTML</p>',
+      filename: 'saved.html',
+    });
   });
 
   it('forwards update requests with the route id', async () => {
@@ -42,6 +61,7 @@ describe('GatewayDocumentController', () => {
     expect(documentClient.send).toHaveBeenCalledWith(DOCUMENT_PATTERNS.UPDATE, {
       id: 'doc-1',
       markdown: '# Updated',
+      richTextHtml: undefined,
     });
   });
 

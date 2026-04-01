@@ -1,7 +1,72 @@
-import { useState } from 'react';
-import type { Exercise, AnswerResult, SessionAnalysis } from '../../shared/types';
+import { useState, type ReactNode } from 'react';
+import type {
+  Exercise,
+  AnswerResult,
+  SessionAnalysis,
+  PracticeBatchMode,
+  PracticePreviewWord,
+} from '../../shared/types';
 import type { PracticePhase } from './practice.store';
 import './PracticeView.css';
+
+function normalizeOptionText(value: string): string {
+  return value
+    .trim()
+    .replace(/^[A-D]\s*[\).\:-]\s*/i, '')
+    .replace(/^[-*•]\s*/, '')
+    .trim();
+}
+
+const PREVIEW_LABELS: Record<PracticeBatchMode, { title: string; description: string }> = {
+  unseen: {
+    title: 'Words In This Batch',
+    description: 'Review these words before the round starts, then press Ready.',
+  },
+  retry: {
+    title: 'Review These Words Again',
+    description: 'These words had mistakes in the previous round. Review them, then continue.',
+  },
+  hardest: {
+    title: 'Hardest Words',
+    description: 'All new words are exhausted. The next round focuses on the words with the most mistakes.',
+  },
+};
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function PracticeOverlay({ children }: { children: ReactNode }) {
+  return (
+    <div className="practice-overlay" data-testid="practice-view">
+      {children}
+    </div>
+  );
+}
+
+function getDisplayPrompt(currentExercise: Exercise): string {
+  if (
+    currentExercise.exerciseType !== 'multiple_choice' ||
+    !currentExercise.options ||
+    currentExercise.options.length === 0
+  ) {
+    return currentExercise.prompt;
+  }
+
+  const optionSet = new Set(currentExercise.options.map(normalizeOptionText));
+  const lines = currentExercise.prompt
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const optionHeaderIndex = lines.findIndex((line) => /^options?\s*[:\-]?$/i.test(line));
+  if (optionHeaderIndex >= 0) {
+    return lines.slice(0, optionHeaderIndex).join('\n').trim();
+  }
+
+  const contentLines = lines.filter((line) => !optionSet.has(normalizeOptionText(line)));
+  return contentLines.join('\n').trim() || currentExercise.prompt;
+}
 
 interface Props {
   phase: PracticePhase;
@@ -12,7 +77,11 @@ interface Props {
   isLastExercise: boolean;
   analysis: SessionAnalysis | null;
   error: string | null;
+  previewWords: PracticePreviewWord[];
+  currentBatchMode: PracticeBatchMode | null;
+  hasRecordedAnswers: boolean;
   onAnswer: (userAnswer: string) => void;
+  onReady: () => void;
   onNext: () => void;
   onComplete: () => void;
   onReset: () => void;
@@ -27,7 +96,11 @@ export function PracticeView({
   isLastExercise,
   analysis,
   error,
+  previewWords,
+  currentBatchMode,
+  hasRecordedAnswers,
   onAnswer,
+  onReady,
   onNext,
   onComplete,
   onReset,
@@ -44,42 +117,91 @@ export function PracticeView({
     onAnswer(option);
   };
 
-  if (phase === 'loading') {
+  if (phase === 'planning' || phase === 'loading_round') {
     return (
-      <div className="practice-overlay" data-testid="practice-view">
+      <PracticeOverlay>
         <div className="practice-card">
-          <div className="practice-card__loading">Generating exercises...</div>
+          <div className="practice-card__loading">
+            {phase === 'planning' ? 'Preparing your study batch...' : 'Generating exercises...'}
+          </div>
         </div>
-      </div>
+      </PracticeOverlay>
+    );
+  }
+
+  if (phase === 'preview') {
+    return (
+      <PracticeOverlay>
+        <div className="practice-card practice-card--analysis">
+          <h2 className="practice-card__title">{PREVIEW_LABELS[currentBatchMode ?? 'unseen'].title}</h2>
+          <p className="practice-card__summary">{PREVIEW_LABELS[currentBatchMode ?? 'unseen'].description}</p>
+          <div className="practice-card__stats">
+            {previewWords.length} word{previewWords.length === 1 ? '' : 's'}
+          </div>
+          <div className="practice-card__analyses">
+            {previewWords.map((word) => (
+              <div key={word.id} className="word-analysis">
+                <div className="word-analysis__header">
+                  <span className="word-analysis__word">{word.word}</span>
+                  <span className="word-analysis__diff word-analysis__diff--medium">
+                    {word.translation || 'No translation'}
+                  </span>
+                </div>
+                {word.contextSentence && (
+                  <div className="word-analysis__row">
+                    <strong>Context:</strong> {word.contextSentence}
+                  </div>
+                )}
+                <div className="word-analysis__row">
+                  <strong>History:</strong> {plural(word.incorrectCount, 'error')} in {plural(word.attemptCount, 'attempt')}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="practice-card__feedback">
+            <button className="practice-card__btn" onClick={onReady}>
+              Ready
+            </button>
+            {hasRecordedAnswers && (
+              <button className="practice-card__btn" onClick={onComplete}>
+                Finish &amp; Analyze
+              </button>
+            )}
+          </div>
+          <button className="practice-card__close" onClick={onReset}>
+            Exit
+          </button>
+        </div>
+      </PracticeOverlay>
     );
   }
 
   if (phase === 'analyzing') {
     return (
-      <div className="practice-overlay" data-testid="practice-view">
+      <PracticeOverlay>
         <div className="practice-card">
           <div className="practice-card__loading">Analyzing your session...</div>
         </div>
-      </div>
+      </PracticeOverlay>
     );
   }
 
   if (phase === 'error') {
     return (
-      <div className="practice-overlay" data-testid="practice-view">
+      <PracticeOverlay>
         <div className="practice-card">
           <div className="practice-card__error">{error}</div>
           <button className="practice-card__btn" onClick={onReset}>
             Back
           </button>
         </div>
-      </div>
+      </PracticeOverlay>
     );
   }
 
   if (phase === 'complete' && analysis) {
     return (
-      <div className="practice-overlay" data-testid="practice-view">
+      <PracticeOverlay>
         <div className="practice-card practice-card--analysis">
           <h2 className="practice-card__title">Session Complete</h2>
           <div className="practice-card__score">
@@ -122,14 +244,16 @@ export function PracticeView({
             Done
           </button>
         </div>
-      </div>
+      </PracticeOverlay>
     );
   }
 
   if (!currentExercise) return null;
 
+  const displayPrompt = getDisplayPrompt(currentExercise);
+
   return (
-    <div className="practice-overlay" data-testid="practice-view">
+    <PracticeOverlay>
       <div className="practice-card">
         <div className="practice-card__progress">
           <div
@@ -146,7 +270,7 @@ export function PracticeView({
         <div className="practice-card__type">
           {currentExercise.exerciseType.replace('_', ' ')}
         </div>
-        <div className="practice-card__prompt">{currentExercise.prompt}</div>
+        <div className="practice-card__prompt">{displayPrompt}</div>
 
         {phase === 'reviewing' && lastAnswer ? (
           <div className="practice-card__feedback">
@@ -170,13 +294,12 @@ export function PracticeView({
                 )}
               </div>
             )}
-            {isLastExercise ? (
+            <button className="practice-card__btn" onClick={onNext}>
+              {isLastExercise ? 'Continue' : 'Next'}
+            </button>
+            {hasRecordedAnswers && (
               <button className="practice-card__btn" onClick={onComplete}>
                 Finish &amp; Analyze
-              </button>
-            ) : (
-              <button className="practice-card__btn" onClick={onNext}>
-                Next
               </button>
             )}
           </div>
@@ -190,7 +313,7 @@ export function PracticeView({
                 onClick={() => handleOptionClick(opt)}
                 disabled={phase === 'submitting'}
               >
-                {opt}
+                {normalizeOptionText(opt)}
               </button>
             ))}
           </div>
@@ -219,7 +342,12 @@ export function PracticeView({
         <button className="practice-card__close" onClick={onReset}>
           Exit
         </button>
+        {hasRecordedAnswers && phase !== 'reviewing' && (
+          <button className="practice-card__btn" onClick={onComplete}>
+            Finish &amp; Analyze
+          </button>
+        )}
       </div>
-    </div>
+    </PracticeOverlay>
   );
 }

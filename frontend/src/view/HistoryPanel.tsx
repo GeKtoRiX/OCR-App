@@ -10,7 +10,7 @@ import type { HistoryEntry, SavedDocument } from '../shared/types';
 import { StatusLight } from '../ui/StatusLight';
 import './HistoryPanel.css';
 
-type HistoryTab = 'session' | 'saved' | 'vocab';
+type HistoryTab = 'session' | 'files' | 'vocabulary';
 
 interface ItemProps {
   entry: HistoryEntry;
@@ -180,18 +180,18 @@ export function HistoryPanel() {
               Session
             </button>
             <button
-              className={`history-tabs__btn ${tab === 'saved' ? 'history-tabs__btn--active' : ''}`}
-              onClick={() => setTab('saved')}
+              className={`history-tabs__btn ${tab === 'files' ? 'history-tabs__btn--active' : ''}`}
+              onClick={() => setTab('files')}
               data-testid="history-tab-saved"
             >
-              Saved {docs.documents.length > 0 && `(${docs.documents.length})`}
+              Files {docs.documents.length > 0 && `(${docs.documents.length})`}
             </button>
             <button
-              className={`history-tabs__btn ${tab === 'vocab' ? 'history-tabs__btn--active' : ''}`}
-              onClick={() => setTab('vocab')}
+              className={`history-tabs__btn ${tab === 'vocabulary' ? 'history-tabs__btn--active' : ''}`}
+              onClick={() => setTab('vocabulary')}
               data-testid="history-tab-vocab"
             >
-              Vocab {vocab.words.length > 0 && `(${vocab.words.length})`}
+              Vocabulary {vocab.words.length > 0 && `(${vocab.words.length})`}
             </button>
           </div>
         </div>
@@ -221,7 +221,7 @@ export function HistoryPanel() {
             ))}
           </ul>
         )
-      ) : tab === 'saved' ? (
+      ) : tab === 'files' ? (
         docs.loading ? (
           <div className="history-empty">
             <p>Loading saved documents…</p>

@@ -6,6 +6,7 @@ import { join } from 'path';
 import { GatewayAgenticModule } from './agentic/gateway-agentic.module';
 import { GatewayAiModule } from './ai/gateway-ai.module';
 import { GatewayDocumentModule } from './document/gateway-document.module';
+import { GatewayEditorModule } from './editor/gateway-editor.module';
 import { GatewayHealthModule } from './health/gateway-health.module';
 import { GatewayOcrModule } from './ocr/gateway-ocr.module';
 import { GatewayPracticeModule } from './practice/gateway-practice.module';
@@ -24,7 +25,12 @@ import { GatewayVocabularyModule } from './vocabulary/gateway-vocabulary.module'
       rootPath: join(__dirname, '..', '..', '..', 'frontend', 'dist'),
       exclude: ['/api/(.*)'],
     }),
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'data', 'editor-assets'),
+      serveRoot: '/editor-assets',
+    }),
     GatewayAiModule,
+    GatewayEditorModule,
     GatewayOcrModule,
     GatewayTtsModule,
     GatewayDocumentModule,

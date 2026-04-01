@@ -7,7 +7,6 @@ describe('SavedDocumentUseCase', () => {
   let mockRepo: jest.Mocked<ISavedDocumentRepository>;
 
   const now = '2024-01-01T00:00:00.000Z';
-  const doc = new SavedDocument('id-1', '# Hello', 'test.png', now, now, 'idle', null, null);
 
   beforeEach(() => {
     mockRepo = {
@@ -20,24 +19,38 @@ describe('SavedDocumentUseCase', () => {
       findVocabularyCandidates: jest.fn(),
       updateAnalysisStatus: jest.fn(),
     } as jest.Mocked<ISavedDocumentRepository>;
+    mockRepo.create.mockImplementation(async (input) => new SavedDocument(
+      'id-1',
+      input.markdown,
+      input.richTextHtml,
+      input.filename,
+      now,
+      now,
+      'idle',
+      null,
+      null,
+    ));
 
     useCase = new SavedDocumentUseCase(mockRepo);
   });
 
   describe('create', () => {
-    it('delegates to repository and returns output', async () => {
-      mockRepo.create.mockResolvedValue(doc);
-
+    it('normalizes image filenames to .html before saving', async () => {
       const result = await useCase.create({
         markdown: '# Hello',
         filename: 'test.png',
       });
 
-      expect(mockRepo.create).toHaveBeenCalledWith('# Hello', 'test.png');
+      expect(mockRepo.create).toHaveBeenCalledWith({
+        markdown: '# Hello',
+        richTextHtml: null,
+        filename: 'test.html',
+      });
       expect(result).toEqual({
         id: 'id-1',
         markdown: '# Hello',
-        filename: 'test.png',
+        richTextHtml: null,
+        filename: 'test.html',
         createdAt: now,
         updatedAt: now,
         analysisStatus: 'idle',
@@ -45,10 +58,55 @@ describe('SavedDocumentUseCase', () => {
         analysisUpdatedAt: null,
       });
     });
+
+    it.each([
+      ['photo.jpeg', 'photo.html'],
+      ['scan.tiff', 'scan.html'],
+      ['SCREENSHOT.WEBP', 'SCREENSHOT.html'],
+    ])('normalizes %s to %s', async (filename, expectedFilename) => {
+      await useCase.create({
+        markdown: '# Hello',
+        filename,
+      });
+
+      expect(mockRepo.create).toHaveBeenLastCalledWith({
+        markdown: '# Hello',
+        richTextHtml: null,
+        filename: expectedFilename,
+      });
+    });
+
+    it.each([
+      'notes.md',
+      'lesson.html',
+      'plain-text',
+    ])('keeps non-image filename %s unchanged', async (filename) => {
+      await useCase.create({
+        markdown: '# Hello',
+        filename,
+      });
+
+      expect(mockRepo.create).toHaveBeenLastCalledWith({
+        markdown: '# Hello',
+        richTextHtml: null,
+        filename,
+      });
+    });
   });
 
   describe('findAll', () => {
     it('returns all documents', async () => {
+      const doc = new SavedDocument(
+        'id-1',
+        '# Hello',
+        null,
+        'test.html',
+        now,
+        now,
+        'idle',
+        null,
+        null,
+      );
       mockRepo.findAll.mockResolvedValue([doc]);
 
       const result = await useCase.findAll();
@@ -68,6 +126,17 @@ describe('SavedDocumentUseCase', () => {
 
   describe('findById', () => {
     it('returns document when found', async () => {
+      const doc = new SavedDocument(
+        'id-1',
+        '# Hello',
+        null,
+        'test.html',
+        now,
+        now,
+        'idle',
+        null,
+        null,
+      );
       mockRepo.findById.mockResolvedValue(doc);
 
       const result = await useCase.findById('id-1');
@@ -91,6 +160,7 @@ describe('SavedDocumentUseCase', () => {
       const updated = new SavedDocument(
         'id-1',
         '# Updated',
+        null,
         'test.png',
         now,
         '2024-01-02T00:00:00.000Z',
@@ -102,7 +172,10 @@ describe('SavedDocumentUseCase', () => {
 
       const result = await useCase.update('id-1', { markdown: '# Updated' });
 
-      expect(mockRepo.update).toHaveBeenCalledWith('id-1', '# Updated');
+      expect(mockRepo.update).toHaveBeenCalledWith('id-1', {
+        markdown: '# Updated',
+        richTextHtml: null,
+      });
       expect(result!.markdown).toBe('# Updated');
     });
 

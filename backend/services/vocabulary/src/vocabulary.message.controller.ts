@@ -5,11 +5,15 @@ import {
   CompletePracticePayload,
   CompletePracticeResponse,
   DeleteVocabularyPayload,
+  GeneratePracticeRoundPayload,
+  GeneratePracticeRoundResponse,
   FindAllVocabularyPayload,
   FindVocabularyByIdsPayload,
   FindVocabularyByWordPayload,
   FindDueVocabularyPayload,
   FindVocabularyByIdPayload,
+  PracticePlanPayload,
+  PracticePlanResponse,
   PracticeSessionsPayload,
   PracticeStatsPayload,
   StartPracticePayload,
@@ -64,7 +68,7 @@ export class VocabularyMessageController {
   async findDue(
     payload: FindDueVocabularyPayload,
   ): Promise<VocabularyItemDto[]> {
-    return this.vocabularyUseCase.findDueForReview(payload?.limit);
+    return this.vocabularyUseCase.findDueForReview(payload?.limit, payload?.targetLang, payload?.nativeLang);
   }
 
   @MessagePattern(VOCABULARY_PATTERNS.FIND_BY_ID)
@@ -123,6 +127,44 @@ export class VocabularyMessageController {
       const message =
         error instanceof Error ? error.message : 'Failed to start practice';
       if (message === 'No words due for review') {
+        throw new RpcException({ statusCode: 400, message });
+      }
+      throw new RpcException({ statusCode: 502, message });
+    }
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.PRACTICE_PLAN)
+  async planPractice(
+    payload: PracticePlanPayload,
+  ): Promise<PracticePlanResponse> {
+    try {
+      return await this.practiceUseCase.planPractice(payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to plan practice';
+      if (message === 'No vocabulary words available') {
+        throw new RpcException({ statusCode: 400, message });
+      }
+      throw new RpcException({ statusCode: 502, message });
+    }
+  }
+
+  @MessagePattern(VOCABULARY_PATTERNS.PRACTICE_ROUND)
+  async generatePracticeRound(
+    payload: GeneratePracticeRoundPayload,
+  ): Promise<GeneratePracticeRoundResponse> {
+    try {
+      return await this.practiceUseCase.generatePracticeRound(payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to generate practice round';
+      if (
+        message === 'Practice session not found' ||
+        message === 'One or more vocabulary words were not found'
+      ) {
+        throw new RpcException({ statusCode: 404, message });
+      }
+      if (message === 'vocabularyIds must be a non-empty array') {
         throw new RpcException({ statusCode: 400, message });
       }
       throw new RpcException({ statusCode: 502, message });

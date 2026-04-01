@@ -3,6 +3,7 @@ import path from 'path';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const IMAGE_PATH = path.join(ROOT_DIR, 'image_test.jpg');
+const SAVED_IMAGE_FILENAME = 'image_test.html';
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -12,6 +13,46 @@ function mark(step: string) {
   console.log(`[browser-e2e] ${step}`);
 }
 
+function getRichTextEditor(page: Page) {
+  return page
+    .getByTestId('result-editor')
+    .locator('.ck-editor__editable[contenteditable="true"]')
+    .first();
+}
+
+function getSourceEditingTextarea(page: Page) {
+  return page.locator('.ck-source-editing-area textarea').first();
+}
+
+async function toggleSourceEditing(page: Page) {
+  await page.getByRole('button', { name: /source/i }).click();
+}
+
+async function setEditorHtmlThroughSourceMode(page: Page, html: string) {
+  await toggleSourceEditing(page);
+  const sourceTextarea = getSourceEditingTextarea(page);
+  await expect(sourceTextarea).toBeVisible({ timeout: 30_000 });
+  await sourceTextarea.fill(html);
+  await toggleSourceEditing(page);
+  await expect(sourceTextarea).toBeHidden({ timeout: 30_000 });
+}
+
+async function uploadEditorImage(page: Page) {
+  const response = await page.request.post('/api/editor/uploads/images', {
+    multipart: {
+      upload: {
+        name: 'playwright-inline.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('fake-png-image'),
+      },
+    },
+  });
+
+  expect(response.ok()).toBeTruthy();
+  const body = (await response.json()) as { url: string };
+  expect(body.url).toMatch(/^\/editor-assets\/.+\.png$/);
+  return body.url;
+}
 
 async function uploadAndRecognize(page: Page) {
   mark('upload:start');
@@ -66,11 +107,17 @@ async function openSavedDocument(page: Page, filename: string) {
   mark(`saved:opened:${filename}`);
 }
 
-async function saveCurrentResultAsDocument(page: Page) {
+async function saveCurrentResultAsDocument(page: Page, filename = SAVED_IMAGE_FILENAME) {
   mark('document:save:start');
   await page.getByTestId('result-tab-markdown').click();
   await page.getByTestId('result-save-button').click();
-  await expect(page.getByTestId('result-save-button')).toContainText('Saved', {
+  await page.getByTestId('history-tab-saved').click();
+  await expect(
+    page
+      .locator('.history-item--saved')
+      .filter({ hasText: filename })
+      .first(),
+  ).toBeVisible({
     timeout: 30_000,
   });
   mark('document:save:done');
@@ -87,8 +134,9 @@ async function openSessionDocument(page: Page, filename: string) {
 async function addVocabularyFromCurrentResult(page: Page) {
   const content = page.getByTestId('result-content');
 
+  mark('vocab-context:select');
   const selectedWord = await content.evaluate((element) => {
-    const container = element as HTMLPreElement;
+    const container = element as HTMLElement;
     const fullText = container.textContent ?? '';
     const match = fullText.match(/\b[A-Za-z]{5,}\b/);
     if (!match || match.index === undefined) {
@@ -97,9 +145,26 @@ async function addVocabularyFromCurrentResult(page: Page) {
 
     const start = match.index;
     const end = start + match[0].length;
-    const textNode = container.firstChild;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let textNode: Text | null = null;
+    let localStart = 0;
+    let localEnd = 0;
+    let offset = 0;
+
+    while (walker.nextNode()) {
+      const candidate = walker.currentNode as Text;
+      const length = candidate.textContent?.length ?? 0;
+      if (start >= offset && end <= offset + length) {
+        textNode = candidate;
+        localStart = start - offset;
+        localEnd = end - offset;
+        break;
+      }
+      offset += length;
+    }
+
     if (!textNode) {
-      throw new Error('Rendered result has no text node');
+      throw new Error('Rendered result has no suitable text node');
     }
 
     const selection = window.getSelection();
@@ -108,8 +173,8 @@ async function addVocabularyFromCurrentResult(page: Page) {
     }
 
     const range = document.createRange();
-    range.setStart(textNode, start);
-    range.setEnd(textNode, end);
+    range.setStart(textNode, localStart);
+    range.setEnd(textNode, localEnd);
     selection.removeAllRanges();
     selection.addRange(range);
 
@@ -135,7 +200,10 @@ async function addVocabularyFromCurrentResult(page: Page) {
     return match[0];
   });
 
+  mark('vocab-context:menu-wait');
   await expect(page.getByTestId('vocab-context-menu')).toBeVisible();
+  mark('vocab-context:menu-open');
+  await page.locator('.vocab-context-menu__row').hover();
   await page
     .getByTestId('vocab-context-menu')
     .getByRole('button', { name: 'Word' })
@@ -150,6 +218,7 @@ async function addVocabularyFromCurrentResult(page: Page) {
     .getByRole('button', { name: 'Add' })
     .click();
   await expect(page.getByTestId('result-edit-toggle')).toHaveText('Edit');
+  mark('vocab-context:added');
 
   return selectedWord;
 }
@@ -167,14 +236,23 @@ async function answerCurrentExercise(page: Page) {
 
 async function completePracticeFlow(page: Page) {
   for (;;) {
+    const readyButton = page.getByRole('button', { name: 'Ready' });
+    if (await readyButton.isVisible().catch(() => false)) {
+      await readyButton.click();
+      continue;
+    }
+
     await answerCurrentExercise(page);
 
     const finishButton = page.getByRole('button', { name: 'Finish & Analyze' });
+    const continueButton = page.getByRole('button', { name: 'Continue' });
     const nextButton = page.getByRole('button', { name: 'Next' });
 
     await Promise.race([
       finishButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => null),
+      continueButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => null),
       nextButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => null),
+      readyButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => null),
     ]);
 
     if (await finishButton.isVisible().catch(() => false)) {
@@ -182,12 +260,22 @@ async function completePracticeFlow(page: Page) {
       return;
     }
 
+    if (await continueButton.isVisible().catch(() => false)) {
+      await continueButton.click();
+      continue;
+    }
+
     if (await nextButton.isVisible().catch(() => false)) {
       await nextButton.click();
       continue;
     }
 
-    throw new Error('Practice flow did not expose Next or Finish & Analyze');
+    if (await readyButton.isVisible().catch(() => false)) {
+      await readyButton.click();
+      continue;
+    }
+
+    throw new Error('Practice flow did not expose Ready, Continue, Next, or Finish & Analyze');
   }
 }
 
@@ -262,38 +350,81 @@ test('handles OCR copy and saved document CRUD in the browser', async ({
   mark('crud:save');
   await page.getByTestId('result-tab-markdown').click();
   await page.getByTestId('result-save-button').click();
-  await expect(page.getByTestId('result-save-button')).toContainText('Saved', {
+  await page.getByTestId('history-tab-saved').click();
+  await expect(
+    page
+      .locator('.history-item--saved')
+      .filter({ hasText: SAVED_IMAGE_FILENAME })
+      .first(),
+  ).toBeVisible({
     timeout: 30_000,
   });
   mark('crud:saved');
 
-  await openSavedDocument(page, 'image_test.jpg');
+  await openSavedDocument(page, SAVED_IMAGE_FILENAME);
   await page.getByTestId('result-edit-toggle').click();
   mark('crud:editing-saved');
 
-  const editor = page.getByTestId('result-editor');
-  const updatedMarker = '\n\nSaved document updated by Playwright.';
-  await editor.fill(`${await editor.inputValue()}${updatedMarker}`);
+  const editor = getRichTextEditor(page);
+  const updatedMarker = 'Saved document updated by Playwright.';
+  await editor.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type(updatedMarker);
+  await expect(editor).toContainText(updatedMarker);
   await expect(page.getByTestId('result-update-button')).toBeVisible();
   mark('crud:update-click');
   await page.getByTestId('result-update-button').click();
   mark('crud:updated');
   await openSessionDocument(page, 'image_test.jpg');
-  await openSavedDocument(page, 'image_test.jpg');
-  await page.getByTestId('result-edit-toggle').click();
+  await openSavedDocument(page, SAVED_IMAGE_FILENAME);
   mark('crud:verify-updated');
-  await expect(page.getByTestId('result-editor')).toHaveValue(
-    new RegExp(updatedMarker.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-  );
-  await page.getByTestId('result-edit-toggle').click();
+  await expect(page.getByTestId('result-content')).toContainText(updatedMarker);
   mark('crud:delete');
   await page
     .locator('.history-item--saved')
     .first()
-    .getByRole('button', { name: 'Delete image_test.jpg' })
+    .getByRole('button', { name: `Delete ${SAVED_IMAGE_FILENAME}` })
     .click();
-  await expect(page.getByText('No saved documents yet.')).toBeVisible();
+  await expect(
+    page
+      .locator('.history-item--saved')
+      .filter({ hasText: SAVED_IMAGE_FILENAME }),
+  ).toHaveCount(0);
   mark('crud:test:done');
+});
+
+test('persists rich HTML formatting for saved documents after reopen', async ({
+  page,
+}) => {
+  await uploadAndRecognize(page);
+  await saveCurrentResultAsDocument(page);
+  await openSavedDocument(page, SAVED_IMAGE_FILENAME);
+  await page.getByTestId('result-edit-toggle').click();
+
+  const uploadedImageUrl = await uploadEditorImage(page);
+  const richHtml = [
+    '<h2>Rich formatting survives</h2>',
+    '<p><span style="color:#c62828;font-size:28px;font-family:\'Courier New\', Courier, monospace;">Styled content survives.</span></p>',
+    '<figure class="table"><table><thead><tr><th>Column</th></tr></thead><tbody><tr><td>Table cell persists.</td></tr></tbody></table></figure>',
+    `<figure class="image"><img src="${uploadedImageUrl}" alt="Uploaded from Playwright"></figure>`,
+  ].join('');
+
+  await setEditorHtmlThroughSourceMode(page, richHtml);
+  await expect(getRichTextEditor(page)).toContainText('Styled content survives.');
+
+  await page.getByTestId('result-update-button').click();
+  await openSessionDocument(page, 'image_test.jpg');
+  await openSavedDocument(page, SAVED_IMAGE_FILENAME);
+
+  const content = page.getByTestId('result-content');
+  await expect(content.locator('h2')).toContainText('Rich formatting survives');
+  await expect(content.locator('table')).toBeVisible();
+  await expect(content.locator('td')).toContainText('Table cell persists.');
+  await expect(content.locator('img')).toHaveAttribute('src', uploadedImageUrl);
+  await expect(content.locator('span')).toContainText('Styled content survives.');
+  await expect(content.locator('span')).toHaveCSS('font-size', '28px');
+  await expect(content.locator('span')).toHaveCSS('color', 'rgb(198, 40, 40)');
 });
 
 test('adds vocabulary via context menu and completes practice flow', async ({
@@ -303,6 +434,7 @@ test('adds vocabulary via context menu and completes practice flow', async ({
   const selectedWord = await addVocabularyFromCurrentResult(page);
   const vocabularyPanel = page.getByTestId('vocabulary-panel');
 
+  mark('practice:vocab-tab');
   await page.getByTestId('history-tab-vocab').click();
   await expect(
     vocabularyPanel.getByText(selectedWord, { exact: true }),
@@ -314,11 +446,14 @@ test('adds vocabulary via context menu and completes practice flow', async ({
     vocabularyPanel.getByText(selectedWord, { exact: true }),
   ).toBeVisible();
 
+  mark('practice:start');
   await page.getByTestId('vocab-practice-button').click();
   await expect(page.getByTestId('practice-view')).toBeVisible({
     timeout: 120_000,
   });
+  mark('practice:flow');
   await completePracticeFlow(page);
+  mark('practice:done');
   await expect(page.getByText('Session Complete')).toBeVisible({
     timeout: 180_000,
   });
@@ -331,7 +466,7 @@ test('saves edited vocabulary from the review overlay into the real vocabulary l
 }) => {
   await uploadAndRecognize(page);
   await saveCurrentResultAsDocument(page);
-  await openSavedDocument(page, 'image_test.jpg');
+  await openSavedDocument(page, SAVED_IMAGE_FILENAME);
 
   const { editedWord, editedTranslation } = await saveVocabularyFromOverlay(page);
   const vocabularyPanel = page.getByTestId('vocabulary-panel');

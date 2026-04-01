@@ -6,17 +6,20 @@ import type {
 import type { VocabType } from '../../domain/entities/vocabulary-word.entity';
 
 export interface CreateDocumentInput {
-  markdown: string;
+  markdown?: string;
+  richTextHtml?: string | null;
   filename: string;
 }
 
 export interface UpdateDocumentInput {
-  markdown: string;
+  markdown?: string;
+  richTextHtml?: string | null;
 }
 
 export interface SavedDocumentOutput {
   id: string;
   markdown: string;
+  richTextHtml: string | null;
   filename: string;
   createdAt: string;
   updatedAt: string;

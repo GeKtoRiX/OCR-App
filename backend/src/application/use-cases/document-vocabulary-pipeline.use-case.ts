@@ -27,6 +27,7 @@ export class DocumentVocabularyPipelineUseCase {
     return {
       id: doc.id,
       markdown: doc.markdown,
+      richTextHtml: doc.richTextHtml,
       filename: doc.filename,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
@@ -237,7 +238,7 @@ export class DocumentVocabularyPipelineUseCase {
         const created = await this.vocabularyRepository.create(
           normalizedWord,
           item.vocabType,
-          item.translation.trim(),
+          (item.translation ?? '').trim(),
           input.targetLang,
           input.nativeLang,
           item.contextSentence,

@@ -30,8 +30,8 @@ test('rewrites a saved markdown document through the live AI editor flow', async
   await page.getByTitle('Toggle AI Assistant').click();
 
   const prompt = [
-    'Rewrite the entire text to exactly this markdown and nothing else:',
-    '# Live AI Rewrite',
+    'Rewrite the entire text to exactly this plain text and nothing else:',
+    'Live AI Rewrite',
     '',
     'This content was rewritten by the AI editor flow.',
   ].join('\n');
@@ -50,4 +50,14 @@ test('rewrites a saved markdown document through the live AI editor flow', async
   await expect(editorContent).toContainText('This content was rewritten by the AI editor flow.', {
     timeout: 30_000,
   });
+
+  await page.getByTestId('result-update-button').click();
+  await page.getByTestId('history-tab-session').click();
+  await page.getByTestId('history-tab-saved').click();
+  await savedEntry.click();
+
+  await expect(page.getByTestId('result-content')).toContainText(
+    'This content was rewritten by the AI editor flow.',
+    { timeout: 30_000 },
+  );
 });

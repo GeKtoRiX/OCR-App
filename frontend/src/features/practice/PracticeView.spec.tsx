@@ -21,15 +21,25 @@ const baseProps = {
   isLastExercise: false,
   analysis: null,
   error: null,
+  previewWords: [],
+  currentBatchMode: 'unseen' as const,
+  hasRecordedAnswers: false,
   onAnswer: vi.fn(),
+  onReady: vi.fn(),
   onNext: vi.fn(),
   onComplete: vi.fn(),
   onReset: vi.fn(),
 };
 
 describe('PracticeView', () => {
-  it('renders loading state', () => {
-    render(<PracticeView {...baseProps} phase="loading" />);
+  it('renders planning state', () => {
+    render(<PracticeView {...baseProps} phase="planning" />);
+
+    expect(screen.getByText('Preparing your study batch...')).toBeInTheDocument();
+  });
+
+  it('renders round loading state', () => {
+    render(<PracticeView {...baseProps} phase="loading_round" />);
 
     expect(screen.getByText('Generating exercises...')).toBeInTheDocument();
   });
@@ -49,6 +59,34 @@ describe('PracticeView', () => {
     await user.click(screen.getByText('Back'));
 
     expect(onReset).toHaveBeenCalled();
+  });
+
+  it('renders a preview batch and starts on ready', async () => {
+    const user = userEvent.setup();
+    const onReady = vi.fn();
+    render(
+      <PracticeView
+        {...baseProps}
+        phase="preview"
+        previewWords={[
+          {
+            id: 'word-1',
+            word: 'hello',
+            translation: 'привет',
+            contextSentence: 'Hello there.',
+            attemptCount: 2,
+            incorrectCount: 1,
+          },
+        ]}
+        onReady={onReady}
+      />,
+    );
+
+    expect(screen.getByText('Words In This Batch')).toBeInTheDocument();
+    expect(screen.getByText('hello')).toBeInTheDocument();
+    await user.click(screen.getByText('Ready'));
+
+    expect(onReady).toHaveBeenCalled();
   });
 
   it('submits a text answer in practicing mode', async () => {
@@ -85,6 +123,26 @@ describe('PracticeView', () => {
     await user.click(screen.getByText('world'));
 
     expect(onAnswer).toHaveBeenCalledWith('world');
+  });
+
+  it('does not duplicate multiple choice options inside the prompt area', () => {
+    render(
+      <PracticeView
+        {...baseProps}
+        currentExercise={{
+          ...baseExercise,
+          exerciseType: 'multiple_choice',
+          prompt: 'Which word means "hello"?\nOptions:\nA. hello\nB. world\nC. test',
+          options: ['hello', 'world', 'test'],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Which word means "hello"?')).toBeInTheDocument();
+    expect(screen.queryByText('Options:')).not.toBeInTheDocument();
+    expect(screen.getAllByText('hello')).toHaveLength(1);
+    expect(screen.getAllByText('world')).toHaveLength(1);
+    expect(screen.getAllByText('test')).toHaveLength(1);
   });
 
   it('renders review feedback and advances to next exercise', async () => {
@@ -140,7 +198,25 @@ describe('PracticeView', () => {
     expect(onReset).toHaveBeenCalled();
   });
 
-  it('finishes and analyzes on the last reviewed exercise', async () => {
+  it('continues after the last reviewed exercise so the store can choose the next batch', async () => {
+    const user = userEvent.setup();
+    const onNext = vi.fn();
+    render(
+      <PracticeView
+        {...baseProps}
+        phase="reviewing"
+        isLastExercise
+        lastAnswer={{ isCorrect: true, errorPosition: null, qualityRating: 5 }}
+        onNext={onNext}
+      />,
+    );
+
+    await user.click(screen.getByText('Continue'));
+
+    expect(onNext).toHaveBeenCalled();
+  });
+
+  it('allows finishing and analyzing from review when the session already has answers', async () => {
     const user = userEvent.setup();
     const onComplete = vi.fn();
     render(
@@ -148,6 +224,7 @@ describe('PracticeView', () => {
         {...baseProps}
         phase="reviewing"
         isLastExercise
+        hasRecordedAnswers
         lastAnswer={{ isCorrect: true, errorPosition: null, qualityRating: 5 }}
         onComplete={onComplete}
       />,

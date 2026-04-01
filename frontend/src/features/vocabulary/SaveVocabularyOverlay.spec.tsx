@@ -8,6 +8,7 @@ describe('SaveVocabularyOverlay', () => {
   const document: SavedDocument = {
     id: 'doc-1',
     markdown: '# Sample',
+    richTextHtml: null,
     filename: 'sample.md',
     createdAt: '2026-03-27T10:00:00.000Z',
     updatedAt: '2026-03-27T10:00:00.000Z',

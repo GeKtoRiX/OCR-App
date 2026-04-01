@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as crypto from 'crypto';
 import type Database from 'better-sqlite3';
 import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
+import type { VocabularyAttemptStats } from '../../domain/ports/practice-session-repository.port';
 import { PracticeSession } from '../../domain/entities/practice-session.entity';
 import {
   ExerciseAttempt,
@@ -51,6 +52,8 @@ export class SqlitePracticeSessionRepository
     selectAttemptsByVocab: Database.Statement;
     updateMnemonic: Database.Statement;
   };
+
+  private readonly vocabStatsStmtCache = new Map<number, Database.Statement>();
 
   constructor(private readonly connection: SqliteConnectionProvider) {
     super();
@@ -118,6 +121,24 @@ export class SqlitePracticeSessionRepository
         'UPDATE exercise_attempts SET mnemonic_sentence = ? WHERE id = ?',
       ),
     };
+  }
+
+  private getVocabStatsStmt(count: number): Database.Statement {
+    if (!this.vocabStatsStmtCache.has(count)) {
+      const placeholders = Array(count).fill('?').join(', ');
+      this.vocabStatsStmtCache.set(
+        count,
+        this.connection.db.prepare(
+          `SELECT vocabulary_id AS vocabularyId,
+                  COUNT(*) AS attemptCount,
+                  SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) AS incorrectCount
+           FROM exercise_attempts
+           WHERE vocabulary_id IN (${placeholders})
+           GROUP BY vocabulary_id`,
+        ),
+      );
+    }
+    return this.vocabStatsStmtCache.get(count)!;
   }
 
   private toSession(r: SessionRow): PracticeSession {
@@ -210,6 +231,20 @@ export class SqlitePracticeSessionRepository
   ): Promise<ExerciseAttempt[]> {
     const rows = this.stmts.selectAttemptsByVocab.all(vocabularyId) as AttemptRow[];
     return rows.map((r) => this.toAttempt(r));
+  }
+
+  async findVocabularyStats(
+    vocabularyIds: string[],
+  ): Promise<VocabularyAttemptStats[]> {
+    if (vocabularyIds.length === 0) return [];
+    const rows = this.getVocabStatsStmt(vocabularyIds.length).all(
+      ...vocabularyIds,
+    ) as Array<{ vocabularyId: string; attemptCount: number; incorrectCount: number | null }>;
+    return rows.map((row) => ({
+      vocabularyId: row.vocabularyId,
+      attemptCount: row.attemptCount,
+      incorrectCount: row.incorrectCount ?? 0,
+    }));
   }
 
   async updateAttemptMnemonic(

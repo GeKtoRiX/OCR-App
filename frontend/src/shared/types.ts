@@ -16,6 +16,7 @@ export interface OcrBlock {
 export interface OcrResponse {
   rawText: string;
   markdown: string;
+  richTextHtml?: string | null;
   filename: string;
   blocks?: OcrBlock[];
 }
@@ -92,6 +93,7 @@ export const KOKORO_VOICES = [
 export interface SavedDocument {
   id: string;
   markdown: string;
+  richTextHtml: string | null;
   filename: string;
   createdAt: string;
   updatedAt: string;
@@ -198,6 +200,25 @@ export interface Exercise {
   prompt: string;
   correctAnswer: string;
   options?: string[];
+}
+
+export type PracticeBatchMode = 'unseen' | 'retry' | 'hardest';
+
+export interface PracticePreviewWord {
+  id: string;
+  word: string;
+  translation: string;
+  contextSentence: string;
+  attemptCount: number;
+  incorrectCount: number;
+}
+
+export interface PracticePlanResponse {
+  sessionId: string;
+  batchSize: number;
+  initialBatchMode: Exclude<PracticeBatchMode, 'retry'>;
+  allWords: PracticePreviewWord[];
+  previewWords: PracticePreviewWord[];
 }
 
 export interface AnswerResult {

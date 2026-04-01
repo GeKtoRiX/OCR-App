@@ -54,6 +54,7 @@ describe('useDocumentsStore', () => {
       {
         id: 'doc-1',
         markdown: '# doc',
+        richTextHtml: null,
         filename: 'doc.md',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -74,6 +75,7 @@ describe('useDocumentsStore', () => {
     const document = {
       id: 'doc-1',
       markdown: '# saved',
+      richTextHtml: null,
       filename: 'saved.md',
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
@@ -83,7 +85,7 @@ describe('useDocumentsStore', () => {
     };
     mockCreateDocument.mockResolvedValue(document);
 
-    await useDocumentsStore.getState().save('# saved', 'saved.md');
+    await useDocumentsStore.getState().save({ markdown: '# saved', filename: 'saved.md' });
 
     expect(useDocumentsStore.getState().documents[0]).toEqual(document);
     expect(useDocumentsStore.getState().saveStatus).toBe('saved');
@@ -98,6 +100,7 @@ describe('useDocumentsStore', () => {
     const original = {
       id: 'doc-1',
       markdown: '# old',
+      richTextHtml: null,
       filename: 'saved.md',
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
@@ -105,11 +108,11 @@ describe('useDocumentsStore', () => {
       analysisError: null,
       analysisUpdatedAt: null,
     };
-    const updated = { ...original, markdown: '# updated' };
+    const updated = { ...original, markdown: '# updated', richTextHtml: '<p>updated</p>' };
     useDocumentsStore.setState({ documents: [original], loading: false });
     mockUpdateDocument.mockResolvedValue(updated);
 
-    await useDocumentsStore.getState().update('doc-1', '# updated');
+    await useDocumentsStore.getState().update('doc-1', { richTextHtml: '<p>updated</p>' });
 
     expect(useDocumentsStore.getState().documents).toEqual([updated]);
   });
@@ -120,6 +123,7 @@ describe('useDocumentsStore', () => {
         {
           id: 'doc-1',
           markdown: '# doc',
+          richTextHtml: null,
           filename: 'doc.md',
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
@@ -153,6 +157,7 @@ describe('useDocumentsStore', () => {
       document: {
         id: 'doc-1',
         markdown: '# doc',
+        richTextHtml: null,
         filename: 'doc.md',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',

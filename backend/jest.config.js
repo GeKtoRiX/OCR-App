@@ -23,6 +23,7 @@ module.exports = {
   testEnvironment: 'node',
   testTimeout: 120000,
   moduleNameMapper: {
+    '^@ocr-app/shared$': '<rootDir>/shared/src/index.ts',
     '^@domain/(.*)$': '<rootDir>/src/domain/$1',
     '^@application/(.*)$': '<rootDir>/src/application/$1',
     '^@infrastructure/(.*)$': '<rootDir>/src/infrastructure/$1',

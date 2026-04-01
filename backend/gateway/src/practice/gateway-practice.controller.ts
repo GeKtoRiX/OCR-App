@@ -12,7 +12,11 @@ import { ClientProxy } from '@nestjs/microservices';
 import {
   CompletePracticePayload,
   CompletePracticeResponse,
+  GeneratePracticeRoundPayload,
+  GeneratePracticeRoundResponse,
   PracticeSessionsPayload,
+  PracticePlanPayload,
+  PracticePlanResponse,
   PracticeStatsPayload,
   StartPracticePayload,
   StartPracticeResponse,
@@ -46,6 +50,30 @@ export class GatewayPracticeController {
   async start(@Body() body: StartPracticePayload): Promise<StartPracticeResponse> {
     return this.send<StartPracticePayload, StartPracticeResponse>(
       VOCABULARY_PATTERNS.PRACTICE_START,
+      body,
+    );
+  }
+
+  @Post('plan')
+  async plan(@Body() body: PracticePlanPayload): Promise<PracticePlanResponse> {
+    return this.send<PracticePlanPayload, PracticePlanResponse>(
+      VOCABULARY_PATTERNS.PRACTICE_PLAN,
+      body,
+    );
+  }
+
+  @Post('round')
+  async round(
+    @Body() body: GeneratePracticeRoundPayload,
+  ): Promise<GeneratePracticeRoundResponse> {
+    if (!body.sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+    if (!Array.isArray(body.vocabularyIds) || body.vocabularyIds.length === 0) {
+      throw new BadRequestException('vocabularyIds must be a non-empty array');
+    }
+    return this.send<GeneratePracticeRoundPayload, GeneratePracticeRoundResponse>(
+      VOCABULARY_PATTERNS.PRACTICE_ROUND,
       body,
     );
   }

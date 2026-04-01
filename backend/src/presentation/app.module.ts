@@ -4,6 +4,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import { DatabaseModule } from './modules/database.module';
+import { EditorModule } from './modules/editor.module';
 import { OcrModule } from './modules/ocr.module';
 import { HealthModule } from './modules/health.module';
 import { TtsModule } from './modules/tts.module';
@@ -21,7 +22,12 @@ import { AgentEcosystemModule } from '../agentic/presentation/modules/agent-ecos
       rootPath: join(__dirname, '..', '..', '..', 'frontend', 'dist'),
       exclude: ['/api/(.*)'],
     }),
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'data', 'editor-assets'),
+      serveRoot: '/editor-assets',
+    }),
     DatabaseModule,
+    EditorModule,
     OcrModule,
     HealthModule,
     TtsModule,

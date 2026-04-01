@@ -1,16 +1,34 @@
 import { create } from 'zustand';
-import { completePractice, startPractice, submitAnswer } from '../../shared/api';
-import type { AnswerResult, Exercise, SessionAnalysis } from '../../shared/types';
+import {
+  completePractice,
+  generatePracticeRound,
+  planPractice,
+  submitAnswer,
+} from '../../shared/api';
+import type {
+  AnswerResult,
+  Exercise,
+  PracticeBatchMode,
+  PracticePreviewWord,
+  SessionAnalysis,
+} from '../../shared/types';
 
 export type PracticePhase =
   | 'idle'
-  | 'loading'
+  | 'planning'
+  | 'preview'
+  | 'loading_round'
   | 'practicing'
   | 'submitting'
   | 'reviewing'
   | 'analyzing'
   | 'complete'
   | 'error';
+
+interface RoundAnswerResult {
+  vocabularyId: string;
+  isCorrect: boolean;
+}
 
 interface PracticeState {
   phase: PracticePhase;
@@ -23,10 +41,18 @@ interface PracticeState {
   error: string | null;
   currentExercise: Exercise | null;
   isLastExercise: boolean;
+  previewWords: PracticePreviewWord[];
+  allWords: PracticePreviewWord[];
+  currentBatchMode: PracticeBatchMode | null;
+  batchSize: number;
+  unseenCursor: number;
+  sessionIncorrectCounts: Record<string, number>;
+  currentRoundResults: RoundAnswerResult[];
 }
 
 interface PracticeActions {
   start(targetLang?: string, nativeLang?: string, wordLimit?: number): Promise<void>;
+  ready(): Promise<void>;
   answer(userAnswer: string): Promise<void>;
   next(): void;
   complete(): Promise<void>;
@@ -46,6 +72,13 @@ const initialState: PracticeState = {
   error: null,
   currentExercise: null,
   isLastExercise: false,
+  previewWords: [],
+  allWords: [],
+  currentBatchMode: null,
+  batchSize: 10,
+  unseenCursor: 0,
+  sessionIncorrectCounts: {},
+  currentRoundResults: [],
 };
 
 function deriveState(state: Pick<PracticeState, 'exercises' | 'currentIndex'>) {
@@ -55,32 +88,116 @@ function deriveState(state: Pick<PracticeState, 'exercises' | 'currentIndex'>) {
   };
 }
 
+function getUnseenWords(allWords: PracticePreviewWord[]) {
+  return allWords.filter((word) => word.attemptCount === 0);
+}
+
+function mapPreviewWords(
+  allWords: PracticePreviewWord[],
+  ids: string[],
+): PracticePreviewWord[] {
+  const byId = new Map(allWords.map((word) => [word.id, word]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((word): word is PracticePreviewWord => Boolean(word));
+}
+
+function pickHardestWords(
+  allWords: PracticePreviewWord[],
+  sessionIncorrectCounts: Record<string, number>,
+  limit: number,
+): PracticePreviewWord[] {
+  return [...allWords]
+    .map((word) => ({
+      word,
+      totalIncorrectCount: word.incorrectCount + (sessionIncorrectCounts[word.id] ?? 0),
+      tieBreaker: Math.random(),
+    }))
+    .sort((left, right) => {
+      if (right.totalIncorrectCount !== left.totalIncorrectCount) {
+        return right.totalIncorrectCount - left.totalIncorrectCount;
+      }
+      return left.tieBreaker - right.tieBreaker;
+    })
+    .slice(0, limit)
+    .map((entry) => entry.word);
+}
+
+function resetRoundState() {
+  return {
+    exercises: [],
+    currentIndex: 0,
+    lastAnswer: null,
+    currentRoundResults: [],
+    ...deriveState({ exercises: [], currentIndex: 0 }),
+  };
+}
+
 export const usePracticeStore = create<PracticeStore>((set, get) => ({
   ...initialState,
 
   async start(targetLang, nativeLang, wordLimit) {
     set({
-      phase: 'loading',
+      phase: 'planning',
       error: null,
     });
 
     try {
-      const result = await startPractice({ targetLang, nativeLang, wordLimit });
+      const result = await planPractice({ targetLang, nativeLang, wordLimit });
+      const initialBatchMode = result.initialBatchMode;
+      const unseenCursor = initialBatchMode === 'unseen'
+        ? result.previewWords.length
+        : 0;
+
       set({
-        phase: 'practicing',
+        phase: 'preview',
         sessionId: result.sessionId,
-        exercises: result.exercises,
-        currentIndex: 0,
+        allWords: result.allWords,
+        previewWords: result.previewWords,
+        currentBatchMode: initialBatchMode,
+        batchSize: result.batchSize,
+        unseenCursor,
+        sessionIncorrectCounts: {},
         answers: [],
-        lastAnswer: null,
         analysis: null,
         error: null,
-        ...deriveState({ exercises: result.exercises, currentIndex: 0 }),
+        ...resetRoundState(),
       });
     } catch (error) {
       set({
         phase: 'error',
         error: error instanceof Error ? error.message : 'Failed to start practice',
+      });
+    }
+  },
+
+  async ready() {
+    const { sessionId, previewWords } = get();
+    if (!sessionId || previewWords.length === 0) {
+      return;
+    }
+
+    set({ phase: 'loading_round', error: null, lastAnswer: null, currentRoundResults: [] });
+
+    try {
+      const result = await generatePracticeRound({
+        sessionId,
+        vocabularyIds: previewWords.map((word) => word.id),
+      });
+
+      set({
+        phase: 'practicing',
+        exercises: result.exercises,
+        currentIndex: 0,
+        lastAnswer: null,
+        error: null,
+        currentRoundResults: [],
+        ...deriveState({ exercises: result.exercises, currentIndex: 0 }),
+      });
+    } catch (error) {
+      set({
+        phase: 'error',
+        error: error instanceof Error ? error.message : 'Failed to prepare practice round',
       });
     }
   },
@@ -109,6 +226,17 @@ export const usePracticeStore = create<PracticeStore>((set, get) => ({
         phase: 'reviewing',
         answers: [...state.answers, result],
         lastAnswer: result,
+        currentRoundResults: [
+          ...state.currentRoundResults,
+          { vocabularyId: exercise.vocabularyId, isCorrect: result.isCorrect },
+        ],
+        sessionIncorrectCounts: result.isCorrect
+          ? state.sessionIncorrectCounts
+          : {
+              ...state.sessionIncorrectCounts,
+              [exercise.vocabularyId]:
+                (state.sessionIncorrectCounts[exercise.vocabularyId] ?? 0) + 1,
+            },
       }));
     } catch (error) {
       set({
@@ -119,15 +247,66 @@ export const usePracticeStore = create<PracticeStore>((set, get) => ({
   },
 
   next() {
-    set((state) => {
-      const currentIndex = state.currentIndex + 1;
+    const state = get();
 
-      return {
-        currentIndex,
-        lastAnswer: null,
-        phase: 'practicing',
-        ...deriveState({ exercises: state.exercises, currentIndex }),
-      };
+    if (state.currentIndex < state.exercises.length - 1) {
+      set((currentState) => {
+        const currentIndex = currentState.currentIndex + 1;
+
+        return {
+          currentIndex,
+          lastAnswer: null,
+          phase: 'practicing',
+          ...deriveState({ exercises: currentState.exercises, currentIndex }),
+        };
+      });
+      return;
+    }
+
+    const incorrectIds = [...new Set(
+      state.currentRoundResults
+        .filter((item) => !item.isCorrect)
+        .map((item) => item.vocabularyId),
+    )];
+
+    if (incorrectIds.length > 0) {
+      set({
+        phase: 'preview',
+        previewWords: mapPreviewWords(state.allWords, incorrectIds),
+        currentBatchMode: 'retry',
+        error: null,
+        ...resetRoundState(),
+      });
+      return;
+    }
+
+    const unseenWords = getUnseenWords(state.allWords);
+    if (state.unseenCursor < unseenWords.length) {
+      const nextPreviewWords = unseenWords.slice(
+        state.unseenCursor,
+        state.unseenCursor + state.batchSize,
+      );
+      set({
+        phase: 'preview',
+        previewWords: nextPreviewWords,
+        currentBatchMode: 'unseen',
+        unseenCursor: state.unseenCursor + nextPreviewWords.length,
+        error: null,
+        ...resetRoundState(),
+      });
+      return;
+    }
+
+    set({
+      phase: 'preview',
+      previewWords: pickHardestWords(
+        state.allWords,
+        state.sessionIncorrectCounts,
+        state.batchSize,
+      ),
+      currentBatchMode: 'hardest',
+      error: null,
+      ...resetRoundState(),
     });
   },
 

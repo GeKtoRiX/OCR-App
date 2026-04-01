@@ -108,6 +108,7 @@ async function del(path: string): Promise<Response> {
 
 describe('E2E: Document persistence (/api/documents)', () => {
   let createdId: string;
+  let richHtmlId: string;
 
   it('POST /api/documents — creates a document and returns 201', async () => {
     const res = await post('/api/documents', {
@@ -119,7 +120,7 @@ describe('E2E: Document persistence (/api/documents)', () => {
     const body: any = await res.json();
     expect(body.id).toBeTruthy();
     expect(body.markdown).toBe('# Hello\n\nSome OCR content.');
-    expect(body.filename).toBe('test-image.jpg');
+    expect(body.filename).toBe('test-image.html');
     expect(body.createdAt).toBeTruthy();
     expect(body.updatedAt).toBeTruthy();
 
@@ -133,7 +134,7 @@ describe('E2E: Document persistence (/api/documents)', () => {
     expect(Array.isArray(body)).toBe(true);
     const found = body.find((d) => d.id === createdId);
     expect(found).toBeDefined();
-    expect(found.filename).toBe('test-image.jpg');
+    expect(found.filename).toBe('test-image.html');
   });
 
   it('GET /api/documents/:id — returns the document by id', async () => {
@@ -159,6 +160,49 @@ describe('E2E: Document persistence (/api/documents)', () => {
     expect(res.status).toBe(200);
     const body: any = await res.json();
     expect(body.markdown).toBe('# Updated\n\nEdited content.');
+  });
+
+  it('POST /api/documents — creates an HTML-first document and derives compatibility markdown', async () => {
+    const res = await post('/api/documents', {
+      richTextHtml:
+        '<h2>Rich document</h2><p><span style="color:#c62828" onclick="alert(1)">Styled body.</span></p><script>alert(1)</script>',
+      filename: 'rich-document.html',
+    });
+
+    expect(res.status).toBe(201);
+    const body: any = await res.json();
+    expect(body.id).toBeTruthy();
+    expect(body.filename).toBe('rich-document.html');
+    expect(body.richTextHtml).toContain('<h2>Rich document</h2>');
+    expect(body.richTextHtml).toContain('style="color:#c62828"');
+    expect(body.richTextHtml).not.toContain('<script');
+    expect(body.richTextHtml).not.toContain('onclick=');
+    expect(body.markdown).toContain('Rich document');
+    expect(body.markdown).toContain('Styled body.');
+
+    richHtmlId = body.id;
+  });
+
+  it('GET /api/documents/:id — returns persisted HTML-first content', async () => {
+    const res = await get(`/api/documents/${richHtmlId}`);
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body.id).toBe(richHtmlId);
+    expect(body.richTextHtml).toContain('<h2>Rich document</h2>');
+    expect(body.markdown).toContain('Styled body.');
+  });
+
+  it('PUT /api/documents/:id — updates richTextHtml and refreshes compatibility markdown', async () => {
+    const res = await put(`/api/documents/${richHtmlId}`, {
+      richTextHtml:
+        '<p><span style="font-size:28px;color:#1565c0">Updated rich content.</span></p><figure class="table"><table><tbody><tr><td>Table cell</td></tr></tbody></table></figure>',
+    });
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body.richTextHtml).toContain('font-size:28px');
+    expect(body.richTextHtml).toContain('Table cell');
+    expect(body.markdown).toContain('Updated rich content.');
+    expect(body.markdown).toContain('Table cell');
   });
 
   it('GET /api/documents/:id — returns 304 when If-None-Match matches', async () => {
@@ -194,6 +238,13 @@ describe('E2E: Document persistence (/api/documents)', () => {
     const res = await post('/api/documents', {
       markdown: '   ',
       filename: 'file.jpg',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/documents — returns 400 when both markdown and richTextHtml are missing', async () => {
+    const res = await post('/api/documents', {
+      filename: 'missing-content.jpg',
     });
     expect(res.status).toBe(400);
   });
@@ -452,6 +503,7 @@ describe('E2E: Vocabulary persistence (/api/vocabulary)', () => {
 
 describe('E2E: Practice workflow (/api/practice)', () => {
   const practiceWords = ['lantern', 'harbor'];
+  const practiceLangPair = { targetLang: 'sv', nativeLang: 'uk' };
   let wordIds: string[] = [];
   let sessionId = '';
   let exercises: any[] = [];
@@ -464,8 +516,8 @@ describe('E2E: Practice workflow (/api/practice)', () => {
           word,
           vocabType: 'word',
           translation: `ru-${word}`,
-          targetLang: 'en',
-          nativeLang: 'ru',
+          targetLang: practiceLangPair.targetLang,
+          nativeLang: practiceLangPair.nativeLang,
           contextSentence: `Context for ${word}.`,
         }),
       ),
@@ -481,20 +533,36 @@ describe('E2E: Practice workflow (/api/practice)', () => {
     }
   });
 
-  it('POST /api/practice/start — creates a session with generated exercises', async () => {
-    const res = await post('/api/practice/start', {
-      targetLang: 'en',
-      nativeLang: 'ru',
-      wordLimit: 2,
+  it('POST /api/practice/plan — creates a session and returns the first preview batch', async () => {
+    const res = await post('/api/practice/plan', {
+      targetLang: practiceLangPair.targetLang,
+      nativeLang: practiceLangPair.nativeLang,
+      wordLimit: 10,
     });
 
     expect(res.status).toBe(201);
     const body: any = await res.json();
     expect(body.sessionId).toBeTruthy();
-    expect(body.exercises).toHaveLength(2);
-    expect(mockVocabularyLlmService.generateExercises).toHaveBeenCalled();
+    expect(body.batchSize).toBe(10);
+    expect(body.initialBatchMode).toBe('unseen');
+    expect(body.allWords).toHaveLength(2);
+    expect(body.previewWords).toHaveLength(2);
+    expect(body.previewWords.map((word: any) => word.id).sort()).toEqual([...wordIds].sort());
 
     sessionId = body.sessionId;
+  });
+
+  it('POST /api/practice/round — generates exercises for the requested preview words', async () => {
+    const res = await post('/api/practice/round', {
+      sessionId,
+      vocabularyIds: wordIds,
+    });
+
+    expect(res.status).toBe(201);
+    const body: any = await res.json();
+    expect(body.exercises).toHaveLength(2);
+    expect(body.exercises.map((exercise: any) => exercise.vocabularyId)).toEqual(wordIds);
+    expect(mockVocabularyLlmService.generateExercises).toHaveBeenCalled();
     exercises = body.exercises;
   });
 

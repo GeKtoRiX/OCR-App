@@ -14,6 +14,7 @@ import { SqliteConnectionProvider } from './sqlite-connection.provider';
 interface DocumentRow {
   id: string;
   markdown: string;
+  rich_text_html: string | null;
   filename: string;
   created_at: string;
   updated_at: string;
@@ -66,6 +67,7 @@ export class SqliteSavedDocumentRepository
       CREATE TABLE IF NOT EXISTS saved_documents (
         id         TEXT PRIMARY KEY,
         markdown   TEXT NOT NULL,
+        rich_text_html TEXT,
         filename   TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -105,6 +107,11 @@ export class SqliteSavedDocumentRepository
         "ALTER TABLE saved_documents ADD COLUMN analysis_status TEXT NOT NULL DEFAULT 'idle'",
       );
     }
+    if (!names.has('rich_text_html')) {
+      this.connection.db.exec(
+        'ALTER TABLE saved_documents ADD COLUMN rich_text_html TEXT',
+      );
+    }
     if (!names.has('analysis_error')) {
       this.connection.db.exec(
         'ALTER TABLE saved_documents ADD COLUMN analysis_error TEXT',
@@ -120,22 +127,22 @@ export class SqliteSavedDocumentRepository
     this.stmts = {
       insert: db.prepare(
         `INSERT INTO saved_documents
-          (id, markdown, filename, created_at, updated_at, analysis_status, analysis_error, analysis_updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, markdown, rich_text_html, filename, created_at, updated_at, analysis_status, analysis_error, analysis_updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       selectAll: db.prepare(
-        `SELECT id, markdown, filename, created_at, updated_at,
+        `SELECT id, markdown, rich_text_html, filename, created_at, updated_at,
                 analysis_status, analysis_error, analysis_updated_at
          FROM saved_documents ORDER BY updated_at DESC`,
       ),
       selectById: db.prepare(
-        `SELECT id, markdown, filename, created_at, updated_at,
+        `SELECT id, markdown, rich_text_html, filename, created_at, updated_at,
                 analysis_status, analysis_error, analysis_updated_at
          FROM saved_documents WHERE id = ?`,
       ),
       update: db.prepare(
         `UPDATE saved_documents
-         SET markdown = ?, updated_at = ?, analysis_status = 'idle', analysis_error = NULL, analysis_updated_at = NULL
+         SET markdown = ?, rich_text_html = ?, updated_at = ?, analysis_status = 'idle', analysis_error = NULL, analysis_updated_at = NULL
          WHERE id = ?`,
       ),
       deleteById: db.prepare('DELETE FROM saved_documents WHERE id = ?'),
@@ -167,6 +174,7 @@ export class SqliteSavedDocumentRepository
     return new SavedDocument(
       row.id,
       row.markdown,
+      row.rich_text_html,
       row.filename,
       row.created_at,
       row.updated_at,
@@ -196,11 +204,35 @@ export class SqliteSavedDocumentRepository
     );
   }
 
-  async create(markdown: string, filename: string): Promise<SavedDocument> {
+  async create(input: {
+    markdown: string;
+    richTextHtml: string | null;
+    filename: string;
+  }): Promise<SavedDocument> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    this.stmts.insert.run(id, markdown, filename, now, now, 'idle', null, null);
-    return new SavedDocument(id, markdown, filename, now, now, 'idle', null, null);
+    this.stmts.insert.run(
+      id,
+      input.markdown,
+      input.richTextHtml,
+      input.filename,
+      now,
+      now,
+      'idle',
+      null,
+      null,
+    );
+    return new SavedDocument(
+      id,
+      input.markdown,
+      input.richTextHtml,
+      input.filename,
+      now,
+      now,
+      'idle',
+      null,
+      null,
+    );
   }
 
   async findAll(): Promise<SavedDocument[]> {
@@ -214,11 +246,27 @@ export class SqliteSavedDocumentRepository
     return this.toDocumentEntity(row);
   }
 
-  async update(id: string, markdown: string): Promise<SavedDocument | null> {
+  async update(
+    id: string,
+    input: {
+      markdown: string;
+      richTextHtml: string | null;
+    },
+  ): Promise<SavedDocument | null> {
     const now = new Date().toISOString();
     const updateDocument = this.connection.db.transaction(
-      (documentId: string, nextMarkdown: string, timestamp: string) => {
-        const result = this.stmts.update.run(nextMarkdown, timestamp, documentId);
+      (
+        documentId: string,
+        nextMarkdown: string,
+        nextRichTextHtml: string | null,
+        timestamp: string,
+      ) => {
+        const result = this.stmts.update.run(
+          nextMarkdown,
+          nextRichTextHtml,
+          timestamp,
+          documentId,
+        );
         if (result.changes === 0) {
           return 0;
         }
@@ -226,7 +274,7 @@ export class SqliteSavedDocumentRepository
         return result.changes;
       },
     );
-    const changes = updateDocument(id, markdown, now);
+    const changes = updateDocument(id, input.markdown, input.richTextHtml, now);
     if (changes === 0) return null;
     return this.findById(id);
   }

@@ -35,8 +35,18 @@ interface DocumentsState {
 
 interface DocumentsActions {
   load(): Promise<void>;
-  save(markdown: string, filename: string): Promise<SavedDocument | null>;
-  update(id: string, markdown: string): Promise<SavedDocument | null>;
+  save(input: {
+    markdown?: string;
+    richTextHtml?: string | null;
+    filename: string;
+  }): Promise<SavedDocument | null>;
+  update(
+    id: string,
+    input: {
+      markdown?: string;
+      richTextHtml?: string | null;
+    },
+  ): Promise<SavedDocument | null>;
   remove(id: string): Promise<boolean>;
   selectDocument(id: string): void;
   clearSelection(): void;
@@ -109,11 +119,11 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       }
     },
 
-    async save(markdown, filename) {
+    async save(input) {
       set({ saveStatus: 'saving' });
 
       try {
-        const document = await createDocument(markdown, filename);
+        const document = await createDocument(input);
         set((state) => ({
           documents: [document, ...state.documents],
           saveStatus: 'saved',
@@ -131,9 +141,9 @@ export const useDocumentsStore = create<DocumentsStore>((set, get) => {
       }
     },
 
-    async update(id, markdown) {
+    async update(id, input) {
       try {
-        const document = await updateDocument(id, markdown);
+        const document = await updateDocument(id, input);
         set((state) => ({
           documents: state.documents.map((item) => (item.id === id ? document : item)),
           error: null,

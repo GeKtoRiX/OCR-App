@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OcrResponse, VocabType } from '../shared/types';
 import { copyToClipboard } from '../shared/lib/clipboard';
+import { htmlToPlainText, markdownToHtml, sanitizeRichTextHtml } from '../shared/lib/rich-text';
 import { useTts } from '../features/tts';
 import { useVocabContextMenu } from '../features/vocabulary';
 
@@ -16,7 +17,7 @@ interface UseResultPanelOptions {
   ) => void;
 }
 
-export type ResultTab = 'markdown' | 'raw';
+export type ResultTab = 'formatted' | 'raw';
 
 export function useResultPanel({
   result,
@@ -24,20 +25,28 @@ export function useResultPanel({
   existingWordsSet,
   onAddVocabulary,
 }: UseResultPanelOptions) {
-  const [tab, setTab] = useState<ResultTab>('markdown');
+  const [tab, setTab] = useState<ResultTab>('formatted');
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedMarkdown, setEditedMarkdown] = useState(result.markdown);
+  const [editedRichTextHtml, setEditedRichTextHtml] = useState(
+    result.richTextHtml?.trim()
+      ? sanitizeRichTextHtml(result.richTextHtml)
+      : markdownToHtml(result.markdown),
+  );
   const [editedRaw, setEditedRaw] = useState(result.rawText);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const contentRef = useRef<HTMLPreElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const copyResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setEditedMarkdown(result.markdown);
+    setEditedRichTextHtml(
+      result.richTextHtml?.trim()
+        ? sanitizeRichTextHtml(result.richTextHtml)
+        : markdownToHtml(result.markdown),
+    );
     setEditedRaw(result.rawText);
     setIsEditing(false);
-    setTab('markdown');
+    setTab('formatted');
   }, [result]);
 
   useEffect(() => () => {
@@ -46,26 +55,33 @@ export function useResultPanel({
     }
   }, []);
 
-  const activeContent = tab === 'markdown' ? editedMarkdown : editedRaw;
-  const setActiveContent = tab === 'markdown' ? setEditedMarkdown : setEditedRaw;
+  const renderedRichTextHtml = useMemo(
+    () => sanitizeRichTextHtml(editedRichTextHtml),
+    [editedRichTextHtml],
+  );
+  const activePlainText = useMemo(
+    () => (tab === 'formatted' ? htmlToPlainText(renderedRichTextHtml) : editedRaw),
+    [tab, renderedRichTextHtml, editedRaw],
+  );
+  const setActiveContent = tab === 'formatted' ? setEditedRichTextHtml : setEditedRaw;
 
   const handleCopy = useCallback(() => {
-    void copyToClipboard(activeContent);
+    void copyToClipboard(activePlainText);
     setCopied(true);
 
     if (copyResetTimerRef.current !== null) {
       window.clearTimeout(copyResetTimerRef.current);
     }
     copyResetTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
-  }, [activeContent]);
+  }, [activePlainText]);
 
-  const tts = useTts(activeContent, result.filename, isEditing);
+  const tts = useTts(activePlainText, result.filename, isEditing);
   const vocabCtx = useVocabContextMenu({
     textareaRef,
     contentRef,
-    contentText: activeContent,
+    contentText: activePlainText,
     existingWordsSet,
-    onAddVocabulary: tab === 'markdown' ? onAddVocabulary : undefined,
+    onAddVocabulary: tab === 'formatted' ? onAddVocabulary : undefined,
   });
 
   return {
@@ -74,10 +90,12 @@ export function useResultPanel({
     copied,
     isEditing,
     setIsEditing,
-    editedMarkdown,
+    editedRichTextHtml,
+    renderedRichTextHtml,
     editedRaw,
-    activeContent,
+    activePlainText,
     setActiveContent,
+    setEditedRichTextHtml,
     textareaRef,
     contentRef,
     tts,
@@ -86,6 +104,9 @@ export function useResultPanel({
     handleCopy,
     showRawTab: !isSavedDocument,
     rawCharCount: editedRaw.length,
-    markdownCharCount: editedMarkdown.length,
+    formattedCharCount: activePlainText.length,
+    documentPayload: {
+      richTextHtml: editedRichTextHtml,
+    },
   };
 }

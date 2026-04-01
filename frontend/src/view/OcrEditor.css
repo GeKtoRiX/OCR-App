@@ -9,7 +9,58 @@
 .ocr-editor {
   flex: 1;
   min-width: 0;
-  font-size: 0.88rem;
+  --ck-border-radius: 10px;
+  --ck-color-base-background: #232a36;
+  --ck-color-base-foreground: #1b2230;
+  --ck-color-base-border: #3b4558;
+  --ck-color-base-text: #e6edf7;
+  --ck-color-text: var(--ck-color-base-text);
+  --ck-color-shadow-drop: rgba(3, 8, 20, 0.34);
+  --ck-color-shadow-inner: rgba(255, 255, 255, 0.03);
+  --ck-color-focus-border: #60a5fa;
+  --ck-color-focus-outer-shadow: rgba(96, 165, 250, 0.28);
+  --ck-color-button-default-hover-background: rgba(255, 255, 255, 0.08);
+  --ck-color-button-default-active-background: rgba(255, 255, 255, 0.12);
+  --ck-color-button-default-disabled-background: rgba(255, 255, 255, 0.04);
+  --ck-color-button-on-background: rgba(96, 165, 250, 0.18);
+  --ck-color-button-on-hover-background: rgba(96, 165, 250, 0.26);
+  --ck-color-button-on-active-background: rgba(96, 165, 250, 0.32);
+  --ck-color-button-on-disabled-background: rgba(96, 165, 250, 0.12);
+  --ck-color-button-on-color: #f8fbff;
+  --ck-color-button-action-background: #2563eb;
+  --ck-color-button-action-hover-background: #3b82f6;
+  --ck-color-button-action-active-background: #1d4ed8;
+  --ck-color-button-action-disabled-background: #1e3a8a;
+  --ck-color-button-action-text: #f8fbff;
+  --ck-color-toolbar-background: #2a3140;
+  --ck-color-toolbar-border: #3b4558;
+  --ck-color-dropdown-panel-background: #2a3140;
+  --ck-color-panel-background: #2a3140;
+  --ck-color-list-background: #2a3140;
+  --ck-color-list-button-hover-background: rgba(255, 255, 255, 0.08);
+  --ck-color-list-button-on-background: rgba(96, 165, 250, 0.22);
+  --ck-color-list-button-on-text: #f8fbff;
+  --ck-color-input-background: #1f2633;
+  --ck-color-input-border: #3b4558;
+  --ck-color-input-text: #edf4ff;
+  --ck-color-labeled-field-label-background: #232a36;
+  --ck-color-tooltip-background: #0f1724;
+  --ck-color-tooltip-text: #f8fbff;
+  --ck-color-engine-placeholder-text: #93a4bc;
+}
+
+.ocr-editor__status {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.ocr-editor__status:empty {
+  display: none;
 }
 
 /* ── AI toggle bar ────────────────────────────────────────── */
@@ -41,190 +92,68 @@
   background: var(--accent-dim);
 }
 
-/* ── CKEditor Toolbar ─────────────────────────────────────── */
-.ocr-editor .ck.ck-toolbar {
-  background: var(--bg-raised);
-  border-color: var(--border);
-  border-radius: 14px 14px 0 0;
-  padding: 0.2rem 0.4rem;
-  flex-wrap: wrap;
-}
-
-.ocr-editor .ck.ck-toolbar .ck-toolbar__items {
-  flex-wrap: wrap;
-}
-
-.ocr-editor .ck.ck-toolbar .ck-toolbar__items .ck.ck-button {
-  color: var(--text-muted);
-  border-radius: 6px;
-  padding: 0.2rem;
-  min-width: 24px;
-}
-
-.ocr-editor .ck.ck-toolbar .ck.ck-button:hover:not(.ck-disabled),
-.ocr-editor .ck.ck-toolbar .ck.ck-button.ck-on {
-  background: var(--accent-dim);
-  color: var(--accent);
-}
-
-/* Toolbar separator */
-.ocr-editor .ck.ck-toolbar .ck-toolbar__separator {
-  background: var(--border);
-}
-
-/* Toolbar group (overflow) */
-.ocr-editor .ck.ck-toolbar__grouped-dropdown .ck-dropdown__button {
-  color: var(--text-muted);
-}
-
-/* ── Dropdowns ────────────────────────────────────────────── */
-.ocr-editor .ck.ck-dropdown .ck-dropdown__panel {
-  background: var(--bg-raised);
-  border-color: var(--border);
-}
-
-.ocr-editor .ck.ck-list__item .ck-button {
-  color: var(--text);
-}
-
-.ocr-editor .ck.ck-list__item .ck-button:hover,
-.ocr-editor .ck.ck-list__item .ck-button.ck-on {
-  background: var(--accent-dim);
-  color: var(--accent);
-}
-
-/* Heading dropdown */
-.ocr-editor .ck.ck-heading_heading1 { font-size: 1.2em; font-weight: 700; }
-.ocr-editor .ck.ck-heading_heading2 { font-size: 1.1em; font-weight: 600; }
-.ocr-editor .ck.ck-heading_heading3 { font-size: 1.0em; font-weight: 600; }
-
-/* ── Editable content area ────────────────────────────────── */
 .ocr-editor .ck.ck-editor__main > .ck-editor__editable {
+  min-height: 14rem;
   background: var(--bg-code);
-  color: #c8d6e0;
-  border-color: var(--border-accent);
-  border-radius: 0 0 14px 14px;
-  min-height: 12rem;
-  height: auto;
-  max-height: none;
-  overflow: visible;
-  font-size: 0.88rem;
-  line-height: 1.65;
-  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  color: #d7e3f0;
+  caret-color: #f8fbff;
 }
 
 .ocr-editor .ck.ck-editor__main > .ck-editor__editable.ck-focused {
-  border-color: var(--accent);
   box-shadow: none;
 }
 
-/* ── Content typography ───────────────────────────────────── */
-.ocr-editor .ck-content p,
-.ocr-editor .ck-content li,
-.ocr-editor .ck-content blockquote {
-  color: #c8d6e0;
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable ::selection {
+  background: rgba(96, 165, 250, 0.28);
 }
 
-.ocr-editor .ck-content h1,
-.ocr-editor .ck-content h2,
-.ocr-editor .ck-content h3,
-.ocr-editor .ck-content h4 {
-  color: var(--text);
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h1,
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h2,
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h3,
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h4,
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h5,
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable h6 {
+  color: #f8fbff;
 }
 
-.ocr-editor .ck-content blockquote {
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable blockquote {
   border-left-color: var(--border-accent);
 }
 
-.ocr-editor .ck-content code {
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable code {
   background: rgba(255, 255, 255, 0.08);
-  color: #c8d6e0;
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
+  color: #e5eefb;
 }
 
-.ocr-editor .ck-content pre {
-  background: rgba(0, 0, 0, 0.25);
-  color: #c8d6e0;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+.ocr-editor .ck.ck-editor__main > .ck-editor__editable pre {
+  background: rgba(0, 0, 0, 0.28);
+  color: #e5eefb;
+  border-color: var(--border);
 }
 
-/* Tables */
-.ocr-editor .ck-content table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.ocr-editor .ck-content td,
-.ocr-editor .ck-content th {
-  border: 1px solid var(--border);
-  padding: 0.35em 0.6em;
-  color: #c8d6e0;
-}
-
-.ocr-editor .ck-content th {
-  background: var(--bg-raised);
-  color: var(--text);
-  font-weight: 600;
-}
-
-/* Todo list */
-.ocr-editor .ck-content .todo-list .todo-list__label > input[type=checkbox] {
-  accent-color: var(--accent);
-}
-
-/* Highlight */
-.ocr-editor .ck-content .marker-yellow { background: rgba(255, 220, 50, 0.3); }
-.ocr-editor .ck-content .marker-green  { background: rgba(80, 200, 120, 0.3); }
-.ocr-editor .ck-content .marker-pink   { background: rgba(240, 100, 140, 0.3); }
-.ocr-editor .ck-content .marker-blue   { background: rgba(60, 140, 240, 0.3); }
-
-/* Horizontal rule */
-.ocr-editor .ck-content hr {
-  border: none;
-  border-top: 1px solid var(--border-accent);
-  margin: 1rem 0;
-}
-
-/* ── Tooltip ──────────────────────────────────────────────── */
-.ocr-editor .ck.ck-tooltip .ck-tooltip__text {
-  background: var(--bg-raised);
-  color: var(--text);
-}
-
-.ocr-editor .ck.ck-tooltip .ck-tooltip__text::before {
-  border-bottom-color: var(--bg-raised);
-}
-
-/* ── Balloon / floating toolbar ───────────────────────────── */
-.ck.ck-balloon-panel {
-  background: var(--bg-raised) !important;
-  border-color: var(--border) !important;
-}
-
-.ck.ck-balloon-panel .ck.ck-toolbar {
-  background: var(--bg-raised);
-  border: none;
-}
-
-/* ── Source editing mode ──────────────────────────────────── */
 .ocr-editor .ck-source-editing-area textarea {
   background: var(--bg-code) !important;
-  color: #c8d6e0 !important;
-  font-family: "Cascadia Code", "Fira Code", monospace !important;
-  font-size: 0.88rem !important;
+  color: #d7e3f0 !important;
+  caret-color: #f8fbff;
   border-color: var(--border-accent) !important;
 }
 
-/* ── Find & Replace panel ─────────────────────────────────── */
-.ocr-editor .ck.ck-find-and-replace-form {
-  background: var(--bg-raised);
-  border-color: var(--border);
+.ocr-editor .ck.ck-word-count {
+  background: transparent;
+  color: var(--ck-color-text);
+  border: none !important;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
 }
 
-.ocr-editor .ck.ck-find-and-replace-form input {
-  background: var(--bg-code);
-  color: var(--text);
-  border-color: var(--border);
+.ocr-editor__status .ck.ck-word-count,
+.ocr-editor__status .ck.ck-word-count > div {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.ocr-editor .ck.ck-menu-bar > .ck-menu-bar__menu .ck-menu-bar__menu__button {
+  border-radius: 8px;
 }

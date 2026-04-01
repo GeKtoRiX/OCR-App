@@ -12,6 +12,8 @@ import {
 import { PracticeUseCase } from '../../application/use-cases/practice.use-case';
 import {
   StartPracticeDto,
+  PracticePlanDto,
+  GeneratePracticeRoundDto,
   SubmitAnswerDto,
   CompletePracticeDto,
 } from '../dto/practice.dto';
@@ -43,6 +45,53 @@ export class PracticeController {
         error instanceof Error ? error.message : 'Failed to start practice';
       if (message === 'No words due for review') {
         throw new HttpException(message, HttpStatus.BAD_REQUEST);
+      }
+      throw new HttpException(message, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  @Post('plan')
+  async plan(@Body() body: PracticePlanDto) {
+    try {
+      return await this.practiceUseCase.planPractice({
+        targetLang: body.targetLang,
+        nativeLang: body.nativeLang,
+        wordLimit: body.wordLimit,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to plan practice';
+      if (message === 'No vocabulary words available') {
+        throw new HttpException(message, HttpStatus.BAD_REQUEST);
+      }
+      throw new HttpException(message, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  @Post('round')
+  async round(@Body() body: GeneratePracticeRoundDto) {
+    if (!body.sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+    if (!Array.isArray(body.vocabularyIds) || body.vocabularyIds.length === 0) {
+      throw new BadRequestException('vocabularyIds must be a non-empty array');
+    }
+    try {
+      return await this.practiceUseCase.generatePracticeRound({
+        sessionId: body.sessionId,
+        vocabularyIds: body.vocabularyIds,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to generate practice round';
+      if (
+        message === 'Practice session not found' ||
+        message === 'One or more vocabulary words were not found'
+      ) {
+        throw new HttpException(message, HttpStatus.NOT_FOUND);
+      }
+      if (message === 'vocabularyIds must be a non-empty array') {
+        throw new BadRequestException(message);
       }
       throw new HttpException(message, HttpStatus.BAD_GATEWAY);
     }

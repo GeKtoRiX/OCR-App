@@ -95,9 +95,15 @@ export class GatewayVocabularyController {
   }
 
   @Get('review/due')
-  async findDue(@Query('limit') limit?: string): Promise<VocabularyItemDto[]> {
+  async findDue(
+    @Query('limit') limit?: string,
+    @Query('targetLang') targetLang?: string,
+    @Query('nativeLang') nativeLang?: string,
+  ): Promise<VocabularyItemDto[]> {
     const payload: FindDueVocabularyPayload = {
       limit: limit ? parseInt(limit, 10) : undefined,
+      targetLang: targetLang || undefined,
+      nativeLang: nativeLang || undefined,
     };
     return this.send<FindDueVocabularyPayload, VocabularyItemDto[]>(
       VOCABULARY_PATTERNS.FIND_DUE,

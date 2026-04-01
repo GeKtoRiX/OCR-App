@@ -9,10 +9,10 @@ import './ResultPanel.css';
 
 interface Props {
   result: OcrResponse;
-  onSave?: (markdown: string) => void;
+  onSave?: (input: { markdown?: string; richTextHtml?: string | null }) => void;
   onSaveVocabulary?: () => void;
   saveStatus?: SaveStatus;
-  onUpdate?: (markdown: string) => void;
+  onUpdate?: (input: { markdown?: string; richTextHtml?: string | null }) => void;
   isSavedDocument?: boolean;
   vocabularyDisabled?: boolean;
   existingWordsSet?: Set<string>;
@@ -54,7 +54,7 @@ export function ResultPanel({
             Raw: {panel.rawCharCount.toLocaleString('en-US')} chars
           </span>
           <span className="result__stat">
-            Markdown: {panel.markdownCharCount.toLocaleString('en-US')} chars
+            Formatted: {panel.formattedCharCount.toLocaleString('en-US')} chars
           </span>
         </div>
       </div>
@@ -62,11 +62,11 @@ export function ResultPanel({
       <div className="result__header">
         <div className="result__tabs">
           <button
-            className={`result__tab ${panel.tab === 'markdown' ? 'result__tab--active' : ''}`}
-            onClick={() => panel.setTab('markdown')}
+            className={`result__tab ${panel.tab === 'formatted' ? 'result__tab--active' : ''}`}
+            onClick={() => panel.setTab('formatted')}
             data-testid="result-tab-markdown"
           >
-            Markdown
+            Formatted
           </button>
           {panel.showRawTab && (
             <button
@@ -101,7 +101,7 @@ export function ResultPanel({
           {isSavedDocument && onUpdate && panel.isEditing && (
             <button
               className="result__action-btn result__action-btn--save"
-              onClick={() => onUpdate(panel.editedMarkdown)}
+              onClick={() => onUpdate(panel.documentPayload)}
               title="Update saved document"
               data-testid="result-update-button"
             >
@@ -122,7 +122,7 @@ export function ResultPanel({
           {!isSavedDocument && onSave && (
             <button
               className="result__action-btn result__action-btn--save"
-              onClick={() => onSave(panel.editedMarkdown)}
+              onClick={() => onSave(panel.documentPayload)}
               disabled={saveStatus === 'saving'}
               title="Save Document"
               data-testid="result-save-button"
@@ -138,34 +138,41 @@ export function ResultPanel({
       </div>
 
       {panel.isEditing ? (
-        panel.tab === 'markdown' ? (
+        panel.tab === 'formatted' ? (
           <OcrEditor
-            value={panel.editedMarkdown}
-            onChange={panel.setActiveContent}
+            value={panel.editedRichTextHtml}
+            onChange={panel.setEditedRichTextHtml}
             onVocabContextMenu={onAddVocabulary ? panel.triggerVocabFromEditor : undefined}
+            autosaveEnabled={Boolean(isSavedDocument && onUpdate)}
+            onAutosave={onUpdate}
           />
         ) : (
           <textarea
             ref={panel.textareaRef}
             className="result__editor"
             data-testid="result-editor"
-            value={panel.activeContent}
+            value={panel.editedRaw}
             onChange={e => panel.setActiveContent(e.target.value)}
             spellCheck={false}
           />
         )
       ) : (
-        <pre
+        <div
           ref={panel.contentRef}
-          className="result__content"
+          className={`result__content ${panel.tab === 'raw' ? 'result__content--raw' : ''}`}
           data-testid="result-content"
           onMouseUp={panel.vocabCtx.rememberRenderedSelection}
           onKeyUp={panel.vocabCtx.rememberRenderedSelection}
           onMouseDownCapture={panel.vocabCtx.handleRenderedMouseDownCapture}
           onContextMenu={panel.vocabCtx.handleRenderedContextMenu}
+          dangerouslySetInnerHTML={
+            panel.tab === 'formatted'
+              ? { __html: panel.renderedRichTextHtml }
+              : undefined
+          }
         >
-          {panel.activeContent}
-        </pre>
+          {panel.tab === 'raw' ? panel.editedRaw : undefined}
+        </div>
       )}
 
       {panel.vocabCtx.contextMenu && (

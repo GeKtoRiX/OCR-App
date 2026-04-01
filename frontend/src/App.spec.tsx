@@ -43,6 +43,7 @@ vi.mock('./view/HistoryPanel', () => ({
 vi.mock('./features/practice/PracticeView', () => ({
   PracticeView: (props: any) => (
     <div data-testid="practice-view">
+      <button onClick={() => props.onReady()}>practice-ready</button>
       <button onClick={() => props.onAnswer('typed answer')}>practice-answer</button>
       <button onClick={() => props.onNext()}>practice-next</button>
       <button onClick={() => props.onComplete()}>practice-complete</button>
@@ -55,8 +56,16 @@ vi.mock('./view/ResultPanel', () => ({
   ResultPanel: ({ result, onSave, onUpdate, onAddVocabulary }: any) => (
     <div data-testid="result-panel">
       <div>{result.markdown}</div>
-      {onSave && <button onClick={() => onSave('# saved markdown')}>save-result</button>}
-      {onUpdate && <button onClick={() => onUpdate('# updated markdown')}>update-result</button>}
+      {onSave && (
+        <button onClick={() => onSave({ markdown: '# saved markdown', richTextHtml: '<p>saved</p>' })}>
+          save-result
+        </button>
+      )}
+      {onUpdate && (
+        <button onClick={() => onUpdate({ markdown: '# updated markdown', richTextHtml: '<p>updated</p>' })}>
+          update-result
+        </button>
+      )}
       {onAddVocabulary && (
         <button onClick={() => onAddVocabulary('hello', 'word', 'привет', 'Hello there.')}>
           add-vocab
@@ -120,6 +129,11 @@ function defaultStores() {
       phase: 'idle' as const,
       sessionId: null,
       exercises: [],
+      previewWords: [],
+      allWords: [],
+      currentBatchMode: null,
+      batchSize: 10,
+      unseenCursor: 0,
       currentIndex: 0,
       answers: [],
       lastAnswer: null,
@@ -127,7 +141,10 @@ function defaultStores() {
       error: null,
       currentExercise: null,
       isLastExercise: false,
+      sessionIncorrectCounts: {},
+      currentRoundResults: [],
       start: vi.fn().mockResolvedValue(undefined),
+      ready: vi.fn().mockResolvedValue(undefined),
       answer: vi.fn().mockResolvedValue(undefined),
       next: vi.fn(),
       complete: vi.fn().mockResolvedValue(undefined),
@@ -256,6 +273,7 @@ describe('App', () => {
     mocks.mockOcr.result = {
       rawText: 'Hello',
       markdown: '# Hello',
+      richTextHtml: null,
       filename: 'doc.png',
     };
 
@@ -264,7 +282,11 @@ describe('App', () => {
     expect(screen.getByText('# Hello')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('save-result'));
-    expect(mocks.mockDocs.save).toHaveBeenCalledWith('# saved markdown', 'doc.png');
+    expect(mocks.mockDocs.save).toHaveBeenCalledWith({
+      markdown: '# saved markdown',
+      richTextHtml: '<p>saved</p>',
+      filename: 'doc.png',
+    });
 
     fireEvent.click(screen.getByText('add-vocab'));
     expect(mocks.mockVocab.addWord).toHaveBeenCalledWith(
@@ -281,6 +303,7 @@ describe('App', () => {
       {
         id: 'saved-1',
         markdown: '# Saved doc',
+        richTextHtml: '<p>Saved doc</p>',
         filename: 'saved.md',
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -295,11 +318,25 @@ describe('App', () => {
 
     expect(screen.getByText('# Saved doc')).toBeInTheDocument();
     fireEvent.click(screen.getByText('update-result'));
-    expect(mocks.mockDocs.update).toHaveBeenCalledWith('saved-1', '# updated markdown');
+    expect(mocks.mockDocs.update).toHaveBeenCalledWith('saved-1', {
+      markdown: '# updated markdown',
+      richTextHtml: '<p>updated</p>',
+    });
   });
 
   it('renders PracticeView and forwards practice callbacks', async () => {
-    mocks.mockPractice.phase = 'practicing';
+    mocks.mockPractice.phase = 'preview';
+    mocks.mockPractice.previewWords = [
+      {
+        id: 'v1',
+        word: 'hello',
+        translation: 'привет',
+        contextSentence: 'Hello there.',
+        attemptCount: 0,
+        incorrectCount: 0,
+      },
+    ];
+    mocks.mockPractice.currentBatchMode = 'unseen';
     mocks.mockPractice.currentExercise = {
       vocabularyId: 'v1',
       word: 'hello',
@@ -313,6 +350,9 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByTestId('practice-view')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('practice-ready'));
+    expect(mocks.mockPractice.ready).toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('practice-answer'));
     expect(mocks.mockPractice.answer).toHaveBeenCalledWith('typed answer');
