@@ -60,7 +60,7 @@
   gap: 8px;
 }
 
-/* Row layout for word + type side by side */
+/* Row layout for type + POS side by side */
 .vocab-add-form__row {
   display: flex;
   gap: 8px;
@@ -73,14 +73,9 @@
   gap: 3px;
 }
 
-.vocab-add-form__field--word {
-  flex: 1;
+.vocab-add-form__field--half {
+  flex: 1 1 0;
   min-width: 0;
-}
-
-.vocab-add-form__field--type {
-  flex: 0 0 auto;
-  min-width: 110px;
 }
 
 /* Label */

@@ -3,6 +3,27 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VocabularyPanel } from './VocabularyPanel';
 
+function makeWord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'word-1',
+    word: 'hello',
+    vocabType: 'word' as const,
+    pos: null,
+    translation: 'привет',
+    targetLang: 'en',
+    nativeLang: 'ru',
+    contextSentence: 'Hello there.',
+    sourceDocumentId: null,
+    intervalDays: 2,
+    easinessFactor: 2.5,
+    repetitions: 1,
+    nextReviewAt: '2026-03-21T00:00:00.000Z',
+    createdAt: '2026-03-21T00:00:00.000Z',
+    updatedAt: '2026-03-21T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 const baseProps = {
   words: [],
   loading: false,
@@ -27,35 +48,21 @@ describe('VocabularyPanel', () => {
     expect(screen.getByText(/No vocabulary words yet/)).toBeInTheDocument();
   });
 
-  it('renders words and allows deletion', async () => {
+  it('renders words, type, and pos and allows deletion', async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
     render(
       <VocabularyPanel
         {...baseProps}
         onDelete={onDelete}
-        words={[{
-          id: 'word-1',
-          word: 'hello',
-          vocabType: 'word',
-          translation: 'привет',
-          targetLang: 'en',
-          nativeLang: 'ru',
-          contextSentence: 'Hello there.',
-          sourceDocumentId: null,
-          intervalDays: 2,
-          easinessFactor: 2.5,
-          repetitions: 1,
-          nextReviewAt: '2026-03-21T00:00:00.000Z',
-          createdAt: '2026-03-21T00:00:00.000Z',
-          updatedAt: '2026-03-21T00:00:00.000Z',
-        }]}
+        words={[makeWord({ pos: 'noun' })]}
       />,
     );
 
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('привет')).toBeInTheDocument();
     expect(screen.getByText('Word')).toBeInTheDocument();
+    expect(screen.getByText('Noun')).toBeInTheDocument();
     expect(screen.getByText('Rep: 1')).toBeInTheDocument();
     expect(screen.getByText('EF: 2.5')).toBeInTheDocument();
 
@@ -90,22 +97,7 @@ describe('VocabularyPanel', () => {
       <VocabularyPanel
         {...baseProps}
         onStartPractice={onStartPractice}
-        words={[{
-          id: 'word-1',
-          word: 'hello',
-          vocabType: 'word',
-          translation: 'привет',
-          targetLang: 'en',
-          nativeLang: 'ru',
-          contextSentence: 'Hello there.',
-          sourceDocumentId: null,
-          intervalDays: 2,
-          easinessFactor: 2.5,
-          repetitions: 1,
-          nextReviewAt: '2026-03-21T00:00:00.000Z',
-          createdAt: '2026-03-21T00:00:00.000Z',
-          updatedAt: '2026-03-21T00:00:00.000Z',
-        }]}
+        words={[makeWord()]}
       />,
     );
 
@@ -118,29 +110,14 @@ describe('VocabularyPanel', () => {
     expect(onStartPractice).toHaveBeenCalled();
   });
 
-  it('opens inline edit form and calls onUpdate with changed word and translation', async () => {
+  it('opens inline edit form and calls onUpdate with changed values', async () => {
     const user = userEvent.setup();
     const onUpdate = vi.fn();
     render(
       <VocabularyPanel
         {...baseProps}
         onUpdate={onUpdate}
-        words={[{
-          id: 'word-1',
-          word: 'hello',
-          vocabType: 'word',
-          translation: 'привет',
-          targetLang: 'en',
-          nativeLang: 'ru',
-          contextSentence: 'Hello there.',
-          sourceDocumentId: null,
-          intervalDays: 2,
-          easinessFactor: 2.5,
-          repetitions: 1,
-          nextReviewAt: '2026-03-21T00:00:00.000Z',
-          createdAt: '2026-03-21T00:00:00.000Z',
-          updatedAt: '2026-03-21T00:00:00.000Z',
-        }]}
+        words={[makeWord()]}
       />,
     );
 
@@ -149,17 +126,35 @@ describe('VocabularyPanel', () => {
 
     const wordInput = screen.getByTestId('vocab-edit-word');
     const translationInput = screen.getByTestId('vocab-edit-translation');
+    const typeInput = screen.getByTestId('vocab-edit-type');
+    const posInput = screen.getByTestId('vocab-edit-pos');
+    const contextInput = screen.getByTestId('vocab-edit-context');
+
     expect(wordInput).toHaveValue('hello');
     expect(translationInput).toHaveValue('привет');
+    expect(typeInput).toHaveValue('word');
+    expect(posInput).toHaveValue('');
+    expect(contextInput).toHaveValue('Hello there.');
 
     await user.clear(wordInput);
     await user.type(wordInput, 'hi');
     await user.clear(translationInput);
     await user.type(translationInput, 'привет (неформ.)');
+    await user.selectOptions(typeInput, 'idiom');
+    await user.selectOptions(posInput, 'adverb');
+    await user.clear(contextInput);
+    await user.type(contextInput, 'Hi there.');
 
     await user.click(screen.getByTestId('vocab-edit-save'));
 
-    expect(onUpdate).toHaveBeenCalledWith('word-1', 'hi', 'привет (неформ.)');
+    expect(onUpdate).toHaveBeenCalledWith(
+      'word-1',
+      'hi',
+      'привет (неформ.)',
+      'Hi there.',
+      'idiom',
+      'adverb',
+    );
     expect(screen.queryByTestId('vocab-edit-form')).not.toBeInTheDocument();
   });
 
@@ -170,22 +165,7 @@ describe('VocabularyPanel', () => {
       <VocabularyPanel
         {...baseProps}
         onUpdate={onUpdate}
-        words={[{
-          id: 'word-1',
-          word: 'hello',
-          vocabType: 'word',
-          translation: 'привет',
-          targetLang: 'en',
-          nativeLang: 'ru',
-          contextSentence: '',
-          sourceDocumentId: null,
-          intervalDays: 1,
-          easinessFactor: 2.5,
-          repetitions: 0,
-          nextReviewAt: '2026-03-21T00:00:00.000Z',
-          createdAt: '2026-03-21T00:00:00.000Z',
-          updatedAt: '2026-03-21T00:00:00.000Z',
-        }]}
+        words={[makeWord({ contextSentence: '', intervalDays: 1, repetitions: 0 })]}
       />,
     );
 

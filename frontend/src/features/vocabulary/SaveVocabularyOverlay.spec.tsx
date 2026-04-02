@@ -76,6 +76,7 @@ describe('SaveVocabularyOverlay', () => {
         candidateId: 'cand-1',
         word: 'stop trying',
         vocabType: 'expression',
+        pos: 'verb',
         translation: 'перестать пытаться',
         contextSentence: 'She stopped trying after the second attempt.',
       },

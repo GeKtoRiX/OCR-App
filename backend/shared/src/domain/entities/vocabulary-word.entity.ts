@@ -5,6 +5,13 @@ export type VocabType =
   | 'collocation'
   | 'expression';
 
+export type VocabularyWordPos =
+  | 'noun'
+  | 'verb'
+  | 'adjective'
+  | 'adverb'
+  | null;
+
 export class VocabularyWord {
   constructor(
     public readonly id: string,
@@ -21,5 +28,6 @@ export class VocabularyWord {
     public readonly easinessFactor: number,
     public readonly repetitions: number,
     public readonly nextReviewAt: string,
+    public readonly pos: VocabularyWordPos = null,
   ) {}
 }

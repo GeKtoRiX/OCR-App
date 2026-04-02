@@ -249,10 +249,7 @@ describe('ResultPanel', () => {
 
     fireEvent.mouseDown(content, { button: 2 });
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
-    act(() => {
-      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
-    });
-    await user.click(screen.getByText('Word'));
+    await user.click(screen.getByText('Add to Vocabulary'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));
 
@@ -261,6 +258,7 @@ describe('ResultPanel', () => {
       'word',
       'перевод',
       'Markdown content',
+      null,
     );
   });
 
@@ -292,10 +290,7 @@ describe('ResultPanel', () => {
     selection?.removeAllRanges();
 
     fireEvent.contextMenu(content, { clientX: 40, clientY: 60 });
-    act(() => {
-      fireEvent.mouseEnter(screen.getByTestId('vocab-context-menu').firstElementChild!);
-    });
-    await user.click(screen.getByText('Word'));
+    await user.click(screen.getByText('Add to Vocabulary'));
     await user.type(screen.getByPlaceholderText('Translation...'), 'перевод');
     await user.click(screen.getByText('Add'));
 
@@ -304,6 +299,7 @@ describe('ResultPanel', () => {
       'word',
       'перевод',
       'Markdown content',
+      null,
     );
   });
 

@@ -24,6 +24,7 @@ const baseProps = {
   previewWords: [],
   currentBatchMode: 'unseen' as const,
   hasRecordedAnswers: false,
+  roundProgress: 0,
   onAnswer: vi.fn(),
   onReady: vi.fn(),
   onNext: vi.fn(),
@@ -38,10 +39,17 @@ describe('PracticeView', () => {
     expect(screen.getByText('Preparing your study batch...')).toBeInTheDocument();
   });
 
-  it('renders round loading state', () => {
-    render(<PracticeView {...baseProps} phase="loading_round" />);
+  it('renders round loading state with spinner and initial text', () => {
+    render(<PracticeView {...baseProps} phase="loading_round" roundProgress={0} />);
 
-    expect(screen.getByText('Generating exercises...')).toBeInTheDocument();
+    expect(screen.getByText('Generating exercises…')).toBeInTheDocument();
+    expect(document.querySelector('.practice-card__spinner')).toBeInTheDocument();
+  });
+
+  it('renders round loading state with progress percentage', () => {
+    render(<PracticeView {...baseProps} phase="loading_round" roundProgress={66} />);
+
+    expect(screen.getByText('66%')).toBeInTheDocument();
   });
 
   it('renders analyzing state', () => {
@@ -103,6 +111,18 @@ describe('PracticeView', () => {
     await user.click(submit);
 
     expect(onAnswer).toHaveBeenCalledWith('hello');
+  });
+
+  it('shows the expanded round counter for larger deterministic exercise batches', () => {
+    render(
+      <PracticeView
+        {...baseProps}
+        currentIndex={0}
+        totalExercises={8}
+      />,
+    );
+
+    expect(screen.getByText('1 / 8')).toBeInTheDocument();
   });
 
   it('renders multiple choice options and submits selected option', async () => {

@@ -22,14 +22,13 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 - `backend/services/vocabulary/`: TCP vocabulary/practice service on `:3904`
 - `backend/services/agentic/`: TCP agentic service on `:3905`
 - `backend/shared/`: shared contracts and abstractions
-- `services/ocr/paddleocr-service/`: PaddleOCR FastAPI sidecar on `:8000`
 - `services/nlp/stanza-service/`: optional Stanza FastAPI sidecar on `:8501`
 - `services/tts/supertone-service/`: Supertone + Piper FastAPI sidecar on `:8100`
 - `services/tts/kokoro-service/`: Kokoro FastAPI sidecar on `:8200`
 
 ## Core Capabilities
 
-- OCR extraction through PaddleOCR
+- OCR extraction through LM Studio vision OCR
 - Markdown structuring through LM Studio
 - saved document CRUD
 - document vocabulary candidate prepare/confirm flow
@@ -76,9 +75,9 @@ OCR-App is a local-first OCR and study workflow built as a monorepo:
 
 `GET /api/health` returns:
 
-- `paddleOcrReachable`
-- `paddleOcrModels`
-- `paddleOcrDevice`
+- `ocrReachable`
+- `ocrModels`
+- `ocrDevice`
 - `lmStudioReachable`
 - `lmStudioModels`
 - `superToneReachable`

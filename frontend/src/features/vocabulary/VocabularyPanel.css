@@ -86,12 +86,21 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
 
 .vocab-panel__word {
   font-weight: 600;
   color: var(--text, #e0e0e0);
   font-size: 0.9rem;
+}
+
+.vocab-panel__badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .vocab-panel__type-badge {
@@ -101,6 +110,15 @@
   border-radius: 3px;
   background: var(--surface-3, #3a3a3a);
   color: var(--text-muted, #888);
+}
+
+.vocab-panel__pos-badge {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(74, 111, 165, 0.14);
+  border: 1px solid rgba(74, 111, 165, 0.25);
+  color: var(--accent, #86aee8);
 }
 
 .vocab-panel__translation {
@@ -165,6 +183,10 @@
   align-items: center;
 }
 
+.vocab-panel__edit-row--textarea {
+  align-items: flex-start;
+}
+
 .vocab-panel__edit-label {
   font-size: 0.65rem;
   color: var(--text-muted, #888);
@@ -185,6 +207,12 @@
 
 .vocab-panel__edit-input:focus {
   border-color: var(--accent);
+}
+
+.vocab-panel__edit-textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
 }
 
 .vocab-panel__edit-actions {

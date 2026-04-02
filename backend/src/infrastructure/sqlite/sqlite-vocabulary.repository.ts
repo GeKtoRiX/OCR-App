@@ -9,6 +9,7 @@ import {
 import {
   VocabularyWord,
   VocabType,
+  VocabularyWordPos,
 } from '../../domain/entities/vocabulary-word.entity';
 import { SqliteConnectionProvider } from './sqlite-connection.provider';
 
@@ -16,6 +17,7 @@ interface VocabularyRow {
   id: string;
   word: string;
   vocab_type: string;
+  pos: string | null;
   translation: string;
   target_lang: string;
   native_lang: string;
@@ -44,7 +46,6 @@ export class SqliteVocabularyRepository
     selectDueByLang: Database.Statement;
     updateSrs: Database.Statement;
     updateFields: Database.Statement;
-    updateFieldsWithWord: Database.Statement;
     deleteById: Database.Statement;
   };
 
@@ -58,6 +59,7 @@ export class SqliteVocabularyRepository
         id                TEXT PRIMARY KEY,
         word              TEXT NOT NULL,
         vocab_type        TEXT NOT NULL DEFAULT 'word',
+        pos               TEXT,
         translation       TEXT NOT NULL DEFAULT '',
         target_lang       TEXT NOT NULL DEFAULT 'en',
         native_lang       TEXT NOT NULL DEFAULT 'ru',
@@ -75,11 +77,18 @@ export class SqliteVocabularyRepository
     `);
 
     const db = this.connection.db;
+    const vocabularyColumns = db
+      .prepare('PRAGMA table_info(vocabulary)')
+      .all() as Array<{ name: string }>;
+    if (!vocabularyColumns.some((column) => column.name === 'pos')) {
+      db.exec('ALTER TABLE vocabulary ADD COLUMN pos TEXT');
+    }
+
     this.stmts = {
       insert: db.prepare(
         `INSERT INTO vocabulary
-          (id, word, vocab_type, translation, target_lang, native_lang, context_sentence, source_document_id, created_at, updated_at, next_review_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, word, vocab_type, pos, translation, target_lang, native_lang, context_sentence, source_document_id, created_at, updated_at, next_review_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       selectAll: db.prepare(
         'SELECT * FROM vocabulary ORDER BY created_at DESC',
@@ -101,10 +110,7 @@ export class SqliteVocabularyRepository
         'UPDATE vocabulary SET interval_days = ?, easiness_factor = ?, repetitions = ?, next_review_at = ?, updated_at = ? WHERE id = ?',
       ),
       updateFields: db.prepare(
-        'UPDATE vocabulary SET translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
-      ),
-      updateFieldsWithWord: db.prepare(
-        'UPDATE vocabulary SET word = ?, translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
+        'UPDATE vocabulary SET word = ?, vocab_type = ?, pos = ?, translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
       ),
       deleteById: db.prepare('DELETE FROM vocabulary WHERE id = ?'),
     };
@@ -126,6 +132,7 @@ export class SqliteVocabularyRepository
       r.easiness_factor,
       r.repetitions,
       r.next_review_at,
+      r.pos as VocabularyWordPos,
     );
   }
 
@@ -137,6 +144,7 @@ export class SqliteVocabularyRepository
     nativeLang: string,
     contextSentence: string,
     sourceDocumentId: string | null,
+    pos?: VocabularyWordPos,
   ): Promise<VocabularyWord> {
     const existing = this.stmts.selectByWord.get(
       word,
@@ -151,7 +159,7 @@ export class SqliteVocabularyRepository
     const now = new Date().toISOString();
     try {
       this.stmts.insert.run(
-        id, word, vocabType, translation, targetLang, nativeLang,
+        id, word, vocabType, pos ?? null, translation, targetLang, nativeLang,
         contextSentence, sourceDocumentId, now, now, now,
       );
     } catch (error) {
@@ -166,6 +174,7 @@ export class SqliteVocabularyRepository
     return new VocabularyWord(
       id, word, vocabType, translation, targetLang, nativeLang,
       contextSentence, sourceDocumentId, now, now, 0, 2.5, 0, now,
+      pos ?? null,
     );
   }
 
@@ -198,7 +207,7 @@ export class SqliteVocabularyRepository
         for (const item of items) {
           const id = crypto.randomUUID();
           this.stmts.insert.run(
-            id, item.word, item.vocabType, item.translation,
+            id, item.word, item.vocabType, item.pos ?? null, item.translation,
             item.targetLang, item.nativeLang, item.contextSentence,
             item.sourceDocumentId, now, now, now,
           );
@@ -207,6 +216,7 @@ export class SqliteVocabularyRepository
               id, item.word, item.vocabType, item.translation,
               item.targetLang, item.nativeLang, item.contextSentence,
               item.sourceDocumentId, now, now, 0, 2.5, 0, now,
+              item.pos ?? null,
             ),
           );
         }
@@ -291,11 +301,22 @@ export class SqliteVocabularyRepository
     translation: string,
     contextSentence: string,
     word?: string,
+    vocabType?: VocabType,
+    pos?: VocabularyWordPos,
   ): Promise<VocabularyWord | null> {
+    const existing = await this.findById(id);
+    if (!existing) return null;
+
     const now = new Date().toISOString();
-    const result = word
-      ? this.stmts.updateFieldsWithWord.run(word.trim(), translation, contextSentence, now, id)
-      : this.stmts.updateFields.run(translation, contextSentence, now, id);
+    const result = this.stmts.updateFields.run(
+      word?.trim() ?? existing.word,
+      vocabType ?? existing.vocabType,
+      pos === undefined ? existing.pos : pos,
+      translation,
+      contextSentence,
+      now,
+      id,
+    );
     if (result.changes === 0) return null;
     return this.findById(id);
   }

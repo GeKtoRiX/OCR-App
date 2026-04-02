@@ -108,7 +108,7 @@ Do not reintroduce the removed `model/` / `viewmodel/` structure.
 
 ### OCR Integration Owner
 
-- Owns PaddleOCR integration and LM Studio structuring path.
+- Owns LM Studio OCR and OCR health integration.
 - Must update docs when OCR or structuring contracts change.
 
 ### TTS Integration Owner

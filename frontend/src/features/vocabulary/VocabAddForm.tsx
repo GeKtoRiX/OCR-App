@@ -1,6 +1,11 @@
 import { useRef, useState } from 'react';
-import type { VocabType } from '../../shared/types';
-import { VOCAB_TYPE_LABELS, } from '../../shared/types';
+import { createPortal } from 'react-dom';
+import type { DocumentCandidatePos, VocabType } from '../../shared/types';
+import {
+  VOCAB_POS_LABELS,
+  VOCAB_POS_OPTIONS,
+  VOCAB_TYPE_LABELS,
+} from '../../shared/types';
 import { useFloatingPosition } from '../../shared/lib/floating-position';
 import './VocabAddForm.css';
 
@@ -17,9 +22,16 @@ interface Props {
   y: number;
   selectedText: string;
   vocabType: VocabType;
+  pos?: DocumentCandidatePos;
   contextSentence: string;
   isDuplicate: boolean;
-  onAdd: (word: string, translation: string, contextSentence: string, vocabType: VocabType) => void;
+  onAdd: (
+    word: string,
+    translation: string,
+    contextSentence: string,
+    vocabType: VocabType,
+    pos?: DocumentCandidatePos,
+  ) => void;
   onClose: () => void;
 }
 
@@ -28,6 +40,7 @@ export function VocabAddForm({
   y,
   selectedText,
   vocabType,
+  pos = null,
   contextSentence,
   isDuplicate,
   onAdd,
@@ -38,16 +51,17 @@ export function VocabAddForm({
 
   const [word, setWord] = useState(selectedText);
   const [type, setType] = useState<VocabType>(vocabType);
+  const [partOfSpeech, setPartOfSpeech] = useState<DocumentCandidatePos>(pos);
   const [translation, setTranslation] = useState('');
   const [context, setContext] = useState(contextSentence);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!word.trim() || !translation.trim()) return;
-    onAdd(word.trim(), translation.trim(), context.trim(), type);
+    onAdd(word.trim(), translation.trim(), context.trim(), type, partOfSpeech);
   };
 
-  return (
+  const form = (
     <div
       ref={ref}
       className="vocab-add-form"
@@ -72,28 +86,46 @@ export function VocabAddForm({
       )}
 
       <form onSubmit={handleSubmit} className="vocab-add-form__form">
+        <div className="vocab-add-form__field">
+          <label className="vocab-add-form__label">Word</label>
+          <input
+            className="vocab-add-form__input"
+            type="text"
+            value={word}
+            onChange={e => setWord(e.target.value)}
+            spellCheck={false}
+            autoFocus
+          />
+        </div>
+
         <div className="vocab-add-form__row">
-          <div className="vocab-add-form__field vocab-add-form__field--word">
-            <label className="vocab-add-form__label">Word</label>
-            <input
-              className="vocab-add-form__input"
-              type="text"
-              value={word}
-              onChange={e => setWord(e.target.value)}
-              spellCheck={false}
-              autoFocus
-            />
-          </div>
-          <div className="vocab-add-form__field vocab-add-form__field--type">
+          <div className="vocab-add-form__field vocab-add-form__field--half">
             <label className="vocab-add-form__label">Type</label>
             <select
               className="vocab-add-form__select"
               value={type}
               onChange={e => setType(e.target.value as VocabType)}
+              aria-label="Type"
             >
               {VOCAB_TYPES.map(t => (
                 <option key={t} value={t}>
                   {VOCAB_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="vocab-add-form__field vocab-add-form__field--half">
+            <label className="vocab-add-form__label">Part of Speech</label>
+            <select
+              className="vocab-add-form__select"
+              value={partOfSpeech ?? ''}
+              onChange={e => setPartOfSpeech((e.target.value || null) as DocumentCandidatePos)}
+              aria-label="Part of Speech"
+            >
+              <option value="">Not set</option>
+              {VOCAB_POS_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {VOCAB_POS_LABELS[item]}
                 </option>
               ))}
             </select>
@@ -134,4 +166,6 @@ export function VocabAddForm({
       </form>
     </div>
   );
+
+  return createPortal(form, document.body);
 }

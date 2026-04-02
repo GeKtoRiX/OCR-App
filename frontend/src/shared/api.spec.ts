@@ -479,6 +479,44 @@ describe('API service', () => {
       );
     });
 
+    it('should include vocab type and pos when updating vocabulary', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 'word-1',
+          word: 'hi',
+          vocabType: 'idiom',
+          pos: 'adjective',
+          translation: 'привет',
+          targetLang: 'en',
+          nativeLang: 'ru',
+          contextSentence: 'Hello again.',
+          sourceDocumentId: null,
+          intervalDays: 2,
+          easinessFactor: 2.6,
+          repetitions: 1,
+          nextReviewAt: '2026-03-22T00:00:00.000Z',
+          createdAt: '2026-03-21T00:00:00.000Z',
+          updatedAt: '2026-03-21T01:00:00.000Z',
+        }),
+      });
+
+      await updateVocabularyWord('word-1', 'привет', 'Hello again.', 'hi', 'idiom', 'adjective');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/vocabulary/word-1',
+        expect.objectContaining({
+          body: JSON.stringify({
+            word: 'hi',
+            vocabType: 'idiom',
+            pos: 'adjective',
+            translation: 'привет',
+            contextSentence: 'Hello again.',
+          }),
+        }),
+      );
+    });
+
     it('should DELETE /api/vocabulary/:id', async () => {
       global.fetch = vi.fn().mockResolvedValue({ ok: true });
 

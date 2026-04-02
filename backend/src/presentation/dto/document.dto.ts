@@ -31,6 +31,7 @@ export class ConfirmDocumentVocabularyItemDto {
   candidateId!: string;
   word!: string;
   vocabType!: string;
+  pos?: string;
   translation!: string;
   contextSentence!: string;
 }

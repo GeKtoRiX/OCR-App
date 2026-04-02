@@ -243,6 +243,7 @@ export class DocumentVocabularyPipelineUseCase {
           input.nativeLang,
           item.contextSentence,
           doc.id,
+          item.pos ?? storedCandidate.pos,
         );
         output.savedCount += 1;
         output.savedItems.push({

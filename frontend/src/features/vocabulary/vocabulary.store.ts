@@ -7,7 +7,12 @@ import {
   updateVocabularyWord,
 } from '../../shared/api';
 import { toErrorMessage } from '../../shared/lib/errors';
-import type { LanguagePair, VocabularyWord, VocabType } from '../../shared/types';
+import type {
+  DocumentCandidatePos,
+  LanguagePair,
+  VocabularyWord,
+  VocabType,
+} from '../../shared/types';
 
 interface VocabularyState {
   words: VocabularyWord[];
@@ -26,6 +31,7 @@ interface VocabularyActions {
     vocabType: VocabType,
     translation: string,
     contextSentence: string,
+    pos?: DocumentCandidatePos,
     sourceDocumentId?: string,
   ): Promise<VocabularyWord | null>;
   removeWord(id: string): Promise<boolean>;
@@ -33,6 +39,9 @@ interface VocabularyActions {
     id: string,
     word: string,
     translation: string,
+    contextSentence: string,
+    vocabType: VocabType,
+    pos?: DocumentCandidatePos,
   ): Promise<VocabularyWord | null>;
   setLangPair(langPair: LanguagePair): void;
 }
@@ -93,12 +102,13 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
       await loadForPair(get().langPair);
     },
 
-    async addWord(word, vocabType, translation, contextSentence, sourceDocumentId) {
+    async addWord(word, vocabType, translation, contextSentence, pos, sourceDocumentId) {
       try {
         const { langPair, words, dueCount } = get();
         const created = await addVocabularyWord({
           word,
           vocabType,
+          pos,
           translation,
           targetLang: langPair.targetLang,
           nativeLang: langPair.nativeLang,
@@ -145,11 +155,16 @@ export const useVocabularyStore = create<VocabularyStore>((set, get) => {
       }
     },
 
-    async updateWord(id, word, translation) {
+    async updateWord(id, word, translation, contextSentence, vocabType, pos) {
       try {
-        const existing = get().words.find((w) => w.id === id);
-        const contextSentence = existing?.contextSentence ?? '';
-        const updated = await updateVocabularyWord(id, translation, contextSentence, word);
+        const updated = await updateVocabularyWord(
+          id,
+          translation,
+          contextSentence,
+          word,
+          vocabType,
+          pos,
+        );
         set((state) => {
           const words = state.words.map((word) => (word.id === id ? updated : word));
 

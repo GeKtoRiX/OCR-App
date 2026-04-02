@@ -30,12 +30,21 @@ type VocabType =
   | 'collocation'
   | 'expression';
 
+type VocabularyWordPos = 'noun' | 'verb' | 'adjective' | 'adverb' | null;
+
 const VALID_VOCAB_TYPES: VocabType[] = [
   'word',
   'phrasal_verb',
   'idiom',
   'collocation',
   'expression',
+];
+
+const VALID_POSITIONS: Exclude<VocabularyWordPos, null>[] = [
+  'noun',
+  'verb',
+  'adjective',
+  'adverb',
 ];
 
 @Controller('api/vocabulary')
@@ -53,6 +62,7 @@ export class GatewayVocabularyController {
       {
         ...body,
         word: body.word.trim(),
+        pos: body.pos ?? null,
         translation: body.translation ?? '',
         contextSentence: body.contextSentence ?? '',
       },
@@ -76,6 +86,7 @@ export class GatewayVocabularyController {
       body.map((item) => ({
         ...item,
         word: item.word.trim(),
+        pos: item.pos ?? null,
         translation: item.translation ?? '',
         contextSentence: item.contextSentence ?? '',
       })),
@@ -122,11 +133,37 @@ export class GatewayVocabularyController {
   @Put(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { word?: string; translation?: string; contextSentence?: string },
+    @Body() body: {
+      word?: string;
+      vocabType?: VocabType;
+      pos?: VocabularyWordPos;
+      translation?: string;
+      contextSentence?: string;
+    },
   ): Promise<VocabularyItemDto> {
+    if (
+      body.vocabType !== undefined &&
+      body.vocabType !== null &&
+      !VALID_VOCAB_TYPES.includes(body.vocabType)
+    ) {
+      throw new BadRequestException(
+        `vocabType must be one of: ${VALID_VOCAB_TYPES.join(', ')}`,
+      );
+    }
+    if (
+      body.pos !== undefined &&
+      body.pos !== null &&
+      !VALID_POSITIONS.includes(body.pos)
+    ) {
+      throw new BadRequestException(
+        `pos must be one of: ${VALID_POSITIONS.join(', ')}`,
+      );
+    }
     const payload: UpdateVocabularyPayload = {
       id,
       word: body.word?.trim(),
+      vocabType: body.vocabType,
+      pos: body.pos,
       translation: body.translation ?? '',
       contextSentence: body.contextSentence ?? '',
     };
@@ -154,6 +191,15 @@ export class GatewayVocabularyController {
     }
     if (!body.targetLang || !body.nativeLang) {
       throw new BadRequestException('targetLang and nativeLang are required');
+    }
+    if (
+      body.pos !== undefined &&
+      body.pos !== null &&
+      !VALID_POSITIONS.includes(body.pos)
+    ) {
+      throw new BadRequestException(
+        `pos must be one of: ${VALID_POSITIONS.join(', ')}`,
+      );
     }
   }
 

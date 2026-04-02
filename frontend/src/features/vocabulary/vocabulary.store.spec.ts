@@ -168,7 +168,14 @@ describe('useVocabularyStore', () => {
     });
     mockUpdateVocabularyWord.mockResolvedValue(updated);
 
-    await useVocabularyStore.getState().updateWord('w1', 'здравствуйте', 'Hello there.');
+    await useVocabularyStore.getState().updateWord(
+      'w1',
+      'Hello',
+      'здравствуйте',
+      'Hello there.',
+      'word',
+      undefined,
+    );
 
     expect(useVocabularyStore.getState().words).toEqual([updated]);
   });

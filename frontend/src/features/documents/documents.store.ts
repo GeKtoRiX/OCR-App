@@ -11,6 +11,7 @@ import { removeAndReselect } from '../../shared/lib/collection';
 import { toErrorMessage } from '../../shared/lib/errors';
 import type {
   ConfirmDocumentVocabularyResult,
+  DocumentCandidatePos,
   DocumentVocabCandidate,
   SavedDocument,
   VocabType,
@@ -63,6 +64,7 @@ interface DocumentsActions {
         candidateId: string;
         word: string;
         vocabType: VocabType;
+        pos?: DocumentCandidatePos;
         translation: string;
         contextSentence: string;
       }>;

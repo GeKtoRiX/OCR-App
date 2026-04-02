@@ -7,6 +7,7 @@ const mockOutput = {
   id: 'v1',
   word: 'beautiful',
   vocabType: 'word' as const,
+  pos: null,
   translation: 'красивый',
   targetLang: 'en',
   nativeLang: 'ru',
@@ -53,6 +54,7 @@ describe('VocabularyController', () => {
       expect(useCase.add).toHaveBeenCalledWith({
         word: 'beautiful',
         vocabType: 'word',
+        pos: null,
         translation: 'красивый',
         targetLang: 'en',
         nativeLang: 'ru',
@@ -138,6 +140,7 @@ describe('VocabularyController', () => {
         {
           word: 'beautiful',
           vocabType: 'word',
+          pos: null,
           translation: 'красивый',
           targetLang: 'en',
           nativeLang: 'ru',
@@ -239,6 +242,7 @@ describe('VocabularyController', () => {
         {
           word: 'beautiful',
           vocabType: 'word',
+          pos: null,
           translation: '',
           targetLang: 'en',
           nativeLang: 'ru',
@@ -317,6 +321,8 @@ describe('VocabularyController', () => {
       ).resolves.toEqual(mockOutput);
       expect(useCase.update).toHaveBeenCalledWith('v1', {
         word: undefined,
+        vocabType: undefined,
+        pos: undefined,
         translation: 'новый',
         contextSentence: 'ctx',
       });
@@ -331,6 +337,8 @@ describe('VocabularyController', () => {
 
       expect(useCase.update).toHaveBeenCalledWith('v1', {
         word: 'refined',
+        vocabType: undefined,
+        pos: undefined,
         translation: 'новый',
         contextSentence: 'ctx',
       });
@@ -349,9 +357,49 @@ describe('VocabularyController', () => {
 
       expect(useCase.update).toHaveBeenCalledWith('v1', {
         word: undefined,
+        vocabType: undefined,
+        pos: undefined,
         translation: '',
         contextSentence: '',
       });
+    });
+
+    it('passes vocabType and pos when provided', async () => {
+      await controller.update('v1', {
+        word: ' refined ',
+        vocabType: 'idiom',
+        pos: 'verb',
+        translation: 'новый',
+        contextSentence: 'ctx',
+      });
+
+      expect(useCase.update).toHaveBeenCalledWith('v1', {
+        word: 'refined',
+        vocabType: 'idiom',
+        pos: 'verb',
+        translation: 'новый',
+        contextSentence: 'ctx',
+      });
+    });
+
+    it('rejects invalid update vocabType', async () => {
+      await expect(
+        controller.update('v1', {
+          vocabType: 'invalid',
+          translation: '',
+          contextSentence: '',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects invalid update pos', async () => {
+      await expect(
+        controller.update('v1', {
+          pos: 'interjection',
+          translation: '',
+          contextSentence: '',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

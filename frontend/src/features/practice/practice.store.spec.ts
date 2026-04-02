@@ -42,15 +42,59 @@ const roundExercises = [
   {
     vocabularyId: 'w1',
     word: 'hello',
+    exerciseType: 'multiple_choice' as const,
+    prompt: 'Choose the word that best completes the sentence.\n___ there.',
+    correctAnswer: 'hello',
+    options: ['world', 'hello', 'test', 'help'],
+  },
+  {
+    vocabularyId: 'w1',
+    word: 'hello',
     exerciseType: 'spelling' as const,
-    prompt: 'Spell hello',
+    prompt: 'Type the en word for "привет".',
+    correctAnswer: 'hello',
+  },
+  {
+    vocabularyId: 'w1',
+    word: 'hello',
+    exerciseType: 'context_sentence' as const,
+    prompt: 'Type the en word that matches this meaning.\nTranslation: "привет"\nContext: [...] there.',
+    correctAnswer: 'hello',
+  },
+  {
+    vocabularyId: 'w1',
+    word: 'hello',
+    exerciseType: 'fill_blank' as const,
+    prompt: 'Fill in the blank with the missing word.\n___ there.',
     correctAnswer: 'hello',
   },
   {
     vocabularyId: 'w2',
     word: 'world',
+    exerciseType: 'multiple_choice' as const,
+    prompt: 'Choose the word that best completes the sentence.\n___ peace.',
+    correctAnswer: 'world',
+    options: ['word', 'world', 'hello', 'wild'],
+  },
+  {
+    vocabularyId: 'w2',
+    word: 'world',
     exerciseType: 'spelling' as const,
-    prompt: 'Spell world',
+    prompt: 'Type the en word for "мир".',
+    correctAnswer: 'world',
+  },
+  {
+    vocabularyId: 'w2',
+    word: 'world',
+    exerciseType: 'context_sentence' as const,
+    prompt: 'Type the en word that matches this meaning.\nTranslation: "мир"\nContext: [...] peace.',
+    correctAnswer: 'world',
+  },
+  {
+    vocabularyId: 'w2',
+    word: 'world',
+    exerciseType: 'fill_blank' as const,
+    prompt: 'Fill in the blank with the missing word.\n___ peace.',
     correctAnswer: 'world',
   },
 ];
@@ -79,7 +123,7 @@ describe('usePracticeStore', () => {
     expect(usePracticeStore.getState().currentBatchMode).toBe('unseen');
   });
 
-  it('ready() loads exercises for the preview batch', async () => {
+  it('ready() loads expanded round exercises and sets the first exercise', async () => {
     usePracticeStore.setState({
       phase: 'preview',
       sessionId: 'session-1',
@@ -109,6 +153,7 @@ describe('usePracticeStore', () => {
     });
     expect(usePracticeStore.getState().phase).toBe('practicing');
     expect(usePracticeStore.getState().currentExercise).toEqual(roundExercises[0]);
+    expect(usePracticeStore.getState().exercises).toHaveLength(8);
   });
 
   it('answer() stores the last answer and moves to reviewing', async () => {
@@ -158,8 +203,8 @@ describe('usePracticeStore', () => {
       batchSize: 10,
       unseenCursor: 2,
       exercises: roundExercises,
-      currentIndex: 0,
-      currentExercise: roundExercises[0],
+      currentIndex: 3,
+      currentExercise: roundExercises[3],
       isLastExercise: false,
       answers: [],
       lastAnswer: { isCorrect: true, errorPosition: null, qualityRating: 5 },
@@ -172,7 +217,7 @@ describe('usePracticeStore', () => {
     usePracticeStore.getState().next();
 
     expect(usePracticeStore.getState().phase).toBe('practicing');
-    expect(usePracticeStore.getState().currentIndex).toBe(1);
+    expect(usePracticeStore.getState().currentIndex).toBe(4);
     expect(usePracticeStore.getState().currentExercise?.word).toBe('world');
   });
 
@@ -186,8 +231,8 @@ describe('usePracticeStore', () => {
       batchSize: 10,
       unseenCursor: 2,
       exercises: roundExercises,
-      currentIndex: 1,
-      currentExercise: roundExercises[1],
+      currentIndex: 7,
+      currentExercise: roundExercises[7],
       isLastExercise: true,
       answers: [],
       lastAnswer: { isCorrect: false, errorPosition: 'middle', qualityRating: 1 },
@@ -228,8 +273,8 @@ describe('usePracticeStore', () => {
       batchSize: 2,
       unseenCursor: 2,
       exercises: roundExercises,
-      currentIndex: 1,
-      currentExercise: roundExercises[1],
+      currentIndex: 7,
+      currentExercise: roundExercises[7],
       isLastExercise: true,
       answers: [],
       lastAnswer: { isCorrect: true, errorPosition: null, qualityRating: 5 },

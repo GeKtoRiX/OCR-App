@@ -14,12 +14,12 @@
 - Decision: all agent-related code lives in `backend/src/agentic/*`.
 - Consequence: agentic changes must be documented separately and must not break the OCR runtime.
 
-## ADR-003: Default OCR Path Is PaddleOCR Sidecar
+## ADR-003: Default OCR Path Is LM Studio Vision OCR
 
 - Status: accepted
 - Context: the base OCR path must work locally without mandatory cloud key dependencies.
-- Decision: OCR always goes through the PaddleOCR sidecar; LM Studio is used only to structure raw text after OCR.
-- Consequence: production and dev runbooks must cover the sidecar scenario first.
+- Decision: OCR always goes through LM Studio vision OCR; no separate OCR sidecar is part of the runtime.
+- Consequence: production and dev runbooks must cover LM Studio setup as the primary OCR dependency.
 
 ## ADR-004: Agent Handoffs Must Be Schema-Driven
 
@@ -39,15 +39,15 @@
 
 - Status: accepted
 - Context: TTS synthesis requires ONNX Runtime (ROCm GPU) and Python-specific libraries (`supertonic`). Embedding this in the NestJS backend would violate the language boundary and the clean architecture principle.
-- Decision: Supertone TTS runs as a standalone Python FastAPI sidecar (`services/tts/supertone-service/`, port 8100), following the same sidecar pattern as PaddleOCR. The NestJS backend communicates with it via HTTP (`SupertoneService`).
+- Decision: Supertone TTS runs as a standalone Python FastAPI sidecar (`services/tts/supertone-service/`, port 8100). The NestJS backend communicates with it via HTTP (`SupertoneService`).
 - Consequence: `TtsModule` must export TTS port tokens; `HealthModule` must import `TtsModule` to access them. The GPU provider list must be mutated in-place (`.clear()` + `.extend()`) rather than reassigned, because `supertonic/loader.py` holds a reference to the original list object.
 
 ## ADR-007: Split IHealthCheckPort Into Per-Service Health Ports
 
 - Status: accepted
-- Context: `HealthCheckUseCase` was directly importing concrete infrastructure classes, violating the dependency inversion principle. The generic `IHealthCheckPort` (`isReachable`, `listModels`) did not cover all health contracts — `PaddleOCRHealthService` also provides `getDevice()`, and TTS services expose `checkHealth()` / `getHealth()` which differ per engine.
+- Context: `HealthCheckUseCase` was directly importing concrete infrastructure classes, violating the dependency inversion principle. The generic `IHealthCheckPort` (`isReachable`, `listModels`) did not cover all health contracts — OCR health also needs `getDevice()`, and TTS services expose `checkHealth()` / `getHealth()` which differ per engine.
 - Decision: replace the single `IHealthCheckPort` with named ports in `domain/ports/`:
-  - `IPaddleOcrHealthPort` — `isReachable()`, `listModels()`, `getDevice()`
+  - `IOcrHealthPort` — `isReachable()`, `listModels()`, `getDevice()`
   - `ILmStudioHealthPort` — `isReachable()`, `listModels()`
   - `ISupertonePort` — `synthesize()`, `checkHealth()`
   - `IKokoroPort` — `synthesize()`, `checkHealth()`

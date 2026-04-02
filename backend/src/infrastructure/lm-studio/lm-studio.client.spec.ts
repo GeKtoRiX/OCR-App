@@ -71,6 +71,43 @@ describe('LMStudioClient', () => {
       expect(body.max_tokens).toBe(1024);
     });
 
+    it('always sends enable_thinking: false to suppress reasoning tokens', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'result' } }],
+        }),
+      });
+
+      await client.chatCompletion(
+        [{ role: 'user', content: 'Hi' }],
+        'qwen/qwen3.5-9b',
+      );
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.enable_thinking).toBe(false);
+    });
+
+    it('should pass stop sequences when provided', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'text' } }],
+        }),
+      });
+
+      await client.chatCompletion(
+        [{ role: 'user', content: 'Hi' }],
+        'model',
+        {
+          stop: ['<think>', '</think>'],
+        },
+      );
+
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+      expect(body.stop).toEqual(['<think>', '</think>']);
+    });
+
     it('should throw on non-ok response', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: false,
@@ -81,6 +118,21 @@ describe('LMStudioClient', () => {
       await expect(
         client.chatCompletion([{ role: 'user', content: 'Hi' }], 'model'),
       ).rejects.toThrow('LM Studio API error (500): Internal Server Error');
+    });
+
+    it('should throw when LM Studio returns reasoning without final content', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { reasoning_content: 'long internal reasoning' } }],
+        }),
+      });
+
+      await expect(
+        client.chatCompletion([{ role: 'user', content: 'Hi' }], 'model'),
+      ).rejects.toThrow(
+        'LM Studio returned reasoning content without a final answer',
+      );
     });
   });
 

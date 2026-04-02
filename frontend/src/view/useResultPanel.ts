@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { OcrResponse, VocabType } from '../shared/types';
+import type { DocumentCandidatePos, OcrResponse, VocabType } from '../shared/types';
 import { copyToClipboard } from '../shared/lib/clipboard';
 import { htmlToPlainText, markdownToHtml, sanitizeRichTextHtml } from '../shared/lib/rich-text';
 import { useTts } from '../features/tts';
@@ -14,6 +14,7 @@ interface UseResultPanelOptions {
     vocabType: VocabType,
     translation: string,
     contextSentence: string,
+    pos?: DocumentCandidatePos,
   ) => void;
 }
 

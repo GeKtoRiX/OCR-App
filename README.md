@@ -134,16 +134,13 @@ pip install -r requirements.txt
 ### 5. Start a stack
 
 ```bash
-chmod +x scripts/linux/ocr.sh scripts/linux/tts.sh scripts/linux/ocr-tts.sh
-./scripts/linux/ocr-tts.sh
+chmod +x scripts/linux/ocr.sh
+./scripts/linux/ocr.sh
 ```
 
-Available launcher modes:
+Supported launcher entry:
 
 - `./scripts/linux/ocr.sh`: OCR-oriented stack, LM Studio required, TTS sidecars follow `tts-models.conf`
-- `./scripts/linux/tts.sh`: TTS-oriented stack, LM Studio skipped
-- `./scripts/linux/ocr-tts.sh`: full stack
-- `./scripts/linux/stack.sh`: interactive menu for start/stop/status/switch
 
 Launcher defaults are conservative about VRAM:
 
@@ -155,14 +152,10 @@ Lifecycle helpers:
 
 ```bash
 ./scripts/linux/ocr.sh stop
-./scripts/linux/tts.sh stop
-./scripts/linux/ocr-tts.sh stop
 
 ./scripts/linux/ocr.sh status
-./scripts/linux/tts.sh status
-./scripts/linux/ocr-tts.sh status
 
-./scripts/linux/ocr-tts.sh wipe
+./scripts/linux/ocr.sh wipe
 ```
 
 VRAM cleanup helper:

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VocabContextMenu } from './VocabContextMenu';
 
@@ -18,33 +18,20 @@ describe('VocabContextMenu', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders all vocabulary type actions on hover', () => {
+  it('renders a single add action', () => {
     render(<VocabContextMenu x={100} y={120} onSelect={vi.fn()} onClose={vi.fn()} />);
 
     expect(screen.getByText('Add to Vocabulary')).toBeInTheDocument();
-
-    // Hover the row to open the submenu
-    const row = screen.getByTestId('vocab-context-menu').firstElementChild!;
-    act(() => { fireEvent.mouseEnter(row); });
-
-    expect(screen.getByText('Word')).toBeInTheDocument();
-    expect(screen.getByText('Phrasal Verb')).toBeInTheDocument();
-    expect(screen.getByText('Idiom')).toBeInTheDocument();
-    expect(screen.getByText('Collocation')).toBeInTheDocument();
-    expect(screen.getByText('Expression')).toBeInTheDocument();
   });
 
-  it('selects the requested vocabulary type', async () => {
+  it('selects the add action', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     render(<VocabContextMenu x={100} y={120} onSelect={onSelect} onClose={vi.fn()} />);
 
-    // Open submenu via mouseEnter on the row, then click the type
-    const row = screen.getByTestId('vocab-context-menu').firstElementChild!;
-    act(() => { fireEvent.mouseEnter(row); });
-    await user.click(screen.getByText('Phrasal Verb'));
+    await user.click(screen.getByText('Add to Vocabulary'));
 
-    expect(onSelect).toHaveBeenCalledWith('phrasal_verb');
+    expect(onSelect).toHaveBeenCalledWith();
   });
 
   it('closes on outside click', () => {
@@ -80,10 +67,10 @@ describe('VocabContextMenu', () => {
 
     render(<VocabContextMenu x={350} y={280} onSelect={vi.fn()} onClose={vi.fn()} />);
 
-    // x=350 overflows right (350+200+8>400) → flip to 350-200=150, clamped to 150
+    // x=350 overflows right (350+8+200+8>400) → flip to 350-200-8=142, clamped to 142
     // y=280+8=288 overflows bottom (288+220+8>300) → flip to 280-220-8=52, clamped to 52
     const menu = screen.getByTestId('vocab-context-menu');
-    expect(menu).toHaveStyle({ left: '150px', top: '52px' });
+    expect(menu).toHaveStyle({ left: '142px', top: '52px' });
   });
 
   it('positions the menu below and at the anchor point when space is available', () => {
@@ -101,8 +88,8 @@ describe('VocabContextMenu', () => {
 
     render(<VocabContextMenu x={100} y={100} onSelect={vi.fn()} onClose={vi.fn()} />);
 
-    // x=100 no overflow (100+200+8=308<400), top=100+8=108 no overflow (108+120+8=236<300)
+    // x=100 no overflow (100+8+200+8=316<400), top=100+8=108 no overflow (108+120+8=236<300)
     const menu = screen.getByTestId('vocab-context-menu');
-    expect(menu).toHaveStyle({ left: '100px', top: '108px' });
+    expect(menu).toHaveStyle({ left: '108px', top: '108px' });
   });
 });

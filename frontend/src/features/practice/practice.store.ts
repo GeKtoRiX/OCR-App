@@ -13,6 +13,9 @@ import type {
   SessionAnalysis,
 } from '../../shared/types';
 
+const PRACTICE_BATCH_SIZE = 3;
+const EXERCISE_TYPE_ORDER = ['multiple_choice', 'spelling', 'context_sentence', 'fill_blank'];
+
 export type PracticePhase =
   | 'idle'
   | 'planning'
@@ -48,6 +51,7 @@ interface PracticeState {
   unseenCursor: number;
   sessionIncorrectCounts: Record<string, number>;
   currentRoundResults: RoundAnswerResult[];
+  roundProgress: number;
 }
 
 interface PracticeActions {
@@ -79,6 +83,7 @@ const initialState: PracticeState = {
   unseenCursor: 0,
   sessionIncorrectCounts: {},
   currentRoundResults: [],
+  roundProgress: 0,
 };
 
 function deriveState(state: Pick<PracticeState, 'exercises' | 'currentIndex'>) {
@@ -177,26 +182,45 @@ export const usePracticeStore = create<PracticeStore>((set, get) => ({
       return;
     }
 
-    set({ phase: 'loading_round', error: null, lastAnswer: null, currentRoundResults: [] });
+    set({ phase: 'loading_round', roundProgress: 0, error: null, lastAnswer: null, currentRoundResults: [] });
 
     try {
-      const result = await generatePracticeRound({
-        sessionId,
-        vocabularyIds: previewWords.map((word) => word.id),
-      });
+      const ids = previewWords.map((w) => w.id);
+      const batches: string[][] = [];
+      for (let i = 0; i < ids.length; i += PRACTICE_BATCH_SIZE) {
+        batches.push(ids.slice(i, i + PRACTICE_BATCH_SIZE));
+      }
+
+      let completed = 0;
+      const batchResults = await Promise.all(
+        batches.map((batchIds) =>
+          generatePracticeRound({ sessionId, vocabularyIds: batchIds }).then((res) => {
+            completed++;
+            set({ roundProgress: Math.round((completed / batches.length) * 100) });
+            return res.exercises;
+          }),
+        ),
+      );
+
+      const allExercises = batchResults.flat();
+      const exercises = EXERCISE_TYPE_ORDER.flatMap((type) =>
+        allExercises.filter((e) => e.exerciseType === type),
+      );
 
       set({
         phase: 'practicing',
-        exercises: result.exercises,
+        exercises,
+        roundProgress: 0,
         currentIndex: 0,
         lastAnswer: null,
         error: null,
         currentRoundResults: [],
-        ...deriveState({ exercises: result.exercises, currentIndex: 0 }),
+        ...deriveState({ exercises, currentIndex: 0 }),
       });
     } catch (error) {
       set({
         phase: 'error',
+        roundProgress: 0,
         error: error instanceof Error ? error.message : 'Failed to prepare practice round',
       });
     }

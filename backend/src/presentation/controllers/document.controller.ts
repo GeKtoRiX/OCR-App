@@ -20,6 +20,7 @@ import {
   PrepareDocumentVocabularyDto,
   ConfirmDocumentVocabularyDto,
 } from '../dto/document.dto';
+import type { VocabularyWordPos } from '../../domain/entities/vocabulary-word.entity';
 import { ETagInterceptor } from '../interceptors/etag.interceptor';
 
 @UseInterceptors(ETagInterceptor)
@@ -123,6 +124,7 @@ export class DocumentController {
         candidateId: item.candidateId,
         word: item.word.trim(),
         vocabType: item.vocabType as 'word' | 'phrasal_verb' | 'idiom' | 'collocation' | 'expression',
+        pos: (item.pos as VocabularyWordPos | undefined) ?? null,
         translation: item.translation ?? '',
         contextSentence: item.contextSentence ?? '',
       })),

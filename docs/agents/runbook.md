@@ -10,7 +10,6 @@ npm install
 
 Set up the required Python sidecars manually under:
 
-- `services/ocr/paddleocr-service/.venv`
 - `services/nlp/stanza-service/.venv`
 - `services/nlp/bert-service/.venv`
 - `services/tts/supertone-service/.venv`
@@ -32,19 +31,16 @@ BERT_MODEL_DIR="${PWD}/models" .venv/bin/python -c \
 
 ```bash
 npm run dev:frontend
-npm run dev:paddleocr
 npm run dev:stanza
 npm run dev:bert
 npm run dev:supertone
 npm run dev:kokoro
 
-npm run smoke:paddleocr
 npm run smoke:stanza
 npm run smoke:bert
 npm run smoke:supertone
 npm run smoke:kokoro
 npm run smoke:lmstudio
-npm run smoke:all
 ```
 
 ## Build
@@ -95,23 +91,16 @@ node backend/dist/gateway/main.js
 
 ```bash
 ./scripts/linux/ocr.sh
-./scripts/linux/tts.sh
-./scripts/linux/ocr-tts.sh
-./scripts/linux/stack.sh
 ```
 
 Lifecycle:
 
 ```bash
 ./scripts/linux/ocr.sh stop
-./scripts/linux/tts.sh stop
-./scripts/linux/ocr-tts.sh stop
 
 ./scripts/linux/ocr.sh status
-./scripts/linux/tts.sh status
-./scripts/linux/ocr-tts.sh status
 
-./scripts/linux/ocr-tts.sh wipe
+./scripts/linux/ocr.sh wipe
 ```
 
 Notes:
@@ -238,7 +227,7 @@ curl -X POST http://localhost:3000/api/agents/deploy \
 
 ## Operational Notes
 
-- base OCR requires PaddleOCR and LM Studio
+- base OCR requires LM Studio
 - TTS is optional for OCR, but the TTS service process still starts in backend-enabled stacks
 - Piper is served through the Supertone sidecar
 - the result panel currently exposes Kokoro

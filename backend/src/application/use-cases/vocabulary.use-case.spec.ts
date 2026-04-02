@@ -43,7 +43,7 @@ describe('VocabularyUseCase', () => {
 
     expect(repo.create).toHaveBeenCalledWith(
       'beautiful', 'word', 'красивый', 'en', 'ru',
-      'The sunset was beautiful.', null,
+      'The sunset was beautiful.', null, undefined,
     );
     expect(result.id).toBe('id-1');
     expect(result.vocabType).toBe('word');
@@ -85,6 +85,7 @@ describe('VocabularyUseCase', () => {
       'ru',
       'The sunset was beautiful.',
       'doc-1',
+      undefined,
     );
   });
 
@@ -93,6 +94,7 @@ describe('VocabularyUseCase', () => {
       {
         word: 'beautiful',
         vocabType: 'word',
+        pos: undefined,
         translation: 'красивый',
         targetLang: 'en',
         nativeLang: 'ru',
@@ -104,6 +106,7 @@ describe('VocabularyUseCase', () => {
       {
         word: 'beautiful',
         vocabType: 'word',
+        pos: undefined,
         translation: 'красивый',
         targetLang: 'en',
         nativeLang: 'ru',
@@ -195,6 +198,27 @@ describe('VocabularyUseCase', () => {
       'новый',
       'новый контекст',
       'refined',
+      undefined,
+      undefined,
+    );
+  });
+
+  it('update passes vocabType and pos through to the repository', async () => {
+    await useCase.update('id-1', {
+      word: 'refined',
+      vocabType: 'idiom',
+      pos: 'adjective',
+      translation: 'новый',
+      contextSentence: 'новый контекст',
+    });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      'id-1',
+      'новый',
+      'новый контекст',
+      'refined',
+      'idiom',
+      'adjective',
     );
   });
 

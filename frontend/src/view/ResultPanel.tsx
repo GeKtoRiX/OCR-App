@@ -1,4 +1,4 @@
-import type { OcrResponse, VocabType } from '../shared/types';
+import type { DocumentCandidatePos, OcrResponse, VocabType } from '../shared/types';
 import type { SaveStatus } from '../features/documents/documents.store';
 import { useResultPanel } from './useResultPanel';
 import { VocabContextMenu } from '../features/vocabulary/VocabContextMenu';
@@ -21,6 +21,7 @@ interface Props {
     vocabType: VocabType,
     translation: string,
     contextSentence: string,
+    pos?: DocumentCandidatePos,
   ) => void;
 }
 
@@ -179,7 +180,7 @@ export function ResultPanel({
         <VocabContextMenu
           x={panel.vocabCtx.contextMenu.x}
           y={panel.vocabCtx.contextMenu.y}
-          onSelect={panel.vocabCtx.handleVocabTypeSelect}
+          onSelect={panel.vocabCtx.handleVocabAddRequest}
           onClose={panel.vocabCtx.closeContextMenu}
         />
       )}
@@ -190,6 +191,7 @@ export function ResultPanel({
           y={panel.vocabCtx.vocabForm.y}
           selectedText={panel.vocabCtx.vocabForm.selectedText}
           vocabType={panel.vocabCtx.vocabForm.vocabType}
+          pos={panel.vocabCtx.vocabForm.pos}
           contextSentence={panel.vocabCtx.vocabForm.contextSentence}
           isDuplicate={panel.vocabCtx.vocabForm.isDuplicate}
           onAdd={panel.vocabCtx.handleVocabAdd}

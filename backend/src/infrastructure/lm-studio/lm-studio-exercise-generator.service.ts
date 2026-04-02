@@ -5,7 +5,8 @@ import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { LMStudioConfig } from '../config/lm-studio.config';
 import { parseJsonResponse } from './lm-studio-vocabulary.utils';
 
-const EXERCISE_SYSTEM_PROMPT = `You are a vocabulary exercise generator for language learners. Given a list of vocabulary words with their translations and context, generate diverse exercises.
+const EXERCISE_SYSTEM_PROMPT = `/no_think
+You are a vocabulary exercise generator for language learners. Given a list of vocabulary words with their translations and context, generate a complete exercise block for every word.
 
 ## Exercise types
 1. **fill_blank** — A sentence with the target word replaced by "___". The learner types the missing word.
@@ -14,10 +15,17 @@ const EXERCISE_SYSTEM_PROMPT = `You are a vocabulary exercise generator for lang
 4. **multiple_choice** — A sentence or definition with 4 options. Only one is correct.
 
 ## Rules
-- Each word should appear in at least 1 exercise, ideally 2 different types.
+- Generate exactly 4 exercises per word.
+- The exercise block for each word must follow this exact order:
+  1. multiple_choice
+  2. spelling
+  3. context_sentence
+  4. fill_blank
+- You may return exercises in any order; the client will sort them.
 - Fill-in-blank sentences must be natural, level-appropriate, and use the word in a realistic context.
 - Multiple-choice distractors must be plausible but clearly wrong.
 - Spelling prompts show the native language translation; the correct answer is the target language word.
+- Context-sentence prompts must describe the meaning or usage without revealing the answer word.
 - NEVER include the answer in the prompt text.
 - Output ONLY valid JSON, no preamble or explanation.
 
@@ -67,7 +75,8 @@ export class LmStudioExerciseGeneratorService {
 |---|------|-------------|---------|-----|
 ${wordsTable}
 
-Generate ${count} exercises total, mixing all four exercise types. Each word must appear at least once.`;
+Generate exactly ${count} exercises total.
+For every word, return these 4 exercises in order: multiple_choice, spelling, context_sentence, fill_blank.`;
 
     const response = await this.client.chatCompletion(
       [

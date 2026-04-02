@@ -1,6 +1,15 @@
 import { useState } from 'react';
-import type { VocabularyWord, LanguagePair } from '../../shared/types';
-import { VOCAB_TYPE_LABELS } from '../../shared/types';
+import type {
+  DocumentCandidatePos,
+  VocabularyWord,
+  LanguagePair,
+  VocabType,
+} from '../../shared/types';
+import {
+  VOCAB_POS_LABELS,
+  VOCAB_POS_OPTIONS,
+  VOCAB_TYPE_LABELS,
+} from '../../shared/types';
 import './VocabularyPanel.css';
 
 interface Props {
@@ -10,7 +19,14 @@ interface Props {
   dueCount: number;
   onLangPairChange: (lp: LanguagePair) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, word: string, translation: string) => void;
+  onUpdate: (
+    id: string,
+    word: string,
+    translation: string,
+    contextSentence: string,
+    vocabType: VocabType,
+    pos?: DocumentCandidatePos,
+  ) => void;
   onStartPractice: () => void;
 }
 
@@ -27,11 +43,17 @@ export function VocabularyPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editWord, setEditWord] = useState('');
   const [editTranslation, setEditTranslation] = useState('');
+  const [editContextSentence, setEditContextSentence] = useState('');
+  const [editVocabType, setEditVocabType] = useState<VocabType>('word');
+  const [editPos, setEditPos] = useState<DocumentCandidatePos>(null);
 
   const startEdit = (w: VocabularyWord) => {
     setEditingId(w.id);
     setEditWord(w.word);
     setEditTranslation(w.translation);
+    setEditContextSentence(w.contextSentence);
+    setEditVocabType(w.vocabType);
+    setEditPos(w.pos ?? null);
   };
 
   const cancelEdit = () => setEditingId(null);
@@ -41,7 +63,14 @@ export function VocabularyPanel({
     const trimmedWord = editWord.trim();
     const trimmedTranslation = editTranslation.trim();
     if (!trimmedWord || !trimmedTranslation) return;
-    onUpdate(editingId, trimmedWord, trimmedTranslation);
+    onUpdate(
+      editingId,
+      trimmedWord,
+      trimmedTranslation,
+      editContextSentence.trim(),
+      editVocabType,
+      editPos,
+    );
     setEditingId(null);
   };
 
@@ -118,6 +147,47 @@ export function VocabularyPanel({
                       }}
                     />
                   </div>
+                  <div className="vocab-panel__edit-row">
+                    <span className="vocab-panel__edit-label">Type</span>
+                    <select
+                      className="vocab-panel__edit-input"
+                      value={editVocabType}
+                      onChange={(e) => setEditVocabType(e.target.value as VocabType)}
+                      data-testid="vocab-edit-type"
+                    >
+                      {Object.entries(VOCAB_TYPE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="vocab-panel__edit-row">
+                    <span className="vocab-panel__edit-label">POS</span>
+                    <select
+                      className="vocab-panel__edit-input"
+                      value={editPos ?? ''}
+                      onChange={(e) => setEditPos((e.target.value || null) as DocumentCandidatePos)}
+                      data-testid="vocab-edit-pos"
+                    >
+                      <option value="">Not set</option>
+                      {VOCAB_POS_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {VOCAB_POS_LABELS[item]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="vocab-panel__edit-row vocab-panel__edit-row--textarea">
+                    <span className="vocab-panel__edit-label">Context</span>
+                    <textarea
+                      className="vocab-panel__edit-input vocab-panel__edit-textarea"
+                      value={editContextSentence}
+                      onChange={(e) => setEditContextSentence(e.target.value)}
+                      data-testid="vocab-edit-context"
+                      rows={3}
+                    />
+                  </div>
                   <div className="vocab-panel__edit-actions">
                     <button
                       className="vocab-panel__edit-save"
@@ -141,9 +211,16 @@ export function VocabularyPanel({
                 <>
                   <div className="vocab-panel__item-main">
                     <span className="vocab-panel__word">{w.word}</span>
-                    <span className="vocab-panel__type-badge">
-                      {VOCAB_TYPE_LABELS[w.vocabType]}
-                    </span>
+                    <div className="vocab-panel__badges">
+                      <span className="vocab-panel__type-badge">
+                        {VOCAB_TYPE_LABELS[w.vocabType]}
+                      </span>
+                      {w.pos && (
+                        <span className="vocab-panel__pos-badge">
+                          {VOCAB_POS_LABELS[w.pos]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="vocab-panel__translation">{w.translation}</div>
                   <div className="vocab-panel__meta">

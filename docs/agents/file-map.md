@@ -73,11 +73,11 @@ Important files:
 - `backend/src/domain/ports/document-vocabulary-extractor.port.ts`
 - `backend/src/infrastructure/document/document-vocabulary-extractor.service.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio.client.ts`
+- `backend/src/infrastructure/lm-studio/lm-studio-ocr.service.ts`
+- `backend/src/infrastructure/lm-studio/lm-studio-ocr-health.service.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio-structuring.service.ts`
 - `backend/src/infrastructure/lm-studio/lm-studio-vocabulary.service.ts`
 - `backend/src/infrastructure/vocabulary/tcp-vocabulary.repository.ts`
-- `backend/src/infrastructure/paddleocr/paddleocr-ocr.service.ts`
-- `backend/src/infrastructure/paddleocr/paddleocr-health.service.ts`
 - `backend/src/infrastructure/supertone/supertone.service.ts`
 - `backend/src/infrastructure/kokoro/kokoro.service.ts`
 
@@ -116,8 +116,6 @@ Important files:
 
 ## Sidecars
 
-- `services/ocr/paddleocr-service/main.py`
-- `services/ocr/paddleocr-service/smoke_test.py`
 - `services/nlp/stanza-service/main.py`
 - `services/nlp/stanza-service/requirements.txt`
 - `services/tts/supertone-service/main.py`
@@ -129,9 +127,6 @@ Important files:
 
 - `scripts/linux/ocr-common.sh`
 - `scripts/linux/ocr.sh`
-- `scripts/linux/tts.sh`
-- `scripts/linux/ocr-tts.sh`
-- `scripts/linux/stack.sh`
 - `scripts/linux/tts-models.conf`
 - `scripts/e2e/prepare-browser-env.sh`
 - `scripts/e2e/prepare-save-vocabulary-env.sh`

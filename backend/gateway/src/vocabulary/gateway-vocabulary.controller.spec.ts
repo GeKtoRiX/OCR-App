@@ -46,6 +46,8 @@ describe('GatewayVocabularyController', () => {
       {
         id: 'v1',
         word: 'refined',
+        vocabType: undefined,
+        pos: undefined,
         translation: 'новый',
         contextSentence: 'ctx',
       },
@@ -60,10 +62,50 @@ describe('GatewayVocabularyController', () => {
       {
         id: 'v1',
         word: undefined,
+        vocabType: undefined,
+        pos: undefined,
         translation: '',
         contextSentence: '',
       },
     );
+  });
+
+  it('forwards update vocabType and pos when provided', async () => {
+    await controller.update('v1', {
+      word: '  refined  ',
+      vocabType: 'idiom',
+      pos: 'adverb',
+      translation: 'новый',
+      contextSentence: 'ctx',
+    });
+
+    expect(vocabularyClient.send).toHaveBeenCalledWith(
+      VOCABULARY_PATTERNS.UPDATE,
+      {
+        id: 'v1',
+        word: 'refined',
+        vocabType: 'idiom',
+        pos: 'adverb',
+        translation: 'новый',
+        contextSentence: 'ctx',
+      },
+    );
+  });
+
+  it('validates update vocabType before sending upstream', async () => {
+    await expect(
+      controller.update('v1', {
+        vocabType: 'invalid' as any,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('validates update pos before sending upstream', async () => {
+    await expect(
+      controller.update('v1', {
+        pos: 'interjection' as any,
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('validates create payloads before sending them', async () => {

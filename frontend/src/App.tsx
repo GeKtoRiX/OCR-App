@@ -10,7 +10,7 @@ import { usePracticeStore } from './features/practice/practice.store';
 import { SaveVocabularyOverlay } from './features/vocabulary/SaveVocabularyOverlay';
 import { useVocabularyStore } from './features/vocabulary/vocabulary.store';
 import { formatFileSize } from './shared/lib/format';
-import type { VocabType } from './shared/types';
+import type { DocumentCandidatePos, VocabType } from './shared/types';
 import { StatusBar } from './ui/StatusBar';
 import { ResultPanel } from './view/ResultPanel';
 
@@ -141,12 +141,14 @@ export default function App() {
     vocabType: VocabType,
     translation: string,
     contextSentence: string,
+    pos?: DocumentCandidatePos,
   ) => {
     void vocab.addWord(
       word,
       vocabType,
       translation,
       contextSentence,
+      pos,
       activeSavedDoc?.id,
     );
   };
@@ -307,6 +309,7 @@ export default function App() {
             previewWords={practice.previewWords}
             currentBatchMode={practice.currentBatchMode}
             hasRecordedAnswers={practice.answers.length > 0}
+            roundProgress={practice.roundProgress}
             onAnswer={(answer) => void practice.answer(answer)}
             onReady={() => void practice.ready()}
             onNext={practice.next}

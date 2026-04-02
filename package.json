@@ -21,7 +21,6 @@
     "dev:kokoro": "PYTHON_SITE_PACKAGES_EXTRA=services/nlp/stanza-service/.venv/lib/python3.12/site-packages KOKORO_USE_GPU=true bash scripts/linux/run-python-with-torch.sh services/tts/kokoro-service/.venv/bin/python -m uvicorn --app-dir services/tts/kokoro-service main:app --host 0.0.0.0 --port 8200",
     "smoke:kokoro": "PYTHON_SITE_PACKAGES_EXTRA=services/nlp/stanza-service/.venv/lib/python3.12/site-packages bash scripts/linux/run-python-with-torch.sh services/tts/kokoro-service/.venv/bin/python services/tts/kokoro-service/smoke_test.py",
     "smoke:lmstudio": "bash scripts/linux/run-js-command.sh npm run test:smoke:lmstudio --workspace=./backend",
-    "smoke:all": "npm run smoke:ocr && npm run smoke:supertone && npm run smoke:kokoro",
     "build:frontend": "bash scripts/linux/run-js-command.sh npm run build --workspace=frontend",
     "build:backend": "bash scripts/linux/run-js-command.sh npm run build --workspace=@ocr-app/shared && bash scripts/linux/run-js-command.sh npm run build --workspace=./backend",
     "build": "bash scripts/linux/run-js-command.sh npm run build:frontend && bash scripts/linux/run-js-command.sh npm run build:backend",

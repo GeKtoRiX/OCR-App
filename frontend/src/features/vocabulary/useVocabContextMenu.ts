@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, type RefObject } from 'react';
-import type { VocabType } from '../../shared/types';
+import type { DocumentCandidatePos, VocabType } from '../../shared/types';
 import { extractContextSentence } from '../../shared/lib/text-utils';
 
 export interface ContextMenuState {
@@ -15,6 +15,7 @@ export interface VocabFormState {
   selectedText: string;
   contextSentence: string;
   vocabType: VocabType;
+  pos: DocumentCandidatePos;
   isDuplicate: boolean;
 }
 
@@ -33,6 +34,7 @@ interface UseVocabContextMenuOptions {
     vocabType: VocabType,
     translation: string,
     contextSentence: string,
+    pos?: DocumentCandidatePos,
   ) => void;
 }
 
@@ -175,8 +177,7 @@ export function useVocabContextMenu({
     [rememberRenderedSelection],
   );
 
-  const handleVocabTypeSelect = useCallback(
-    (vocabType: VocabType) => {
+  const handleVocabAddRequest = useCallback(() => {
       if (!contextMenu) return;
       const isDuplicate = existingWordsSet
         ? existingWordsSet.has(contextMenu.selectedText.toLowerCase())
@@ -186,18 +187,23 @@ export function useVocabContextMenu({
         y: contextMenu.y,
         selectedText: contextMenu.selectedText,
         contextSentence: contextMenu.contextSentence,
-        vocabType,
+        vocabType: 'word',
+        pos: null,
         isDuplicate,
       });
       setContextMenu(null);
-    },
-    [contextMenu, existingWordsSet],
-  );
+    }, [contextMenu, existingWordsSet]);
 
   const handleVocabAdd = useCallback(
-    (word: string, translation: string, contextSentence: string, vocabType: VocabType) => {
+    (
+      word: string,
+      translation: string,
+      contextSentence: string,
+      vocabType: VocabType,
+      pos?: DocumentCandidatePos,
+    ) => {
       if (!vocabForm || !onAddVocabulary) return;
-      onAddVocabulary(word, vocabType, translation, contextSentence);
+      onAddVocabulary(word, vocabType, translation, contextSentence, pos);
       setVocabForm(null);
     },
     [vocabForm, onAddVocabulary],
@@ -219,7 +225,7 @@ export function useVocabContextMenu({
     handleRenderedMouseDownCapture,
     rememberRenderedSelection,
     handleRenderedContextMenu,
-    handleVocabTypeSelect,
+    handleVocabAddRequest,
     handleVocabAdd,
     triggerContextMenu,
     closeContextMenu,

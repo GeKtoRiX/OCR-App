@@ -295,6 +295,7 @@ describe('App', () => {
       'привет',
       'Hello there.',
       undefined,
+      undefined,
     );
   });
 

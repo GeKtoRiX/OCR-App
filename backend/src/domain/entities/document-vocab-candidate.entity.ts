@@ -1,6 +1,6 @@
-import type { VocabType } from './vocabulary-word.entity';
+import type { VocabType, VocabularyWordPos } from './vocabulary-word.entity';
 
-export type DocumentCandidatePos = 'noun' | 'verb' | 'adjective' | 'adverb' | null;
+export type DocumentCandidatePos = VocabularyWordPos;
 export type DocumentCandidateReviewSource =
   | 'base_nlp'
   | 'llm_added'

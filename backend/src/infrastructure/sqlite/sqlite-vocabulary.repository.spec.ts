@@ -230,6 +230,42 @@ describe('SqliteVocabularyRepository', () => {
     expect(updated!.contextSentence).toBe('new context');
   });
 
+  it('update also modifies vocab type and pos when provided', async () => {
+    const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
+
+    const updated = await repo.update(
+      created.id,
+      'новый перевод',
+      'new context',
+      'updated word',
+      'idiom',
+      'adjective',
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.word).toBe('updated word');
+    expect(updated!.vocabType).toBe('idiom');
+    expect(updated!.pos).toBe('adjective');
+  });
+
+  it('update preserves existing pos when pos is omitted', async () => {
+    const created = await repo.create(
+      'test',
+      'word',
+      'тест',
+      'en',
+      'ru',
+      'old',
+      null,
+      'verb',
+    );
+
+    const updated = await repo.update(created.id, 'новый перевод', 'new context');
+
+    expect(updated).not.toBeNull();
+    expect(updated!.pos).toBe('verb');
+  });
+
   it('update trims the provided word before saving', async () => {
     const created = await repo.create('test', 'word', 'тест', 'en', 'ru', 'old', null);
 

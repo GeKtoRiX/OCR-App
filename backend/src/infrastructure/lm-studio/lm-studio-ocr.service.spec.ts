@@ -47,7 +47,8 @@ describe('LMStudioOCRService', () => {
       'test-ocr-model',
       {
         temperature: 0.0,
-        maxTokens: 6144,
+        maxTokens: 2048,
+        stop: ['<think>', '</think>'],
       },
     );
   });
@@ -80,6 +81,18 @@ describe('LMStudioOCRService', () => {
         { text: 'MARIO Hello, \'m Mario.', bbox: [] },
       ]),
     );
+  });
+
+  it('strips think tags from model output before returning OCR text', async () => {
+    mockClient.chatCompletion.mockResolvedValue(
+      '<think>analyzing image</think>\nVocabulary\nhello',
+    );
+
+    const result = await service.extractText(
+      new ImageData(Buffer.from('x'), 'image/jpeg', 'page.jpg'),
+    );
+
+    expect(result.rawText).toBe('Vocabulary\nhello');
   });
 
   it('propagates client errors', async () => {

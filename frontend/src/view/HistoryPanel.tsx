@@ -6,7 +6,12 @@ import { usePracticeStore } from '../features/practice/practice.store';
 import { VocabularyPanel } from '../features/vocabulary/VocabularyPanel';
 import { useVocabularyStore } from '../features/vocabulary/vocabulary.store';
 import { HEALTH_LABELS } from '../shared/lib/health-status';
-import type { HistoryEntry, SavedDocument } from '../shared/types';
+import type {
+  DocumentCandidatePos,
+  HistoryEntry,
+  SavedDocument,
+  VocabType,
+} from '../shared/types';
 import { StatusLight } from '../ui/StatusLight';
 import './HistoryPanel.css';
 
@@ -158,8 +163,15 @@ export function HistoryPanel() {
     void vocab.removeWord(id);
   };
 
-  const handleVocabUpdate = (id: string, word: string, translation: string) => {
-    void vocab.updateWord(id, word, translation);
+  const handleVocabUpdate = (
+    id: string,
+    word: string,
+    translation: string,
+    contextSentence: string,
+    vocabType: VocabType,
+    pos?: DocumentCandidatePos,
+  ) => {
+    void vocab.updateWord(id, word, translation, contextSentence, vocabType, pos);
   };
 
   const handleStartPractice = () => {

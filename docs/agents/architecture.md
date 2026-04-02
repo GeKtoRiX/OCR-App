@@ -5,7 +5,7 @@
 ```text
 Frontend
   -> HTTP gateway :3000
-       -> OCR service        :3901 -> PaddleOCR :8000
+       -> OCR service        :3901 -> LM Studio vision OCR :1234
        -> TTS service        :3902 -> Supertone/Piper :8100
        |                               Kokoro          :8200
        -> Document service   :3903 -> SQLite + optional Stanza :8501
@@ -81,7 +81,7 @@ Examples:
 - port `3901`
 - owns OCR extraction and Markdown structuring
 - reuses `ProcessImageUseCase`
-- binds PaddleOCR and LM Studio abstractions
+- binds LM Studio OCR and health abstractions
 - respects `LM_STUDIO_SMOKE_ONLY=true` by swapping in passthrough structuring
 
 ### TTS Service
@@ -115,7 +115,6 @@ Current key ports:
 
 - `IOCRService`
 - `ITextStructuringService`
-- `IPaddleOcrHealthPort`
 - `ILmStudioHealthPort`
 - `ISupertonePort`
 - `IKokoroPort`
@@ -131,8 +130,7 @@ Current key ports:
 POST /api/ocr
   -> gateway OCR controller
   -> OCR TCP service
-  -> PaddleOCR sidecar /api/extract/base64
-  -> LM Studio structuring
+  -> LM Studio vision OCR
   -> { rawText, markdown, filename }
 ```
 
@@ -165,9 +163,9 @@ GET /api/health
 
 Returned health fields:
 
-- `paddleOcrReachable`
-- `paddleOcrModels`
-- `paddleOcrDevice`
+- `ocrReachable`
+- `ocrModels`
+- `ocrDevice`
 - `lmStudioReachable`
 - `lmStudioModels`
 - `superToneReachable`
@@ -275,10 +273,10 @@ frontend/src/
 
 ### Health Lamp Semantics
 
-- `red`: PaddleOCR unreachable
-- `yellow`: PaddleOCR reachable on CPU
-- `blue`: PaddleOCR GPU plus LM Studio, Supertone, and Kokoro all healthy
-- `green`: PaddleOCR GPU healthy but some baseline dependency is missing
+- `red`: OCR unavailable
+- `yellow`: OCR reachable on CPU
+- `blue`: OCR GPU plus LM Studio, Supertone, and Kokoro all healthy
+- `green`: OCR healthy but one or more supporting services are missing
 
 ### Frontend TTS Notes
 
@@ -294,6 +292,3 @@ frontend/src/
 Supported launcher entries:
 
 - `ocr.sh`
-- `tts.sh`
-- `ocr-tts.sh`
-- `stack.sh`

@@ -13,7 +13,7 @@ export function useFloatingPosition(
   ref: RefObject<HTMLElement | null>,
   offset = 8,
 ): { top: number; left: number } {
-  const [position, setPosition] = useState({ top: y + offset, left: x });
+  const [position, setPosition] = useState({ top: y + offset, left: x + offset });
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -23,14 +23,15 @@ export function useFloatingPosition(
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // Horizontal: prefer right of point; flip left if overflows
-    let left = x;
+    // Keep a small gap from the cursor so the floating UI appears beside it,
+    // not directly under it.
+    let left = x + offset;
     if (left + width + VIEWPORT_PADDING > vw) {
-      left = x - width;
+      left = x - width - offset;
     }
     left = Math.max(VIEWPORT_PADDING, Math.min(left, vw - width - VIEWPORT_PADDING));
 
-    // Vertical: prefer below point; flip above if overflows
+    // Vertical: prefer below point; flip above if overflows.
     let top = y + offset;
     if (top + height + VIEWPORT_PADDING > vh) {
       top = y - height - offset;

@@ -2,12 +2,9 @@
 # OCR App — shared launcher implementation
 #
 #  ./ocr.sh             — start OCR mode (manual LM Studio + selected TTS sidecars + backend)
-#  ./tts.sh             — start TTS mode (manual LM Studio + selected TTS sidecars + backend)
-#  ./ocr-tts.sh         — start all services (manual LM Studio + selected TTS sidecars + backend)
-#  ./stack.sh           — interactive stack menu (start, stop, switch, status)
-#  ./*.sh stop          — stop all known project services and clear ports
-#  ./*.sh status        — show current mode, health and process state
-#  ./*.sh wipe          — stop everything + remove build artifacts
+#  ./ocr.sh stop        — stop all known project services and clear ports
+#  ./ocr.sh status      — show OCR health and process state
+#  ./ocr.sh wipe        — stop everything + remove build artifacts
 #
 #  Ctrl+C while running → aggressive shutdown of all known project services
 
@@ -165,10 +162,6 @@ resolve_torch_lib() {
     echo ""
 }
 
-format_gib() {
-    awk -v bytes="${1}" 'BEGIN { printf "%.2f GiB", bytes / 1073741824 }'
-}
-
 flag_enabled() {
     case "${1,,}" in
         1|true|yes|on) return 0 ;;
@@ -185,23 +178,19 @@ kokoro_launcher_enabled() {
 }
 
 mode_includes_lm() {
-    [[ "${ACTIVE_MODE}" == "ocr" || "${ACTIVE_MODE}" == "all" ]]
-}
-
-mode_includes_tts() {
-    [[ "${ACTIVE_MODE}" == "tts" || "${ACTIVE_MODE}" == "all" ]]
+    [[ "${ACTIVE_MODE}" == "ocr" ]]
 }
 
 mode_includes_kokoro() {
-    [[ "${ACTIVE_MODE}" == "ocr" || "${ACTIVE_MODE}" == "tts" || "${ACTIVE_MODE}" == "all" ]]
+    [[ "${ACTIVE_MODE}" == "ocr" ]]
 }
 
 mode_includes_backend() {
-    [[ "${ACTIVE_MODE}" == "ocr" || "${ACTIVE_MODE}" == "tts" || "${ACTIVE_MODE}" == "all" ]]
+    [[ "${ACTIVE_MODE}" == "ocr" ]]
 }
 
 supertone_required_in_mode() {
-    (mode_includes_tts && supertone_launcher_enabled) || kokoro_required_in_mode
+    supertone_launcher_enabled || kokoro_required_in_mode
 }
 
 kokoro_required_in_mode() {
@@ -410,6 +399,7 @@ project_cleanup() {
     stop_service "Document service" "${PID_SVC_DOC}"
     stop_service "TTS service" "${PID_SVC_TTS}"
     stop_service "OCR service" "${PID_SVC_OCR}"
+    stop_service "BERT scorer" "${PID_BERT}"
     stop_service "Kokoro" "${PID_KOKORO}"
     stop_service "Stanza NLP" "${PID_STANZA}"
     stop_service "Supertone" "${PID_SUPERTONE}"
@@ -453,27 +443,10 @@ cleanup() {
     exit 0
 }
 
-startup_failed() {
-    local message="${1}"
-    echo
-    fail "${message}"
-    if [[ "${ACTIVE_MODE}" == "all" ]]; then
-        warn "Start mode 1 (OCR) or mode 2 (TTS) instead."
-    fi
-    echo
-    header "Rolling back"
-    project_cleanup
-    echo
-    exit 1
-}
-
 rollback_startup() {
     local message="${1}"
     echo
     fail "${message}"
-    if [[ "${ACTIVE_MODE}" == "all" ]]; then
-        warn "Start OCR or TTS mode instead."
-    fi
     echo
     header "Rolling back"
     project_cleanup
@@ -664,125 +637,16 @@ assign_mode() {
             ACTIVE_MODE="ocr"
             ACTIVE_MODE_LABEL="OCR"
             ;;
-        tts)
-            ACTIVE_MODE="tts"
-            ACTIVE_MODE_LABEL="TTS"
-            ;;
-        all)
-            ACTIVE_MODE="all"
-            ACTIVE_MODE_LABEL="ALL"
-            ;;
         *)
             fail "Unknown mode: ${mode}"
-            echo "  Valid modes: ocr, tts, all"
+            echo "  Valid modes: ocr"
             exit 1
             ;;
     esac
 }
 
-set_mode() {
-    assign_mode "${1}"
-    write_state
-}
-
-apply_requested_mode_if_unset() {
-    local requested_mode="${1:-}"
-    [[ -n "${ACTIVE_MODE}" || -z "${requested_mode}" ]] && return 0
-    assign_mode "${requested_mode}"
-}
-
-confirm_all_vram_readiness() {
-    [[ "${ACTIVE_MODE}" == "all" ]] || return 0
-
-    warn "ALL stack startup can consume a large amount of VRAM."
-    warn "Make sure you really have enough free VRAM before continuing."
-
-    if [[ ! -t 0 ]]; then
-        warn "Interactive confirmation is not available in this shell."
-        warn "Rerun the launcher interactively and confirm the VRAM warning."
-        return 1
-    fi
-
-    while true; do
-        echo
-        read -rp "Type 'YES' to confirm that you have enough VRAM for the ALL stack: " confirm
-        case "${confirm}" in
-            YES)
-                ok "VRAM warning acknowledged."
-                echo
-                return 0
-                ;;
-            "")
-                warn "Confirmation is required to continue."
-                ;;
-            *)
-                warn "Please type the exact word: YES"
-                ;;
-        esac
-    done
-}
-
-# ─── VRAM guard ────────────────────────────────────────────────────────────────
-get_vram_stats() {
-    local best_total=0
-    local best_used=0
-    local best_device=""
-    local device total_file used_file total used
-
-    for device in /sys/class/drm/card*/device; do
-        total_file="${device}/mem_info_vram_total"
-        used_file="${device}/mem_info_vram_used"
-        [[ -r "${total_file}" && -r "${used_file}" ]] || continue
-
-        total=$(<"${total_file}")
-        used=$(<"${used_file}")
-
-        [[ "${total}" =~ ^[0-9]+$ && "${used}" =~ ^[0-9]+$ ]] || continue
-
-        if (( total > best_total )); then
-            best_total="${total}"
-            best_used="${used}"
-            best_device="${device}"
-        fi
-    done
-
-    (( best_total > 0 )) || return 1
-    echo "${best_total} ${best_used} $((best_total - best_used)) ${best_device}"
-}
-
-check_vram_guard() {
-    local threshold=$((4 * 1024 * 1024 * 1024))
-    local stats total used free device
-
-    log "Checking VRAM before mode 3..."
-    if ! stats=$(get_vram_stats); then
-        fail "VRAM counters are unavailable. Mode 3 cannot start safely."
-        warn "Start mode 1 (OCR) or mode 2 (TTS) instead."
-        return 1
-    fi
-
-    read -r total used free device <<< "${stats}"
-    dim "Card         : ${device}"
-    dim "VRAM total   : $(format_gib "${total}")"
-    dim "VRAM used    : $(format_gib "${used}")"
-    dim "VRAM free    : $(format_gib "${free}")"
-
-    if (( free < threshold )); then
-        fail "Mode 3 requires at least 4.00 GiB free VRAM before startup."
-        warn "Start mode 1 (OCR) or mode 2 (TTS) instead."
-        return 1
-    fi
-
-    ok "VRAM precheck passed"
-}
-
 # ─── Startup helpers ───────────────────────────────────────────────────────────
 ensure_ocr_engine_ready() {
-    if ! mode_includes_lm; then
-        dim "LM Studio check skipped in ${ACTIVE_MODE_LABEL} mode."
-        return 0
-    fi
-
     if ! check_lm_studio; then
         warn "LM Studio is not reachable at ${LM_URL}"
         warn "Start LM Studio manually, then rerun: $0 start ${ACTIVE_MODE}"
@@ -1137,7 +1001,6 @@ show_process_state() {
 }
 
 compute_mode_lamp() {
-    local mode="${1:-${ACTIVE_MODE:-all}}"
     local ocr_ok=0
     local lm_ok=0
     local supertone_ok=0
@@ -1150,12 +1013,6 @@ compute_mode_lamp() {
     local ocr_supertone_ready=1
     local ocr_piper_ready=1
     local ocr_kokoro_ready=1
-    local tts_supertone_ready=1
-    local tts_piper_ready=1
-    local tts_kokoro_ready=1
-    local all_supertone_ready=1
-    local all_piper_ready=1
-    local all_kokoro_ready=1
     local ocr_device="unknown"
 
     if check_ocr_engine; then
@@ -1167,7 +1024,9 @@ compute_mode_lamp() {
     check_supertone && supertone_ok=1 || true
     check_piper     && piper_ok=1 || true
     check_kokoro    && kokoro_ok=1 || true
-    check_lm_model_loaded && lm_ok=1 || true
+    if check_lm_studio; then
+        check_lm_model_loaded && lm_ok=1 || true
+    fi
 
     supertone_required_in_mode && supertone_enabled=1 || true
     supertone_required_in_mode && piper_enabled=1 || true
@@ -1176,114 +1035,45 @@ compute_mode_lamp() {
     [[ ${supertone_enabled} -eq 1 ]] && ocr_supertone_ready=${supertone_ok}
     [[ ${piper_enabled} -eq 1 ]] && ocr_piper_ready=${piper_ok}
     [[ ${kokoro_enabled} -eq 1 ]] && ocr_kokoro_ready=${kokoro_ok}
-    [[ ${supertone_enabled} -eq 1 ]] && tts_supertone_ready=${supertone_ok}
-    [[ ${piper_enabled} -eq 1 ]] && tts_piper_ready=${piper_ok}
-    [[ ${kokoro_enabled} -eq 1 ]] && tts_kokoro_ready=${kokoro_ok}
-    [[ ${supertone_enabled} -eq 1 ]] && all_supertone_ready=${supertone_ok}
-    [[ ${piper_enabled} -eq 1 ]] && all_piper_ready=${piper_ok}
-    [[ ${kokoro_enabled} -eq 1 ]] && all_kokoro_ready=${kokoro_ok}
-
     if [[ ${ocr_ok} -eq 0 ]]; then
         echo "${LAMP_RED}  OCR model unavailable"
         return
     fi
 
-    case "${mode}" in
-        ocr)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_supertone_ready} -eq 1 && ${ocr_piper_ready} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  OCR mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
-            else
-                echo "${LAMP_GREEN}  OCR mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
-            fi
-            ;;
-        tts)
-            if [[ ${backend_ok} -eq 1 && ${tts_supertone_ready} -eq 1 && ${tts_piper_ready} -eq 1 && ${tts_kokoro_ready} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  TTS mode ready | OCR model ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
-            else
-                echo "${LAMP_GREEN}  TTS mode partial | OCR model ${ocr_device} | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
-            fi
-            ;;
-        *)
-            if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${all_supertone_ready} -eq 1 && ${all_piper_ready} -eq 1 && ${all_kokoro_ready} -eq 1 ]]; then
-                echo "${LAMP_BLUE}  All mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
-            else
-                echo "${LAMP_GREEN}  All mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
-            fi
-            ;;
-    esac
+    if [[ ${backend_ok} -eq 1 && ${lm_ok} -eq 1 && ${ocr_supertone_ready} -eq 1 && ${ocr_piper_ready} -eq 1 && ${ocr_kokoro_ready} -eq 1 ]]; then
+        echo "${LAMP_BLUE}  OCR mode ready | OCR model ✓ | LM Studio ✓ | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway ✓"
+    else
+        echo "${LAMP_GREEN}  OCR mode partial | OCR model ${ocr_device} | LM Studio $(status_marker "${lm_ok}") | $(service_lamp_part "Supertone" "${supertone_enabled}" "${supertone_ok}") | $(service_lamp_part "Piper" "${piper_enabled}" "${piper_ok}") | $(service_lamp_part "Kokoro" "${kokoro_enabled}" "${kokoro_ok}") | Gateway $(status_marker "${backend_ok}")"
+    fi
 }
 
 show_health_block() {
-    local mode="${1:-${ACTIVE_MODE:-all}}"
-
     check_ocr_engine && ok "OCR model (${LM_MODEL_ID})" || warn "OCR model unavailable"
 
-    case "${mode}" in
-        ocr)
-            check_lm_studio && ok "LM Studio server" || warn "LM Studio server unreachable"
-            check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
-            if supertone_required_in_mode; then
-                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
-                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                if check_kokoro; then
-                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
-                else
-                    warn "Kokoro unreachable"
-                fi
-            else
-                show_disabled_service "Kokoro"
-            fi
-            ;;
-        tts)
-            if supertone_required_in_mode; then
-                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
-                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                if check_kokoro; then
-                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
-                else
-                    warn "Kokoro unreachable"
-                fi
-            else
-                show_disabled_service "Kokoro"
-            fi
-            ;;
-        *)
-            check_lm_studio && ok "LM Studio server" || warn "LM Studio server unreachable"
-            check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
-            if supertone_required_in_mode; then
-                check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
-                check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                if check_kokoro; then
-                    ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
-                else
-                    warn "Kokoro unreachable"
-                fi
-            else
-                show_disabled_service "Kokoro"
-            fi
-            ;;
-    esac
-
-    if mode_includes_backend; then
-        check_backend && ok "Gateway (port ${APP_PORT})" || warn "Gateway unreachable"
+    if check_lm_studio; then
+        ok "LM Studio server"
+        check_lm_model_loaded && ok "LM Studio model (${LM_MODEL_ID})" || warn "LM Studio model not loaded"
     else
-        dim "Gateway skipped in ${mode^^} mode"
+        warn "LM Studio server unreachable"
+        warn "LM Studio model status unavailable while server is down"
     fi
+    if supertone_required_in_mode; then
+        check_supertone && ok "Supertone (${SUPERTONE_HOST_CFG}:${SUPERTONE_PORT_CFG})" || warn "Supertone unreachable"
+        check_piper && ok "Piper (shared via Supertone sidecar)" || warn "Piper unavailable in Supertone sidecar"
+    else
+        show_disabled_service "Supertone"
+        show_disabled_service "Piper"
+    fi
+    if kokoro_required_in_mode; then
+        if check_kokoro; then
+            ok "Kokoro (${KOKORO_HOST_CFG}:${KOKORO_PORT_CFG}) — $(fetch_kokoro_device 2>/dev/null || echo unknown)"
+        else
+            warn "Kokoro unreachable"
+        fi
+    else
+        show_disabled_service "Kokoro"
+    fi
+    check_backend && ok "Gateway (port ${APP_PORT})" || warn "Gateway unreachable"
 
     if port_has_listener "${VITE_PORT}"; then
         warn "Vite dev server listening on ${VITE_PORT}"
@@ -1296,7 +1086,7 @@ show_health_block() {
 live_status_loop() {
     local prev_lamp=""
     local tick=0
-    local mode="${ACTIVE_MODE:-all}"
+    local mode="${ACTIVE_MODE:-ocr}"
 
     echo
     echo -e "  ${DIM}Press Ctrl+C to stop all known project services${RESET}"
@@ -1342,32 +1132,30 @@ show_config_block() {
 }
 
 show_backend_link_block() {
-    if mode_includes_backend; then
-        local project_url="http://localhost:${APP_PORT}"
-        local open_sent=1
+    local project_url="http://localhost:${APP_PORT}"
+    local open_sent=1
 
-        if command -v xdg-open &>/dev/null; then
-            xdg-open "${project_url}" &>/dev/null &
-            open_sent=0
-        elif command -v open &>/dev/null; then
-            open "${project_url}" &>/dev/null &
-            open_sent=0
-        fi
-
-        echo -e "${BOLD}${GREEN}  ┌─────────────────────────────────────────┐${RESET}"
-        echo -e "${BOLD}${GREEN}  │  Open in browser:                       │${RESET}"
-        echo -e "${BOLD}${GREEN}  │                                         │${RESET}"
-        printf "${BOLD}${GREEN}  │  %-39s│${RESET}\n" "---> ${project_url}"
-        echo -e "${BOLD}${GREEN}  │                                         │${RESET}"
-        echo -e "${BOLD}${GREEN}  └─────────────────────────────────────────┘${RESET}"
-        ok "Project URL: ${project_url}"
-        if [[ ${open_sent} -eq 0 ]]; then
-            ok "Open request sent to the desktop session."
-        else
-            warn "Could not auto-open the project page. Open the URL manually."
-        fi
-        echo
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "${project_url}" &>/dev/null &
+        open_sent=0
+    elif command -v open &>/dev/null; then
+        open "${project_url}" &>/dev/null &
+        open_sent=0
     fi
+
+    echo -e "${BOLD}${GREEN}  ┌─────────────────────────────────────────┐${RESET}"
+    echo -e "${BOLD}${GREEN}  │  Open in browser:                       │${RESET}"
+    echo -e "${BOLD}${GREEN}  │                                         │${RESET}"
+    printf "${BOLD}${GREEN}  │  %-39s│${RESET}\n" "---> ${project_url}"
+    echo -e "${BOLD}${GREEN}  │                                         │${RESET}"
+    echo -e "${BOLD}${GREEN}  └─────────────────────────────────────────┘${RESET}"
+    ok "Project URL: ${project_url}"
+    if [[ ${open_sent} -eq 0 ]]; then
+        ok "Open request sent to the desktop session."
+    else
+        warn "Could not auto-open the project page. Open the URL manually."
+    fi
+    echo
 }
 
 show_logs_block() {
@@ -1403,12 +1191,7 @@ describe_startup_order() {
     if kokoro_required_in_mode; then
         steps+=("Kokoro")
     fi
-    if mode_includes_lm; then
-        steps+=("LM Studio")
-    fi
-    if mode_includes_backend; then
-        steps+=("OCR/TTS/Document/Vocabulary services" "Gateway")
-    fi
+    steps+=("LM Studio" "OCR/TTS/Document/Vocabulary services" "Gateway")
 
     join_by " -> " "${steps[@]}"
 }
@@ -1434,21 +1217,6 @@ start_mode_stack() {
     log "Startup order: $(describe_startup_order)"
     echo
 
-    if [[ "${ACTIVE_MODE}" == "all" ]]; then
-        echo -e "${BOLD}[preflight] User confirmation${RESET}"
-        if ! confirm_all_vram_readiness; then
-            rollback_startup "ALL startup cancelled before VRAM confirmation."
-            return 1
-        fi
-
-        echo -e "${BOLD}[0/3] VRAM Guard${RESET}"
-        if ! check_vram_guard; then
-            rollback_startup "VRAM precheck failed."
-            return 1
-        fi
-        echo
-    fi
-
     echo -e "${BOLD}[1/3] Sidecars${RESET}"
     dim "Step 1a: OCR model"
     if ! ensure_ocr_engine_ready; then
@@ -1462,59 +1230,43 @@ start_mode_stack() {
             rollback_startup "Supertone failed to start."
             return 1
         fi
-    elif mode_includes_tts; then
-        dim "Supertone/Piper disabled in ${TTS_MODELS_CONFIG_FILE}."
     else
-        dim "Supertone skipped in ${ACTIVE_MODE_LABEL} mode."
+        dim "Supertone/Piper disabled in ${TTS_MODELS_CONFIG_FILE}."
     fi
 
-    if mode_includes_kokoro; then
-        if kokoro_required_in_mode; then
-            dim "Step 1c: Kokoro"
-            if ! start_kokoro; then
-                rollback_startup "Kokoro failed to start."
-                return 1
-            fi
-        else
-            dim "Kokoro disabled in ${TTS_MODELS_CONFIG_FILE}."
+    if kokoro_required_in_mode; then
+        dim "Step 1c: Kokoro"
+        if ! start_kokoro; then
+            rollback_startup "Kokoro failed to start."
+            return 1
         fi
     else
-        dim "Kokoro skipped in ${ACTIVE_MODE_LABEL} mode."
+        dim "Kokoro disabled in ${TTS_MODELS_CONFIG_FILE}."
     fi
 
-    if mode_includes_backend; then
-        dim "Step 1d: Stanza NLP"
-        start_stanza || true
-        dim "Step 1e: BERT scorer"
-        start_bert || true
-    fi
+    dim "Step 1d: Stanza NLP"
+    start_stanza || true
+    dim "Step 1e: BERT scorer"
+    start_bert || true
     echo
 
     echo -e "${BOLD}[2/3] LM Studio${RESET}"
-    if mode_includes_lm; then
-        if ! start_lm_studio_server; then
-            rollback_startup "LM Studio server failed to start."
-            return 1
-        fi
-        if check_lm_model_loaded; then
-            ok "LM Studio model already loaded (${LM_MODEL_ID})"
-        else
-            warn "LM Studio model is not loaded (${LM_MODEL_ID})"
-            warn "Load it manually in LM Studio before using OCR or vocabulary features."
-        fi
+    if ! start_lm_studio_server; then
+        rollback_startup "LM Studio server failed to start."
+        return 1
+    fi
+    if check_lm_model_loaded; then
+        ok "LM Studio model already loaded (${LM_MODEL_ID})"
     else
-        dim "LM Studio skipped in TTS mode."
+        warn "LM Studio model is not loaded (${LM_MODEL_ID})"
+        warn "Load it manually in LM Studio before using OCR or vocabulary features."
     fi
     echo
 
     echo -e "${BOLD}[3/3] API stack${RESET}"
-    if mode_includes_backend; then
-        if ! start_backend; then
-            rollback_startup "API stack failed to start."
-            return 1
-        fi
-    else
-        dim "API stack skipped in ${ACTIVE_MODE_LABEL} mode."
+    if ! start_backend; then
+        rollback_startup "API stack failed to start."
+        return 1
     fi
     echo
 
@@ -1546,10 +1298,12 @@ cmd_stop() {
 }
 
 cmd_status() {
-    local requested_mode="${1:-}"
+    local requested_mode="${1:-ocr}"
     ensure_dirs
     read_state
-    apply_requested_mode_if_unset "${requested_mode}"
+    if [[ -z "${ACTIVE_MODE}" ]]; then
+        assign_mode "${requested_mode}"
+    fi
 
     header "OCR App — Status"
 
@@ -1564,90 +1318,40 @@ cmd_status() {
     echo -e "${BOLD}Processes:${RESET}"
     if check_lm_studio; then
         ok "LM Studio server listening on ${LM_PORT}"
+        if check_lm_model_loaded; then
+            ok "OCR model loaded (${LM_MODEL_ID})"
+        else
+            fail "OCR model not loaded (${LM_MODEL_ID})"
+        fi
     else
         fail "LM Studio server stopped"
-    fi
-    if check_lm_model_loaded; then
-        ok "OCR model loaded (${LM_MODEL_ID})"
-    else
-        fail "OCR model not loaded (${LM_MODEL_ID})"
+        warn "OCR model status unavailable while LM Studio is stopped"
     fi
 
-    case "${ACTIVE_MODE:-all}" in
-        ocr)
-            if supertone_required_in_mode; then
-                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
-                dim "Piper runs inside the Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            else
-                show_disabled_service "Kokoro"
-            fi
-            show_process_state "Stanza NLP" "${PID_STANZA}" "${STANZA_PORT_CFG}"
-            show_process_state "BERT scorer" "${PID_BERT}" "${BERT_PORT_CFG}"
-            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
-            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
-            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
-            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
-            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
-            ;;
-        tts)
-            if supertone_required_in_mode; then
-                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
-                dim "Piper runs inside the Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            else
-                show_disabled_service "Kokoro"
-            fi
-            show_process_state "Stanza NLP" "${PID_STANZA}" "${STANZA_PORT_CFG}"
-            show_process_state "BERT scorer" "${PID_BERT}" "${BERT_PORT_CFG}"
-            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
-            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
-            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
-            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
-            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
-            ;;
-        *)
-            if port_has_listener "${LM_PORT}"; then
-                ok "LM Studio server listening on ${LM_PORT}"
-            else
-                fail "LM Studio server stopped"
-            fi
-            if supertone_required_in_mode; then
-                show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
-                dim "Piper runs inside the Supertone sidecar"
-            else
-                show_disabled_service "Supertone"
-                show_disabled_service "Piper"
-            fi
-            if kokoro_required_in_mode; then
-                show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
-            else
-                show_disabled_service "Kokoro"
-            fi
-            show_process_state "Stanza NLP" "${PID_STANZA}" "${STANZA_PORT_CFG}"
-            show_process_state "BERT scorer" "${PID_BERT}" "${BERT_PORT_CFG}"
-            show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
-            show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
-            show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
-            show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
-            if [[ -n "${OPENAI_API_KEY:-}" ]]; then
-                show_process_state "Agentic service" "${PID_SVC_AGENTIC}" "${AGENTIC_SERVICE_PORT}"
-            else
-                dim "Agentic service skipped (OPENAI_API_KEY not set)"
-            fi
-            show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
-            ;;
-    esac
+    if supertone_required_in_mode; then
+        show_process_state "Supertone" "${PID_SUPERTONE}" "${SUPERTONE_PORT_CFG}"
+        dim "Piper runs inside the Supertone sidecar"
+    else
+        show_disabled_service "Supertone"
+        show_disabled_service "Piper"
+    fi
+    if kokoro_required_in_mode; then
+        show_process_state "Kokoro" "${PID_KOKORO}" "${KOKORO_PORT_CFG}"
+    else
+        show_disabled_service "Kokoro"
+    fi
+    show_process_state "Stanza NLP" "${PID_STANZA}" "${STANZA_PORT_CFG}"
+    show_process_state "BERT scorer" "${PID_BERT}" "${BERT_PORT_CFG}"
+    show_process_state "OCR service" "${PID_SVC_OCR}" "${OCR_SERVICE_PORT}"
+    show_process_state "TTS service" "${PID_SVC_TTS}" "${TTS_SERVICE_PORT}"
+    show_process_state "Document service" "${PID_SVC_DOC}" "${DOCUMENT_SERVICE_PORT}"
+    show_process_state "Vocabulary service" "${PID_SVC_VOCAB}" "${VOCABULARY_SERVICE_PORT}"
+    if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+        show_process_state "Agentic service" "${PID_SVC_AGENTIC}" "${AGENTIC_SERVICE_PORT}"
+    else
+        dim "Agentic service skipped (OPENAI_API_KEY not set)"
+    fi
+    show_process_state "Gateway" "${PID_BACKEND}" "${APP_PORT}"
 
     if port_has_listener "${VITE_PORT}"; then
         warn "Vite dev server listening on ${VITE_PORT}"
@@ -1657,11 +1361,11 @@ cmd_status() {
     echo
 
     echo -e "${BOLD}Health probes:${RESET}"
-    show_health_block "${ACTIVE_MODE:-all}"
+    show_health_block
     echo
 
     echo -e "${BOLD}Lamp:${RESET}"
-    echo "  $(compute_mode_lamp "${ACTIVE_MODE:-all}")"
+    echo "  $(compute_mode_lamp)"
     echo
 }
 

@@ -3,7 +3,7 @@ import type {
   DocumentCandidatePos,
   DocumentCandidateReviewSource,
 } from '../../domain/entities/document-vocab-candidate.entity';
-import type { VocabType } from '../../domain/entities/vocabulary-word.entity';
+import type { VocabType, VocabularyWordPos } from '../../domain/entities/vocabulary-word.entity';
 
 export interface CreateDocumentInput {
   markdown?: string;
@@ -62,6 +62,7 @@ export interface ConfirmDocumentVocabularyItemInput {
   candidateId: string;
   word: string;
   vocabType: VocabType;
+  pos?: VocabularyWordPos;
   translation: string;
   contextSentence: string;
 }

@@ -278,7 +278,14 @@ describe('HistoryPanel', () => {
     await user.type(screen.getByTestId('vocab-edit-translation'), 'здравствуй');
     await user.click(screen.getByTestId('vocab-edit-save'));
 
-    expect(storeMocks.mockVocab.updateWord).toHaveBeenCalledWith('w1', 'hi', 'здравствуй');
+    expect(storeMocks.mockVocab.updateWord).toHaveBeenCalledWith(
+      'w1',
+      'hi',
+      'здравствуй',
+      'Hello there.',
+      'word',
+      null,
+    );
   });
 
   it('revokes thumbnail URLs on unmount', () => {

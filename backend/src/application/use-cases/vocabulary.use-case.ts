@@ -19,6 +19,7 @@ export class VocabularyUseCase {
       id: w.id,
       word: w.word,
       vocabType: w.vocabType,
+      pos: w.pos,
       translation: w.translation,
       targetLang: w.targetLang,
       nativeLang: w.nativeLang,
@@ -51,6 +52,7 @@ export class VocabularyUseCase {
       input.nativeLang,
       input.contextSentence,
       input.sourceDocumentId ?? null,
+      input.pos,
     );
     return this.toOutput(word);
   }
@@ -60,6 +62,7 @@ export class VocabularyUseCase {
       inputs.map((i) => ({
         word: i.word,
         vocabType: i.vocabType,
+        pos: i.pos,
         translation: i.translation,
         targetLang: i.targetLang,
         nativeLang: i.nativeLang,
@@ -115,6 +118,8 @@ export class VocabularyUseCase {
       input.translation,
       input.contextSentence,
       input.word,
+      input.vocabType,
+      input.pos,
     );
     return word ? this.toOutput(word) : null;
   }

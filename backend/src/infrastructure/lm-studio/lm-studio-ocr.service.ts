@@ -9,11 +9,14 @@ import { LMStudioConfig } from '../config/lm-studio.config';
 
 @Injectable()
 export class LMStudioOCRService extends IOCRService {
+  private static readonly OCR_MAX_TOKENS = 2048;
+
   private static readonly OCR_SYSTEM_PROMPT = [
     'You are an OCR engine.',
     'Transcribe only the visible text from the image.',
     'Do not summarize, explain, translate, correct, or paraphrase.',
     'Do not add commentary, markdown fences, labels, or metadata.',
+    'Do not think aloud or expose reasoning.',
     'Preserve the reading order and structure as closely as possible.',
     'Keep titles, section headers, labels, exercise numbers, answer options, and speaker turns on separate lines when they appear separate in the image.',
     'If the page contains panels, dialogs, sidebars, or short boxed phrases, keep them as distinct blocks instead of merging everything into one paragraph.',
@@ -69,7 +72,8 @@ export class LMStudioOCRService extends IOCRService {
       this.config.ocrModel,
       {
         temperature: 0.0,
-        maxTokens: 6144,
+        maxTokens: LMStudioOCRService.OCR_MAX_TOKENS,
+        stop: ['<think>', '</think>'],
       },
     );
 
@@ -92,6 +96,8 @@ export class LMStudioOCRService extends IOCRService {
 
   private postProcessModelOutput(text: string): string {
     let normalized = text.replace(/\r\n?/g, '\n').trim();
+
+    normalized = normalized.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
     normalized = normalized
       .replace(/^```(?:text|txt|markdown)?\s*/i, '')

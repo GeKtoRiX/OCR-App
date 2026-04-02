@@ -181,6 +181,7 @@ describe('DocumentVocabularyPipelineUseCase', () => {
         id: 'vocab-1',
         word: 'markdown',
         vocabType: 'word',
+        pos: 'noun',
         translation: 'разметка',
         targetLang: 'en',
         nativeLang: 'ru',
@@ -221,6 +222,7 @@ describe('DocumentVocabularyPipelineUseCase', () => {
         'ru',
         'Markdown content',
         'id-1',
+        'noun',
       );
       expect(result?.savedCount).toBe(1);
       expect(result?.savedItems[0].vocabularyId).toBe('vocab-1');

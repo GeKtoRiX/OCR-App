@@ -5,12 +5,26 @@ export type VocabType =
   | 'collocation'
   | 'expression';
 
+export type VocabularyWordPos =
+  | 'noun'
+  | 'verb'
+  | 'adjective'
+  | 'adverb'
+  | null;
+
 export const VOCAB_TYPES: VocabType[] = [
   'word',
   'phrasal_verb',
   'idiom',
   'collocation',
   'expression',
+];
+
+export const VOCABULARY_POSITIONS: Exclude<VocabularyWordPos, null>[] = [
+  'noun',
+  'verb',
+  'adjective',
+  'adverb',
 ];
 
 export class VocabularyWord {
@@ -29,5 +43,6 @@ export class VocabularyWord {
     public readonly easinessFactor: number,
     public readonly repetitions: number,
     public readonly nextReviewAt: string,
+    public readonly pos: VocabularyWordPos = null,
   ) {}
 }

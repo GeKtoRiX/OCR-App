@@ -4,7 +4,7 @@
 
 OCR Web App is a local-first OCR and study workflow:
 
-- OCR extraction from images through PaddleOCR
+- OCR extraction from images through LM Studio vision OCR
 - Markdown structuring through LM Studio
 - saved documents in SQLite
 - document-scoped vocabulary candidate review before DB writes
@@ -27,7 +27,7 @@ The current backend runtime is no longer a single NestJS process. It is split in
 - Backend: NestJS 10, CommonJS, monorepo mode
 - Frontend: React 18 + Vite 6 + TypeScript
 - Frontend state: Zustand stores plus local orchestration hooks
-- OCR: PaddleOCR Python FastAPI sidecar on `:8000`
+- OCR: LM Studio vision OCR through the OpenAI-compatible API on `:1234`
 - NLP: optional Stanza FastAPI sidecar on `:8501` with heuristic fallback in the document service
 - NLP scoring: optional BERT FastAPI sidecar on `:8502` (`prajjwal1/bert-tiny`, English-only MLM scoring)
 - TTS:
@@ -114,24 +114,23 @@ The `agentic` bounded context remains isolated from the OCR/TTS/document/vocabul
 ### OCR
 
 1. Gateway receives `POST /api/ocr`.
-2. OCR TCP service validates and routes to PaddleOCR.
-3. PaddleOCR returns raw text.
-4. LM Studio structures raw text into Markdown.
+2. OCR TCP service validates and routes to LM Studio vision OCR.
+3. LM Studio returns OCR text and line structure.
 5. Gateway returns `{ rawText, markdown, filename }`.
 
 ### Health
 
 1. Gateway receives `GET /api/health`.
 2. Gateway asks OCR service and TTS service over TCP.
-3. OCR service reports PaddleOCR + LM Studio health.
+3. OCR service reports OCR + LM Studio health.
 4. TTS service reports Supertone and Kokoro health.
 5. Gateway merges the payloads.
 
 Current response fields:
 
-- `paddleOcrReachable`
-- `paddleOcrModels`
-- `paddleOcrDevice`
+- `ocrReachable`
+- `ocrModels`
+- `ocrDevice`
 - `lmStudioReachable`
 - `lmStudioModels`
 - `superToneReachable`
@@ -229,9 +228,6 @@ The result panel now exposes separate `Save Document` and `Save Vocabulary` acti
 Launcher entry scripts:
 
 - `scripts/linux/ocr.sh`
-- `scripts/linux/tts.sh`
-- `scripts/linux/ocr-tts.sh`
-- `scripts/linux/stack.sh`
 
 Shared logic:
 

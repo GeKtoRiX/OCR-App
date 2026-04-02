@@ -135,13 +135,6 @@ Frontend source lives under `frontend/src/`.
 
 ## Sidecars
 
-### OCR
-
-- `services/ocr/paddleocr-service/main.py`
-- `services/ocr/paddleocr-service/smoke_test.py`
-- `services/ocr/paddleocr-service/requirements.txt`
-- `services/ocr/paddleocr-service/models/`
-
 ### NLP
 
 - `services/nlp/stanza-service/main.py`
@@ -171,9 +164,6 @@ Launcher scripts:
 
 - `scripts/linux/ocr-common.sh`
 - `scripts/linux/ocr.sh`
-- `scripts/linux/tts.sh`
-- `scripts/linux/ocr-tts.sh`
-- `scripts/linux/stack.sh`
 - `scripts/linux/tts-models.conf`
 - `scripts/linux/run-js-command.sh`
 - `scripts/linux/bootstrap-js-tooling.sh`

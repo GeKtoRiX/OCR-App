@@ -83,6 +83,7 @@ export interface ConfirmDocumentVocabularyItemPayload {
   candidateId: string;
   word: string;
   vocabType: 'word' | 'phrasal_verb' | 'idiom' | 'collocation' | 'expression';
+  pos?: DocumentCandidatePos;
   translation: string;
   contextSentence: string;
 }

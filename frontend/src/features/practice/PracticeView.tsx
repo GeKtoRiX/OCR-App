@@ -80,6 +80,7 @@ interface Props {
   previewWords: PracticePreviewWord[];
   currentBatchMode: PracticeBatchMode | null;
   hasRecordedAnswers: boolean;
+  roundProgress: number;
   onAnswer: (userAnswer: string) => void;
   onReady: () => void;
   onNext: () => void;
@@ -99,6 +100,7 @@ export function PracticeView({
   previewWords,
   currentBatchMode,
   hasRecordedAnswers,
+  roundProgress,
   onAnswer,
   onReady,
   onNext,
@@ -117,12 +119,23 @@ export function PracticeView({
     onAnswer(option);
   };
 
-  if (phase === 'planning' || phase === 'loading_round') {
+  if (phase === 'planning') {
     return (
       <PracticeOverlay>
         <div className="practice-card">
+          <div className="practice-card__loading">Preparing your study batch...</div>
+        </div>
+      </PracticeOverlay>
+    );
+  }
+
+  if (phase === 'loading_round') {
+    return (
+      <PracticeOverlay>
+        <div className="practice-card practice-card--loading">
+          <div className="practice-card__spinner" />
           <div className="practice-card__loading">
-            {phase === 'planning' ? 'Preparing your study batch...' : 'Generating exercises...'}
+            {roundProgress > 0 ? `${roundProgress}%` : 'Generating exercises…'}
           </div>
         </div>
       </PracticeOverlay>

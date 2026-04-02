@@ -132,10 +132,25 @@ export const VOCAB_TYPE_LABELS: Record<VocabType, string> = {
   expression: 'Expression',
 };
 
+export const VOCAB_POS_LABELS: Record<Exclude<DocumentCandidatePos, null>, string> = {
+  noun: 'Noun',
+  verb: 'Verb',
+  adjective: 'Adjective',
+  adverb: 'Adverb',
+};
+
+export const VOCAB_POS_OPTIONS: Exclude<DocumentCandidatePos, null>[] = [
+  'noun',
+  'verb',
+  'adjective',
+  'adverb',
+];
+
 export interface VocabularyWord {
   id: string;
   word: string;
   vocabType: VocabType;
+  pos?: DocumentCandidatePos;
   translation: string;
   targetLang: string;
   nativeLang: string;

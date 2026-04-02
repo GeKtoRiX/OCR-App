@@ -9,8 +9,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OCR_SCRIPT_PATH = `${ROOT_DIR}/scripts/linux/ocr.sh`;
-const TTS_SCRIPT_PATH = `${ROOT_DIR}/scripts/linux/tts.sh`;
-const ALL_SCRIPT_PATH = `${ROOT_DIR}/scripts/linux/ocr-tts.sh`;
 const TTS_CONF_PATH = `${ROOT_DIR}/scripts/linux/tts-models.conf`;
 
 const APP_PORT = Number.parseInt(process.env.PORT ?? '3000', 10);
@@ -21,7 +19,6 @@ const LM_MODEL_ID = process.env.STRUCTURING_MODEL ?? 'qwen/qwen3.5-9b';
 const LM_PORT = resolvePort(LM_URL);
 const MAX_LOG_CHARS = 25_000;
 const POLL_INTERVAL_MS = 2_000;
-const TTS_READY_TIMEOUT_MS = 8 * 60 * 1000;
 const OCR_READY_TIMEOUT_MS = 6 * 60 * 1000;
 const STOP_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -212,13 +209,6 @@ async function parseTtsConf() {
   }
 }
 
-function ttsActivePorts(conf) {
-  const ports = [];
-  if (conf.TTS_ENABLE_SUPERTONE) ports.push(SUPERTONE_PORT);
-  if (conf.TTS_ENABLE_KOKORO) ports.push(KOKORO_PORT);
-  return ports;
-}
-
 function ttsInactivePorts(conf) {
   const ports = [];
   if (!conf.TTS_ENABLE_SUPERTONE) ports.push(SUPERTONE_PORT);
@@ -254,17 +244,6 @@ async function checkEnabledTtsEngines(conf) {
   }
 }
 
-async function waitForTtsReady(launcher) {
-  const conf = await parseTtsConf();
-
-  await waitForCondition(async () => {
-    await checkEnabledTtsEngines(conf);
-    const backend = await fetchJson(`http://127.0.0.1:${APP_PORT}/api/health`);
-    assert.equal(typeof backend.superToneReachable, 'boolean');
-    return true;
-  }, TTS_READY_TIMEOUT_MS, 'TTS launcher readiness', launcher);
-}
-
 async function waitForOcrReady(launcher) {
   const conf = await parseTtsConf();
 
@@ -294,26 +273,12 @@ async function waitForOcrReady(launcher) {
   }, OCR_READY_TIMEOUT_MS, 'OCR launcher readiness', launcher);
 }
 
-async function waitForAllReady(launcher) {
-  const conf = await parseTtsConf();
-
-  await waitForCondition(async () => {
-    await checkEnabledTtsEngines(conf);
-    const models = await fetchJson(`${LM_URL.replace(/\/$/, '')}/models`);
-    assert.ok(Array.isArray(models.data), 'LM Studio /models must return a list');
-    assert.ok(
-      models.data.some((item) => (item.id ?? item.model ?? '') === LM_MODEL_ID),
-      `LM Studio must expose model ${LM_MODEL_ID}`,
-    );
-    const backend = await fetchJson(`http://127.0.0.1:${APP_PORT}/api/health`);
-    assert.equal(backend.ocrReachable, true, 'OCR backend must report ready');
-    return true;
-  }, TTS_READY_TIMEOUT_MS, 'ALL launcher readiness', launcher);
-}
-
 async function cleanupEverything() {
   try {
-    await runScript(ALL_SCRIPT_PATH, ['stop'], STOP_TIMEOUT_MS, [0]);
+    await execProcess('bash', [
+      '-lc',
+      'source scripts/linux/ocr-common.sh && ensure_dirs && project_cleanup',
+    ]);
   } catch (error) {
     console.error('[launcher-e2e] cleanup failed', error);
   }
@@ -341,40 +306,6 @@ async function isLmStudioReady() {
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
-
-test('tts.sh starts TTS mode and stops cleanly', { timeout: 15 * 60 * 1000 }, async () => {
-  const conf = await parseTtsConf();
-  const launchers = [];
-
-  try {
-    mark('cleanup:initial');
-    await cleanupEverything();
-    const lmWasListening = await isPortListening(LM_PORT);
-
-    mark('start:tts');
-    const tts = spawnLauncher(TTS_SCRIPT_PATH, 'tts');
-    launchers.push(tts);
-
-    await waitForTtsReady(tts);
-
-    const closedPorts = [
-      ...ttsInactivePorts(conf),
-      ...(!lmWasListening ? [LM_PORT] : []),
-    ];
-    await assertPortsState([APP_PORT, ...ttsActivePorts(conf)], closedPorts, 'tts-mode');
-
-    mark('stop:tts');
-    await runScript(TTS_SCRIPT_PATH, ['stop'], STOP_TIMEOUT_MS, [0]);
-    await assertEverythingStopped();
-  } finally {
-    for (const entry of launchers) {
-      if (entry.child.exitCode === null) {
-        entry.child.kill('SIGKILL');
-      }
-    }
-    await cleanupEverything();
-  }
-});
 
 test('ocr.sh starts OCR mode when LM Studio is ready', { timeout: 12 * 60 * 1000 }, async (t) => {
   if (!(await isLmStudioReady())) {
@@ -407,44 +338,6 @@ test('ocr.sh starts OCR mode when LM Studio is ready', { timeout: 12 * 60 * 1000
 
     mark('stop:ocr');
     await runScript(OCR_SCRIPT_PATH, ['stop'], STOP_TIMEOUT_MS, [0]);
-    await assertEverythingStopped();
-  } finally {
-    for (const entry of launchers) {
-      if (entry.child.exitCode === null) {
-        entry.child.kill('SIGKILL');
-      }
-    }
-    await cleanupEverything();
-  }
-});
-
-test('ocr-tts.sh starts ALL mode when LM Studio is ready', { timeout: 18 * 60 * 1000 }, async (t) => {
-  t.skip('ALL mode requires full VRAM budget (OCR + all TTS engines simultaneously) — run manually on capable hardware');
-  return;
-
-  if (!(await isLmStudioReady())) {
-    t.skip('LM Studio server/model is not ready in this environment');
-    return;
-  }
-
-  const conf = await parseTtsConf();
-  const launchers = [];
-
-  try {
-    mark('cleanup:initial');
-    await cleanupEverything();
-
-    mark('start:all');
-    const all = spawnLauncher(ALL_SCRIPT_PATH, 'all');
-    launchers.push(all);
-
-    await waitForAllReady(all);
-
-    const activePorts = [LM_PORT, APP_PORT, ...ttsActivePorts(conf)];
-    await assertPortsState(activePorts, ttsInactivePorts(conf), 'all-mode');
-
-    mark('stop:all');
-    await runScript(ALL_SCRIPT_PATH, ['stop'], STOP_TIMEOUT_MS, [0]);
     await assertEverythingStopped();
   } finally {
     for (const entry of launchers) {

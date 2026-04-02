@@ -5,6 +5,7 @@ import { IVocabularyLlmService } from '../../domain/ports/vocabulary-llm-service
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { PracticeSession } from '../../domain/entities/practice-session.entity';
 import { ExerciseAttempt } from '../../domain/entities/exercise-attempt.entity';
+import type { ExerciseType } from '../../domain/entities/exercise-attempt.entity';
 
 const mockWord = new VocabularyWord(
   'v1', 'beautiful', 'word', 'красивый', 'en', 'ru',
@@ -23,6 +24,13 @@ const secondWord = new VocabularyWord(
 const mockSession = new PracticeSession(
   'sess-1', '2024-01-01T00:00:00.000Z', null, 'en', 'ru', 0, 0, '{}',
 );
+
+const expectedExerciseOrder: ExerciseType[] = [
+  'multiple_choice',
+  'spelling',
+  'context_sentence',
+  'fill_blank',
+];
 
 describe('PracticeUseCase', () => {
   let useCase: PracticeUseCase;
@@ -112,13 +120,15 @@ describe('PracticeUseCase', () => {
   });
 
   describe('startPractice', () => {
-    it('fetches due words and generates exercises', async () => {
+    it('fetches due words and returns exercises in type-first order (all words per type)', async () => {
       const result = await useCase.startPractice({});
 
       expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(10, undefined, undefined);
-      expect(llmService.generateExercises).toHaveBeenCalledWith([mockWord], 10);
+      expect(llmService.generateExercises).toHaveBeenCalledWith([mockWord], 4);
       expect(result.sessionId).toBe('sess-1');
-      expect(result.exercises).toHaveLength(2);
+      expect(result.exercises).toHaveLength(4);
+      expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
+      expect(result.exercises.every((exercise) => exercise.vocabularyId === 'v1')).toBe(true);
     });
   });
 
@@ -161,14 +171,36 @@ describe('PracticeUseCase', () => {
   });
 
   describe('generatePracticeRound', () => {
-    it('generates exercises only for requested vocabulary ids', async () => {
+    it('generates four exercises for one requested word in the exact locked order', async () => {
       vocabRepo.findByIds.mockResolvedValue([secondWord]);
       llmService.generateExercises.mockResolvedValue([
         {
           vocabularyId: 'v2',
           word: 'sunrise',
+          exerciseType: 'fill_blank',
+          prompt: 'The ___ was calm.',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'multiple_choice',
+          prompt: 'Choose the word that best completes the sentence.\nThe ___ was calm.',
+          correctAnswer: 'sunrise',
+          options: ['harbor', 'sunrise', 'lantern', 'sunrize'],
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
           exerciseType: 'context_sentence',
           prompt: 'Name the calm part of the day after night.',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'spelling',
+          prompt: 'Type the en word for "рассвет".',
           correctAnswer: 'sunrise',
         },
       ]);
@@ -180,8 +212,64 @@ describe('PracticeUseCase', () => {
 
       expect(sessionRepo.findSessionById).toHaveBeenCalledWith('sess-1');
       expect(vocabRepo.findByIds).toHaveBeenCalledWith(['v2']);
-      expect(llmService.generateExercises).toHaveBeenCalledWith([secondWord], 1);
-      expect(result.exercises).toEqual([
+      expect(llmService.generateExercises).toHaveBeenCalledWith([secondWord], 4);
+      expect(result.exercises).toHaveLength(4);
+      expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
+      expect(result.exercises.map((exercise) => exercise.vocabularyId)).toEqual([
+        'v2',
+        'v2',
+        'v2',
+        'v2',
+      ]);
+    });
+
+    it('preserves grouped per-word ordering for multiple requested words', async () => {
+      vocabRepo.findByIds.mockResolvedValue([mockWord, secondWord]);
+      llmService.generateExercises.mockResolvedValue([
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'fill_blank',
+          prompt: 'The ___ was calm.',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'fill_blank',
+          prompt: 'The sunset was ___.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'multiple_choice',
+          prompt: 'Choose the word that best completes the sentence.\nThe ___ was calm.',
+          correctAnswer: 'sunrise',
+          options: ['harbor', 'sunrise', 'lantern', 'sunrize'],
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'multiple_choice',
+          prompt: 'Choose the word that best completes the sentence.\nThe sunset was ___.',
+          correctAnswer: 'beautiful',
+          options: ['beautiful', 'beautifull', 'sunrise', 'harbor'],
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'spelling',
+          prompt: 'Type the en word for "рассвет".',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'spelling',
+          prompt: 'Type the en word for "красивый".',
+          correctAnswer: 'beautiful',
+        },
         {
           vocabularyId: 'v2',
           word: 'sunrise',
@@ -189,27 +277,98 @@ describe('PracticeUseCase', () => {
           prompt: 'Name the calm part of the day after night.',
           correctAnswer: 'sunrise',
         },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'context_sentence',
+          prompt: 'Name a word meaning very attractive.',
+          correctAnswer: 'beautiful',
+        },
+      ]);
+
+      const result = await useCase.generatePracticeRound({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1', 'v2'],
+      });
+
+      expect(result.exercises).toHaveLength(8);
+      expect(result.exercises.map((exercise) => `${exercise.vocabularyId}:${exercise.exerciseType}`)).toEqual([
+        'v1:multiple_choice',
+        'v2:multiple_choice',
+        'v1:spelling',
+        'v2:spelling',
+        'v1:context_sentence',
+        'v2:context_sentence',
+        'v1:fill_blank',
+        'v2:fill_blank',
       ]);
     });
 
-    it('falls back to a spelling exercise when the generator omits a requested word', async () => {
+    it('reorders shuffled generator output into the locked exercise sequence', async () => {
       vocabRepo.findByIds.mockResolvedValue([mockWord]);
-      llmService.generateExercises.mockResolvedValue([]);
+      llmService.generateExercises.mockResolvedValue([
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'fill_blank',
+          prompt: 'The sunset was ___.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'context_sentence',
+          prompt: 'Name a word meaning very attractive.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'multiple_choice',
+          prompt: 'Choose the word that best completes the sentence.\nThe sunset was ___.',
+          correctAnswer: 'beautiful',
+          options: ['sunrise', 'beautiful', 'harbor', 'beautifull'],
+        },
+        {
+          vocabularyId: 'v1',
+          word: 'beautiful',
+          exerciseType: 'spelling',
+          prompt: 'Type the en word for "красивый".',
+          correctAnswer: 'beautiful',
+        },
+      ]);
 
       const result = await useCase.generatePracticeRound({
         sessionId: 'sess-1',
         vocabularyIds: ['v1'],
       });
 
-      expect(result.exercises).toEqual([
+      expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
+    });
+
+    it('fills missing exercise types with deterministic fallbacks in the correct slots', async () => {
+      vocabRepo.findByIds.mockResolvedValue([mockWord]);
+      llmService.generateExercises.mockResolvedValue([
         {
           vocabularyId: 'v1',
           word: 'beautiful',
           exerciseType: 'spelling',
-          prompt: 'Translate: красивый',
+          prompt: 'Type the en word for "красивый".',
           correctAnswer: 'beautiful',
         },
       ]);
+
+      const result = await useCase.generatePracticeRound({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1'],
+      });
+
+      expect(result.exercises).toHaveLength(4);
+      expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
+      expect(result.exercises[0].options).toHaveLength(4);
+      expect(result.exercises[0].options).toContain('beautiful');
+      expect(result.exercises[2].prompt).toContain('Translation: "красивый"');
+      expect(result.exercises[3].prompt).toContain('___');
     });
 
     it('throws when the session does not exist', async () => {

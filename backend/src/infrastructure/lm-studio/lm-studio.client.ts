@@ -56,6 +56,8 @@ export class LMStudioClient
         messages,
         temperature: opts?.temperature ?? 0.1,
         max_tokens: opts?.maxTokens ?? 4096,
+        enable_thinking: false,
+        ...(opts?.stop?.length ? { stop: opts.stop } : {}),
       }),
       signal: AbortSignal.timeout(this.config.timeoutMs),
     });
@@ -79,7 +81,9 @@ export class LMStudioClient
 
     const reasoning = message.reasoning_content?.trim();
     if (reasoning) {
-      return reasoning;
+      throw new Error(
+        'LM Studio returned reasoning content without a final answer',
+      );
     }
 
     throw new Error('LM Studio returned an empty message');

@@ -1,6 +1,7 @@
 export class AddVocabularyDto {
   word!: string;
   vocabType!: string;
+  pos?: string;
   translation!: string;
   targetLang!: string;
   nativeLang!: string;
@@ -10,6 +11,8 @@ export class AddVocabularyDto {
 
 export class UpdateVocabularyDto {
   word?: string;
+  vocabType?: string;
+  pos?: string | null;
   translation!: string;
   contextSentence!: string;
 }

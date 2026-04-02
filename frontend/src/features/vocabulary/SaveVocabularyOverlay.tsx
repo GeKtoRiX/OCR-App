@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
   ConfirmDocumentVocabularyResult,
+  DocumentCandidatePos,
   DocumentVocabCandidate,
   LanguagePair,
   SavedDocument,
   VocabType,
 } from '../../shared/types';
-import { VOCAB_TYPE_LABELS } from '../../shared/types';
+import {
+  VOCAB_POS_LABELS,
+  VOCAB_POS_OPTIONS,
+  VOCAB_TYPE_LABELS,
+} from '../../shared/types';
 import type { VocabularyReviewStatus } from '../documents';
 import './SaveVocabularyOverlay.css';
 
@@ -30,6 +35,7 @@ interface Props {
     candidateId: string;
     word: string;
     vocabType: VocabType;
+    pos?: DocumentCandidatePos;
     translation: string;
     contextSentence: string;
   }>) => Promise<void>;
@@ -99,6 +105,7 @@ export function SaveVocabularyOverlay({
           candidateId: item.id,
           word: item.word.trim(),
           vocabType: item.vocabType,
+          pos: item.pos,
           translation: item.translation.trim(),
           contextSentence: item.contextSentence.trim(),
         })),
@@ -231,6 +238,26 @@ export function SaveVocabularyOverlay({
                           ))}
                         </select>
                       </label>
+                      <label className="save-vocab-card__field">
+                        <span>Part of Speech</span>
+                        <select
+                          data-testid="save-vocab-editor-pos"
+                          value={activeItem.pos ?? ''}
+                          onChange={(event) =>
+                            updateItem(activeItem.id, {
+                              pos: (event.target.value || null) as DocumentCandidatePos,
+                            })
+                          }
+                          disabled={isBusy}
+                        >
+                          <option value="">Not set</option>
+                          {VOCAB_POS_OPTIONS.map((value) => (
+                            <option key={value} value={value}>
+                              {VOCAB_POS_LABELS[value]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
 
                     <label className="save-vocab-card__field">
@@ -264,7 +291,7 @@ export function SaveVocabularyOverlay({
                     <div className="save-vocab-card__editor-meta">
                       <span>Surface: {activeItem.surface}</span>
                       <span>Lemma: {activeItem.lemma || 'n/a'}</span>
-                      <span>POS: {activeItem.pos ?? 'n/a'}</span>
+                      <span>POS: {activeItem.pos ? VOCAB_POS_LABELS[activeItem.pos] : 'n/a'}</span>
                     </div>
                   </>
                 ) : (

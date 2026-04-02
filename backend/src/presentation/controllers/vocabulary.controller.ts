@@ -18,7 +18,9 @@ import {
 import { AddVocabularyDto, UpdateVocabularyDto } from '../dto/vocabulary.dto';
 import {
   VOCAB_TYPES,
+  VOCABULARY_POSITIONS,
   type VocabType,
+  type VocabularyWordPos,
 } from '../../domain/entities/vocabulary-word.entity';
 import { VOCABULARY_DUPLICATE_ERROR } from '../../domain/ports/vocabulary-repository.port';
 import { ETagInterceptor } from '../interceptors/etag.interceptor';
@@ -41,10 +43,20 @@ export class VocabularyController {
     if (!body.targetLang || !body.nativeLang) {
       throw new BadRequestException('targetLang and nativeLang are required');
     }
+    if (
+      body.pos !== undefined &&
+      body.pos !== null &&
+      !VOCABULARY_POSITIONS.includes(body.pos as Exclude<VocabularyWordPos, null>)
+    ) {
+      throw new BadRequestException(
+        `pos must be one of: ${VOCABULARY_POSITIONS.join(', ')}`,
+      );
+    }
     try {
       return await this.vocabularyUseCase.add({
         word: body.word.trim(),
         vocabType: body.vocabType as VocabType,
+        pos: (body.pos as VocabularyWordPos | undefined) ?? null,
         translation: body.translation ?? '',
         targetLang: body.targetLang,
         nativeLang: body.nativeLang,
@@ -83,12 +95,22 @@ export class VocabularyController {
       if (!item.targetLang || !item.nativeLang) {
         throw new BadRequestException('targetLang and nativeLang are required for all items');
       }
+      if (
+        item.pos !== undefined &&
+        item.pos !== null &&
+        !VOCABULARY_POSITIONS.includes(item.pos as Exclude<VocabularyWordPos, null>)
+      ) {
+        throw new BadRequestException(
+          `pos must be one of: ${VOCABULARY_POSITIONS.join(', ')}`,
+        );
+      }
     }
     try {
       return await this.vocabularyUseCase.addMany(
         body.map((item) => ({
           word: item.word.trim(),
           vocabType: item.vocabType as VocabType,
+          pos: (item.pos as VocabularyWordPos | undefined) ?? null,
           translation: item.translation ?? '',
           targetLang: item.targetLang,
           nativeLang: item.nativeLang,
@@ -138,8 +160,28 @@ export class VocabularyController {
     @Param('id') id: string,
     @Body() body: UpdateVocabularyDto,
   ) {
+    if (
+      body.vocabType !== undefined &&
+      body.vocabType !== null &&
+      !VOCAB_TYPES.includes(body.vocabType as VocabType)
+    ) {
+      throw new BadRequestException(
+        `vocabType must be one of: ${VOCAB_TYPES.join(', ')}`,
+      );
+    }
+    if (
+      body.pos !== undefined &&
+      body.pos !== null &&
+      !VOCABULARY_POSITIONS.includes(body.pos as Exclude<VocabularyWordPos, null>)
+    ) {
+      throw new BadRequestException(
+        `pos must be one of: ${VOCABULARY_POSITIONS.join(', ')}`,
+      );
+    }
     const word = await this.vocabularyUseCase.update(id, {
       word: body.word?.trim(),
+      vocabType: body.vocabType as VocabType | undefined,
+      pos: body.pos as VocabularyWordPos | undefined,
       translation: body.translation ?? '',
       contextSentence: body.contextSentence ?? '',
     });

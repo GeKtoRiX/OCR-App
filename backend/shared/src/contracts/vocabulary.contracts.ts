@@ -1,5 +1,8 @@
 import type { ExerciseType } from '../domain/entities/exercise-attempt.entity';
-import type { VocabType } from '../domain/entities/vocabulary-word.entity';
+import type {
+  VocabType,
+  VocabularyWordPos,
+} from '../domain/entities/vocabulary-word.entity';
 
 export const VOCABULARY_PATTERNS = {
   ADD: 'vocabulary.add',
@@ -24,6 +27,7 @@ export interface VocabularyItemDto {
   id: string;
   word: string;
   vocabType: VocabType;
+  pos?: VocabularyWordPos;
   translation: string;
   targetLang: string;
   nativeLang: string;
@@ -40,6 +44,7 @@ export interface VocabularyItemDto {
 export interface AddVocabularyPayload {
   word: string;
   vocabType: VocabType;
+  pos?: VocabularyWordPos;
   translation: string;
   targetLang: string;
   nativeLang: string;
@@ -75,6 +80,8 @@ export interface FindAllVocabularyPayload {
 export interface UpdateVocabularyPayload {
   id: string;
   word?: string;
+  vocabType?: VocabType;
+  pos?: VocabularyWordPos;
   translation: string;
   contextSentence: string;
 }

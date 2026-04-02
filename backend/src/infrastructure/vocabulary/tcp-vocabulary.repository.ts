@@ -12,7 +12,11 @@ import {
   CreateVocabularyInput,
   IVocabularyRepository,
 } from '../../domain/ports/vocabulary-repository.port';
-import { VocabularyWord, VocabType } from '../../domain/entities/vocabulary-word.entity';
+import {
+  VocabularyWord,
+  VocabType,
+  VocabularyWordPos,
+} from '../../domain/entities/vocabulary-word.entity';
 
 @Injectable()
 export class TcpVocabularyRepository
@@ -46,6 +50,7 @@ export class TcpVocabularyRepository
       item.easinessFactor,
       item.repetitions,
       item.nextReviewAt,
+      item.pos ?? null,
     );
   }
 
@@ -57,10 +62,12 @@ export class TcpVocabularyRepository
     nativeLang: string,
     contextSentence: string,
     sourceDocumentId: string | null,
+    pos?: VocabularyWordPos,
   ): Promise<VocabularyWord> {
     const payload: AddVocabularyPayload = {
       word,
       vocabType,
+      pos: pos ?? null,
       translation,
       targetLang,
       nativeLang,
@@ -148,6 +155,9 @@ export class TcpVocabularyRepository
     _id: string,
     _translation: string,
     _contextSentence: string,
+    _word?: string,
+    _vocabType?: VocabType,
+    _pos?: VocabularyWordPos,
   ): Promise<VocabularyWord | null> {
     throw new Error('TcpVocabularyRepository.update is not implemented');
   }

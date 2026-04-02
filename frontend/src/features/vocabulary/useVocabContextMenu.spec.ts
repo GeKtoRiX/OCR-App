@@ -99,7 +99,7 @@ describe('useVocabContextMenu', () => {
     });
 
     act(() => {
-      result.current.handleVocabTypeSelect('idiom');
+      result.current.handleVocabAddRequest();
     });
 
     expect(result.current.contextMenu).toBeNull();
@@ -108,7 +108,8 @@ describe('useVocabContextMenu', () => {
       y: 25,
       selectedText: 'Hello',
       contextSentence: 'Hello world.',
-      vocabType: 'idiom',
+      vocabType: 'word',
+      pos: null,
       isDuplicate: true,
     });
   });
@@ -166,11 +167,11 @@ describe('useVocabContextMenu', () => {
     });
 
     act(() => {
-      result.current.handleVocabTypeSelect('word');
+      result.current.handleVocabAddRequest();
     });
 
     act(() => {
-      result.current.handleVocabAdd('Hello', 'привет', 'Hello world.', 'word');
+      result.current.handleVocabAdd('Hello', 'привет', 'Hello world.', 'word', 'noun');
     });
 
     expect(onAddVocabulary).toHaveBeenCalledWith(
@@ -178,6 +179,7 @@ describe('useVocabContextMenu', () => {
       'word',
       'привет',
       'Hello world.',
+      'noun',
     );
     expect(result.current.vocabForm).toBeNull();
   });
@@ -210,7 +212,7 @@ describe('useVocabContextMenu', () => {
         clientX: 15,
         clientY: 25,
       } as unknown as React.MouseEvent<HTMLTextAreaElement>);
-      result.current.handleVocabTypeSelect('word');
+      result.current.handleVocabAddRequest();
     });
 
     act(() => {

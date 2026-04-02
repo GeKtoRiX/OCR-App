@@ -8,6 +8,7 @@ const baseProps = {
   y: 80,
   selectedText: 'hello',
   vocabType: 'word' as const,
+  pos: null,
   contextSentence: '',
   isDuplicate: false,
   onAdd: vi.fn(),
@@ -20,17 +21,19 @@ describe('VocabAddForm', () => {
 
     expect(screen.getByDisplayValue('hello')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Word')).toBeInTheDocument();
+    expect(screen.getByLabelText('Part of Speech')).toHaveValue('');
   });
 
-  it('submits word, translation, context and type through onAdd', async () => {
+  it('submits word, translation, context, type, and pos through onAdd', async () => {
     const user = userEvent.setup();
     const onAdd = vi.fn();
     render(<VocabAddForm {...baseProps} onAdd={onAdd} />);
 
+    await user.selectOptions(screen.getByLabelText('Part of Speech'), 'verb');
     await user.type(screen.getByPlaceholderText('Translation...'), 'привет');
     await user.click(screen.getByText('Add'));
 
-    expect(onAdd).toHaveBeenCalledWith('hello', 'привет', '', 'word');
+    expect(onAdd).toHaveBeenCalledWith('hello', 'привет', '', 'word', 'verb');
   });
 
   it('allows editing the word before submitting', async () => {
@@ -44,7 +47,7 @@ describe('VocabAddForm', () => {
     await user.type(screen.getByPlaceholderText('Translation...'), 'привет');
     await user.click(screen.getByText('Add'));
 
-    expect(onAdd).toHaveBeenCalledWith('hi', 'привет', '', 'word');
+    expect(onAdd).toHaveBeenCalledWith('hi', 'привет', '', 'word', null);
   });
 
   it('pre-fills context sentence when provided', () => {

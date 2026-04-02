@@ -8,6 +8,7 @@ import type {
   ConfirmDocumentVocabularyResult,
   VocabularyWord,
   VocabType,
+  DocumentCandidatePos,
   Exercise,
   PracticePlanResponse,
   AnswerResult,
@@ -150,6 +151,7 @@ export async function confirmDocumentVocabulary(input: {
     candidateId: string;
     word: string;
     vocabType: VocabType;
+    pos?: DocumentCandidatePos;
     translation: string;
     contextSentence: string;
   }>;
@@ -172,6 +174,7 @@ export async function confirmDocumentVocabulary(input: {
 export async function addVocabularyWord(input: {
   word: string;
   vocabType: VocabType;
+  pos?: DocumentCandidatePos;
   translation: string;
   targetLang: string;
   nativeLang: string;
@@ -201,14 +204,18 @@ export async function fetchVocabulary(
 }
 
 export async function fetchDueVocabulary(
-  targetLang?: string,
+  targetLangOrLimit?: string | number,
   nativeLang?: string,
   limit?: number,
 ): Promise<VocabularyWord[]> {
+  const targetLang =
+    typeof targetLangOrLimit === 'string' ? targetLangOrLimit : undefined;
+  const resolvedLimit =
+    typeof targetLangOrLimit === 'number' ? targetLangOrLimit : limit;
   const params = new URLSearchParams();
   if (targetLang) params.set('targetLang', targetLang);
   if (nativeLang) params.set('nativeLang', nativeLang);
-  if (limit) params.set('limit', String(limit));
+  if (resolvedLimit) params.set('limit', String(resolvedLimit));
   const qs = params.size ? `?${params}` : '';
   const res = await fetch(`${BASE}/vocabulary/review/due${qs}`);
   if (!res.ok) throw new Error(await getErrorMessage(res));
@@ -220,11 +227,13 @@ export async function updateVocabularyWord(
   translation: string,
   contextSentence: string,
   word?: string,
+  vocabType?: VocabType,
+  pos?: DocumentCandidatePos,
 ): Promise<VocabularyWord> {
   const res = await fetch(`${BASE}/vocabulary/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ word, translation, contextSentence }),
+    body: JSON.stringify({ word, vocabType, pos, translation, contextSentence }),
   });
   if (!res.ok) throw new Error(await getErrorMessage(res));
   return res.json();
