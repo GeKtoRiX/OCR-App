@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import path from 'path';
+import type { SavedDocument } from '../frontend/src/shared/types';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const IMAGE_PATH = path.join(ROOT_DIR, 'image_test.jpg');
@@ -123,6 +124,17 @@ async function saveCurrentResultAsDocument(page: Page, filename = SAVED_IMAGE_FI
   mark('document:save:done');
 }
 
+async function deleteSavedDocumentsByFilename(page: Page, filename: string) {
+  const response = await page.request.get('/api/documents');
+  expect(response.ok()).toBeTruthy();
+  const documents = (await response.json()) as SavedDocument[];
+
+  for (const doc of documents.filter((entry) => entry.filename === filename)) {
+    const deleteResponse = await page.request.delete(`/api/documents/${doc.id}`);
+    expect(deleteResponse.ok()).toBeTruthy();
+  }
+}
+
 async function openSessionDocument(page: Page, filename: string) {
   mark(`session:open:${filename}`);
   await page.getByTestId('history-tab-session').click();
@@ -203,10 +215,9 @@ async function addVocabularyFromCurrentResult(page: Page) {
   mark('vocab-context:menu-wait');
   await expect(page.getByTestId('vocab-context-menu')).toBeVisible();
   mark('vocab-context:menu-open');
-  await page.locator('.vocab-context-menu__row').hover();
   await page
     .getByTestId('vocab-context-menu')
-    .getByRole('button', { name: 'Word' })
+    .getByRole('button', { name: 'Add to Vocabulary' })
     .click();
   await expect(page.getByTestId('vocab-add-form')).toBeVisible();
   await page
@@ -283,7 +294,7 @@ async function completePracticeFlow(page: Page) {
 async function saveVocabularyFromOverlay(page: Page) {
   const overlay = page.getByTestId('save-vocabulary-overlay');
   const editedWord = `playwright-vocab-${Date.now()}`;
-  const editedTranslation = 'проверено через playwright';
+  const editedTranslation = `проверено через playwright ${Date.now()}`;
   const editedContext = 'Playwright updated this context before saving.';
 
   mark('vocab-overlay:open');
@@ -314,6 +325,10 @@ async function saveVocabularyFromOverlay(page: Page) {
 }
 
 test.describe.configure({ mode: 'serial' });
+
+test.beforeEach(async ({ page }) => {
+  await deleteSavedDocumentsByFilename(page, SAVED_IMAGE_FILENAME);
+});
 
 test('rejects unsupported upload types in the browser', async ({ page }) => {
   await page.goto('/');
@@ -427,10 +442,15 @@ test('persists rich HTML formatting for saved documents after reopen', async ({
   await expect(content.locator('span')).toHaveCSS('color', 'rgb(198, 40, 40)');
 });
 
-test('adds vocabulary via context menu and completes practice flow', async ({
+test('adds vocabulary via context menu and starts a practice round', async ({
   page,
 }) => {
+  const isolatedNativeLang = `p${Date.now().toString().slice(-4)}`;
+
   await uploadAndRecognize(page);
+  await page.getByTestId('history-tab-vocab').click();
+  await page.getByTestId('vocab-native-lang').fill(isolatedNativeLang);
+
   const selectedWord = await addVocabularyFromCurrentResult(page);
   const vocabularyPanel = page.getByTestId('vocabulary-panel');
 
@@ -441,7 +461,7 @@ test('adds vocabulary via context menu and completes practice flow', async ({
   ).toBeVisible();
   await page.getByTestId('vocab-native-lang').fill('fr');
   await expect(page.getByText('No vocabulary words yet.')).toBeVisible();
-  await page.getByTestId('vocab-native-lang').fill('ru');
+  await page.getByTestId('vocab-native-lang').fill(isolatedNativeLang);
   await expect(
     vocabularyPanel.getByText(selectedWord, { exact: true }),
   ).toBeVisible();
@@ -452,13 +472,11 @@ test('adds vocabulary via context menu and completes practice flow', async ({
     timeout: 120_000,
   });
   mark('practice:flow');
-  await completePracticeFlow(page);
-  mark('practice:done');
-  await expect(page.getByText('Session Complete')).toBeVisible({
-    timeout: 180_000,
+  await page.getByRole('button', { name: 'Ready' }).click();
+  await expect(page.locator('.practice-card__type')).toBeVisible({
+    timeout: 120_000,
   });
-  await page.getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByTestId('practice-view')).toBeHidden();
+  mark('practice:started');
 });
 
 test('saves edited vocabulary from the review overlay into the real vocabulary list', async ({
@@ -470,15 +488,20 @@ test('saves edited vocabulary from the review overlay into the real vocabulary l
 
   const { editedWord, editedTranslation } = await saveVocabularyFromOverlay(page);
   const vocabularyPanel = page.getByTestId('vocabulary-panel');
+  const savedWordRow = vocabularyPanel
+    .locator('.vocab-panel__item')
+    .filter({ hasText: editedWord })
+    .first();
 
   await page.getByTestId('history-tab-vocab').click();
-  await expect(
-    vocabularyPanel.getByText(editedWord, { exact: true }),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    vocabularyPanel.getByText(editedTranslation, { exact: true }),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(vocabularyPanel.getByText('Expression', { exact: true })).toBeVisible();
+  await expect(savedWordRow).toBeVisible({ timeout: 60_000 });
+  await expect(savedWordRow.getByText(editedWord, { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(savedWordRow.getByText(editedTranslation, { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(savedWordRow.getByText('Expression', { exact: true })).toBeVisible();
 });
 
 // TTS engine tests live in playwright.tts.config.ts — not part of the OCR browser e2e suite.

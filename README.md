@@ -219,6 +219,8 @@ It is designed for practical day-to-day development work and exposes tools for:
 - table/index/foreign-key inspection via `db_schema`
 - repo navigation helpers for listing files, searching text, reading file slices, and mapping likely tests via `test_coverage_map` and `recommend_test_strategy`
 - focused test runners for frontend Vitest, backend Jest, and Playwright e2e specs
+- browser-e2e workflow helpers via `prepare_browser_e2e`, `stop_browser_e2e`, and `run_browser_e2e`
+- Playwright artifact inspection via `list_test_results` and `read_test_artifact`
 - quick `tmp/perf/logs` tailing for local runtime debugging
 - quick `logs/*.log` tailing for startup/runtime failures
 - whitelisted smoke-test execution

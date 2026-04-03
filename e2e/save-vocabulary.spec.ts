@@ -1,10 +1,26 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import type { SavedDocument } from '../frontend/src/shared/types';
 
 const FILE_NAME = 'playwright-save-vocabulary.md';
 const DOCUMENT_MARKDOWN = `# Study Notes
 
 She gave up too early, but the lesson was a piece of cake.
 The diligent student quickly mastered every detail.`;
+
+async function deleteSavedDocumentsByFilename(page: Page, filename: string) {
+  const response = await page.request.get('/api/documents');
+  expect(response.ok()).toBeTruthy();
+  const documents = (await response.json()) as SavedDocument[];
+
+  for (const doc of documents.filter((entry) => entry.filename === filename)) {
+    const deleteResponse = await page.request.delete(`/api/documents/${doc.id}`);
+    expect(deleteResponse.ok()).toBeTruthy();
+  }
+}
+
+test.beforeEach(async ({ page }) => {
+  await deleteSavedDocumentsByFilename(page, FILE_NAME);
+});
 
 test('edits reviewed vocabulary in the browser before saving it to the real vocabulary list', async ({
   page,
@@ -39,7 +55,7 @@ test('edits reviewed vocabulary in the browser before saving it to the real voca
   });
 
   const editedWord = `playwright-vocab-${Date.now()}`;
-  const editedTranslation = 'отредактировано в e2e';
+  const editedTranslation = `отредактировано в e2e ${Date.now()}`;
   const editedContext = 'Playwright changed this context before saving.';
 
   await overlay.getByTestId('save-vocab-editor-word').fill(editedWord);
@@ -54,14 +70,19 @@ test('edits reviewed vocabulary in the browser before saving it to the real voca
 
   await page.getByTestId('history-tab-vocab').click();
   const vocabularyPanel = page.getByTestId('vocabulary-panel');
+  const savedWordRow = vocabularyPanel
+    .locator('.vocab-panel__item')
+    .filter({ hasText: editedWord })
+    .first();
 
-  await expect(
-    vocabularyPanel.getByText(editedWord, { exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    vocabularyPanel.getByText(editedTranslation, { exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
-  await expect(
-    vocabularyPanel.getByText('Expression', { exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(savedWordRow).toBeVisible({ timeout: 30_000 });
+  await expect(savedWordRow.getByText(editedWord, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(savedWordRow.getByText(editedTranslation, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(savedWordRow.getByText('Expression', { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 });

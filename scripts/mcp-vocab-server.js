@@ -49,9 +49,12 @@ const DEFAULT_LM_STUDIO_URL =
   process.env.OCR_APP_LM_STUDIO_URL || 'http://127.0.0.1:1234/v1/models';
 const PERF_LOG_DIR = path.join(ROOT, 'tmp', 'perf', 'logs');
 const RUNTIME_LOG_DIR = path.join(ROOT, 'logs');
+const TEST_RESULTS_DIR = path.join(ROOT, 'test-results');
 const OCR_LAUNCHER = path.join(ROOT, 'scripts', 'linux', 'ocr.sh');
 const ROOT_PACKAGE_JSON = path.join(ROOT, 'package.json');
 const TTS_MODELS_CONFIG = path.join(ROOT, 'scripts', 'linux', 'tts-models.conf');
+const PREPARE_BROWSER_ENV_SCRIPT = path.join(ROOT, 'scripts', 'e2e', 'prepare-browser-env.sh');
+const STOP_BROWSER_ENV_SCRIPT = path.join(ROOT, 'scripts', 'e2e', 'stop-browser-env.sh');
 
 const vocabDb = new Database(VOCAB_DB_PATH, { readonly: true });
 const docDb = new Database(DOC_DB_PATH, { readonly: true });
@@ -138,6 +141,22 @@ function resolveRuntimeLogFile(filename) {
   return resolved;
 }
 
+function resolveTestArtifactPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    throw new Error('path is required');
+  }
+
+  const resolved = path.resolve(TEST_RESULTS_DIR, raw);
+  if (resolved !== TEST_RESULTS_DIR && !resolved.startsWith(`${TEST_RESULTS_DIR}${path.sep}`)) {
+    throw new Error('path must stay inside test-results');
+  }
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`test artifact not found: ${raw}`);
+  }
+  return resolved;
+}
+
 function resolveDatabase(value) {
   const key = String(value || '').trim();
   if (!DATABASES[key]) {
@@ -178,6 +197,48 @@ function parseJsonArray(value, fallback = []) {
     throw new Error('value must be a JSON array');
   }
   return parsed;
+}
+
+function isReadableTextArtifact(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return new Set([
+    '.md',
+    '.txt',
+    '.log',
+    '.json',
+    '.yml',
+    '.yaml',
+    '.xml',
+    '.html',
+    '.csv',
+  ]).has(ext);
+}
+
+function listTestResultArtifacts(query, limit) {
+  if (!fs.existsSync(TEST_RESULTS_DIR)) {
+    return [];
+  }
+
+  const q = String(query || '').trim().toLowerCase();
+  const results = walkProject(TEST_RESULTS_DIR, {
+    maxDepth: 3,
+    skipDirs: new Set(),
+    fileFilter: () => true,
+  })
+    .map((relative) => relative.replace(/^test-results\//, ''))
+    .filter((relative) => (q ? relative.toLowerCase().includes(q) : true))
+    .slice(0, normalizeLimit(limit, 80, 400));
+
+  return results.map((relative) => {
+    const fullPath = path.join(TEST_RESULTS_DIR, relative);
+    const stat = fs.statSync(fullPath);
+    return {
+      path: relative.replace(/\\/g, '/'),
+      type: stat.isDirectory() ? 'directory' : 'file',
+      size_bytes: stat.isFile() ? stat.size : null,
+      modified_at: stat.mtime.toISOString(),
+    };
+  });
 }
 
 function ensureSafeReadOnlySql(sql) {
@@ -2300,6 +2361,31 @@ const TOOLS = [
     },
   },
   {
+    name: 'list_test_results',
+    description:
+      'Lists Playwright/Jest test-result artifacts under test-results so failures can be inspected without guessing paths.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 400 },
+      },
+    },
+  },
+  {
+    name: 'read_test_artifact',
+    description:
+      'Reads a text test artifact from test-results such as error-context.md, logs, or JSON output. Binary files return metadata only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        lines: { type: 'integer', minimum: 1, maximum: 400 },
+      },
+      required: ['path'],
+    },
+  },
+  {
     name: 'list_documents',
     description:
       'Lists saved documents from SQLite. Optional query filters by filename substring.',
@@ -2660,6 +2746,32 @@ const TOOLS = [
     },
   },
   {
+    name: 'prepare_browser_e2e',
+    description:
+      'Runs scripts/e2e/prepare-browser-env.sh to clean tmp test DBs and rebuild frontend/backend before browser e2e.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'stop_browser_e2e',
+    description:
+      'Runs scripts/e2e/stop-browser-env.sh to stop browser-e2e ports and background services.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'run_browser_e2e',
+    description:
+      'Runs browser Playwright e2e via the project workflow. Optionally prepare the env first, target one spec, set a config, and control workers.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        config: { type: 'string' },
+        workers: { type: 'integer', minimum: 1, maximum: 8 },
+        prepare: { type: 'boolean' },
+      },
+    },
+  },
+  {
     name: 'recommend_test_strategy',
     description:
       'Given a project file path, returns the most relevant unit, smoke, and e2e test commands to run next.',
@@ -2686,7 +2798,7 @@ const TOOLS = [
 ];
 
 const server = new Server(
-  { name: 'ocr-project', version: '2.6.0' },
+  { name: 'ocr-project', version: '2.7.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -2915,6 +3027,45 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return errorText('scope must be one of: all, runtime, perf');
       }
       return okJson(listProjectLogs(scope));
+    }
+
+    if (name === 'list_test_results') {
+      return okJson(listTestResultArtifacts(args.query, args.limit));
+    }
+
+    if (name === 'read_test_artifact') {
+      const filePath = resolveTestArtifactPath(args.path);
+      const relative = path.relative(TEST_RESULTS_DIR, filePath).replace(/\\/g, '/');
+      const stat = fs.statSync(filePath);
+
+      if (stat.isDirectory()) {
+        return okJson({
+          path: relative,
+          type: 'directory',
+          entries: fs.readdirSync(filePath).sort(),
+        });
+      }
+
+      if (!isReadableTextArtifact(filePath)) {
+        return okJson({
+          path: relative,
+          type: 'binary',
+          size_bytes: stat.size,
+        });
+      }
+
+      const lineCount = normalizeLimit(args.lines, 120, 400);
+      const { stdout } = await execFileAsync(
+        'tail',
+        ['-n', String(lineCount), filePath],
+        { cwd: ROOT, timeout: 15_000, maxBuffer: 1024 * 1024 },
+      );
+      return okJson({
+        path: relative,
+        type: 'text',
+        lines: lineCount,
+        output: stdout,
+      });
     }
 
     if (name === 'repo_list_files') {
@@ -3380,6 +3531,80 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       return okJson({ path: relative, ...result });
     }
 
+    if (name === 'prepare_browser_e2e') {
+      const result = await runCommandCapture(
+        'bash',
+        [PREPARE_BROWSER_ENV_SCRIPT],
+        { cwd: ROOT, timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+      );
+      return okJson(result);
+    }
+
+    if (name === 'stop_browser_e2e') {
+      const result = await runCommandCapture(
+        'bash',
+        [STOP_BROWSER_ENV_SCRIPT],
+        { cwd: ROOT, timeout: 2 * 60 * 1000, maxBuffer: 5 * 1024 * 1024 },
+      );
+      return okJson(result);
+    }
+
+    if (name === 'run_browser_e2e') {
+      const workers = normalizeLimit(args.workers, 4, 8);
+      const shouldPrepare = Boolean(args.prepare);
+      const config = args.config ? String(args.config).trim() : '';
+      const relative = args.path
+        ? path.relative(ROOT, ensureProjectRelativeFile(args.path)).replace(/\\/g, '/')
+        : null;
+
+      if (relative) {
+        ensureSupportedTestFile(ensureProjectRelativeFile(args.path), [
+          /^.*\/e2e\/.*\.(spec|test)\.(ts|tsx|js|mjs)$/,
+        ]);
+      }
+
+      if (config) {
+        const configPath = ensureProjectRelativeFile(config);
+        if (!/\.(c|m)?ts$|\.js$|\.mjs$/i.test(configPath)) {
+          return errorText('config must point to a Playwright config file');
+        }
+      }
+
+      if (shouldPrepare) {
+        const prep = await runCommandCapture(
+          'bash',
+          [PREPARE_BROWSER_ENV_SCRIPT],
+          { cwd: ROOT, timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+        );
+        if (!prep.ok) {
+          return okJson({ prepare: prep, test: null });
+        }
+      }
+
+      const testArgs = ['playwright', 'test'];
+      if (relative) {
+        testArgs.push(relative);
+      }
+      if (config) {
+        testArgs.push('--config', path.relative(ROOT, ensureProjectRelativeFile(config)));
+      }
+      testArgs.push('--workers', String(workers));
+
+      const test = await runCommandCapture(
+        'npx',
+        testArgs,
+        { cwd: ROOT, timeout: 30 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+      );
+
+      return okJson({
+        prepared: shouldPrepare,
+        path: relative,
+        config: config || null,
+        workers,
+        test,
+      });
+    }
+
     if (name === 'recommend_test_strategy') {
       const filePath = ensureProjectRelativeFile(args.path);
       const relative = path.relative(ROOT, filePath).replace(/\\/g, '/');
@@ -3388,7 +3613,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       if (relative.startsWith('frontend/')) {
         recommendations.push('Primary: run_frontend_unit_test on the nearest *.spec.tsx/*.spec.ts file.');
         recommendations.push('Fallback: npm run test:frontend');
-        recommendations.push('If UI flow changed: npm run test:e2e:browser or run_playwright_test on the relevant e2e spec.');
+        recommendations.push('If UI flow changed: run_browser_e2e with prepare=true or run_playwright_test on the relevant e2e spec.');
       } else if (relative.startsWith('backend/gateway/')) {
         recommendations.push('Primary: run_backend_unit_test on the matching gateway *.spec.ts file.');
         recommendations.push('API confidence: npm run test:e2e:api');
@@ -3405,6 +3630,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         recommendations.push('Then verify affected document/vocabulary flows via get_gateway_json or debug_failed_document.');
       } else if (relative.startsWith('e2e/')) {
         recommendations.push('Primary: run_playwright_test on this spec.');
+        recommendations.push('If browser stack is stale: prepare_browser_e2e, then rerun.');
+        recommendations.push('If a failure leaves artifacts: list_test_results and read_test_artifact on error-context.md.');
         recommendations.push('If stack orchestration changed: npm run test:e2e:launcher.');
       } else {
         recommendations.push('Primary: choose the nearest unit spec and run a focused unit test first.');
