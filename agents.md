@@ -1,6 +1,6 @@
 # Agents Workspace Guide
 
-Read this file before changing architecture, launchers, contracts, or documentation.
+Read this file before changing architecture, launchers, contracts, tests, or agent-facing docs.
 
 ## Read Order
 
@@ -8,182 +8,94 @@ Read this file before changing architecture, launchers, contracts, or documentat
 2. `CLAUDE.md`
 3. `agents.md`
 4. `structure.md`
-5. `docs/agents/project-overview.md`
-6. `docs/agents/architecture.md`
-7. `docs/agents/file-map.md`
-8. `docs/agents/runbook.md`
-9. `docs/agents/context.md`
-10. `docs/agents/adr.md`
-11. `docs/agents/task-log.md`
+5. `docs/agents/architecture.md`
+6. `docs/agents/runbook.md`
+7. `docs/agents/context.md`
 
 ## Project Intent
 
-- local-first OCR application with study workflows
-- gateway + TCP service backend
+- local-first OCR and study workflow
+- HTTP gateway plus dedicated TCP services
 - SQLite-backed documents, vocabulary, and practice sessions
-- document-scoped `Save Vocabulary` review flow with confirm-before-save semantics
-- local TTS via Supertone/Piper and Kokoro
-- optional agentic planning/deployment features
+- document-scoped `Save Vocabulary` prepare/review/confirm flow
+- local TTS through Supertone/Piper and Kokoro
+- optional agentic endpoints behind `OPENAI_API_KEY`
+
+## Source Of Truth
+
+- structure and ownership: `structure.md`
+- architecture and ports: `docs/agents/architecture.md`
+- commands, launcher, tests, endpoints: `docs/agents/runbook.md`
+- live operational facts and current priorities: `docs/agents/context.md`
+
+Everything else is secondary. Do not treat `dist/`, `node_modules/`, caches, logs, or generated artifacts as source of truth.
 
 ## Working Rules
 
-- Preserve the clean-architecture direction inside `backend/src`.
-- Treat `backend/gateway`, `backend/services/*`, and `backend/shared` as the runtime split.
-- Do not import concrete infrastructure into application or presentation layers.
+- Preserve the split between `backend/gateway`, `backend/services/*`, `backend/shared`, and `backend/src`.
+- Keep `backend/gateway` thin: validate HTTP shape, proxy to services, map upstream errors.
+- Keep cross-process contracts in `backend/shared/src/contracts/*`.
+- Preserve clean-architecture direction inside `backend/src`.
 - Keep the base OCR/TTS/document/vocabulary runtime independent from `OPENAI_API_KEY`.
-- Update documentation together with code when routes, ports, stores, launchers, or file layout change.
-- Do not treat `dist/`, `node_modules/`, `*.tsbuildinfo`, caches, or runtime logs as source of truth.
-- When changing the file tree, update `structure.md` and `docs/agents/file-map.md`.
-- When changing contracts, update gateway DTO assumptions, shared contracts, frontend API wrappers, and docs together.
-- When changing `Save Vocabulary` or review/editor behavior, update browser e2e coverage and automation docs together.
+- Do not reintroduce the old frontend `model/` or `viewmodel/` layout.
+- Update docs together with code whenever routes, ports, launchers, contracts, stores, or runtime behavior change.
+- When changing tests, keep `docs/agents/runbook.md` aligned with the actual commands.
+- When changing agent-facing docs, keep the MCP doc catalog in `scripts/mcp-vocab-server.js` aligned.
 
-## Architecture Guardrails
+## Ownership
 
-### Backend
+- Repository structure and docs: `README.md`, `CLAUDE.md`, `agents.md`, `structure.md`, `docs/agents/*`
+- Backend runtime: `backend/gateway`, `backend/services/*`, `backend/shared`, `backend/src`
+- Frontend runtime: `frontend/src/*`
+- Python sidecars: `services/nlp/*`, `services/tts/*`
+- Launcher and automation: `scripts/linux/*`, `scripts/e2e/*`, `scripts/perf/*`
+- Local MCP: `scripts/mcp-vocab-server.js`
 
-- HTTP entrypoint: `backend/gateway`
-- TCP services: `backend/services/{ocr,tts,document,vocabulary,agentic}`
-- process boundary contracts: `backend/shared`
-- reusable implementation: `backend/src`
+## Mandatory Checks Before Changes
 
-Dependency expectations:
-
-- `backend/shared` contains only shared entities, ports, value objects, and TCP contracts
-- `backend/gateway` must stay thin: validate HTTP shape, proxy to TCP, map upstream errors
-- `backend/services/*` host service-specific Nest apps
-- `backend/src` remains the business-logic source reused by services
-
-### Frontend
-
-Current frontend layout is:
-
-- `features/` for domain stores and feature-local components
-- `shared/` for HTTP wrappers, types, and pure utilities
-- `ui/` for shared presentational primitives
-- `view/` for cross-feature composition surfaces
-
-Do not reintroduce the removed `model/` / `viewmodel/` structure.
-
-## Role Ownership
-
-### Repository Architect
-
-- Owns monorepo-wide structure, runtime split, and documentation integrity.
-- Must update `structure.md` and `docs/agents/file-map.md` when the tree changes.
-
-### Backend Architect
-
-- Owns `backend/src`, `backend/gateway`, `backend/services/*`, and `backend/shared`.
-- Protects the gateway/services/shared split.
-- Ensures new cross-process payloads are defined in `backend/shared/src/contracts/*`.
-- Ensures local and shared DI tokens stay aligned where both are used.
-- Owns the document-vocabulary prepare/confirm contract surface across document and vocabulary services.
-
-### Gateway Owner
-
-- Owns `backend/gateway/*`.
-- Keeps HTTP concerns in the gateway only.
-- Preserves upstream error mapping behavior.
-- Updates user-facing API docs when routes or validation rules change.
-
-### Service Owner
-
-- Owns `backend/services/*`.
-- Keeps each service narrowly scoped to its bounded responsibility.
-- Ensures service app modules bind the required local and shared tokens.
-
-### Agentic Architect
-
-- Owns `backend/src/agentic/*` and `backend/services/agentic/*`.
-- Documents schema changes, tool changes, and deployment behavior.
-- Responsible for future graceful degradation when `OPENAI_API_KEY` is absent.
-
-### Frontend Architect
-
-- Owns `frontend/src/*`.
-- Preserves the feature/store/view split.
-- Keeps orchestration in hooks and stores, not in shared UI primitives.
-- Updates docs whenever store layout or result-panel flows change.
-- Preserves the explicit `Save Document` / `Save Vocabulary` split and the review overlay editor workflow.
-
-### OCR Integration Owner
-
-- Owns LM Studio OCR and OCR health integration.
-- Must update docs when OCR or structuring contracts change.
-
-### TTS Integration Owner
-
-- Owns Supertone/Piper and Kokoro sidecars plus backend integrations.
-- Must update docs when sidecar contracts, launcher behavior, health fields, or frontend engine options change.
-- Preserves the current rule that launcher defaults are configured in `scripts/linux/tts-models.conf`.
-
-### Documentation Steward
-
-- Owns `README.md`, `CLAUDE.md`, `agents.md`, `structure.md`, `docs/agents/*`, and `docs/agent-ecosystem.md`.
-- Maintains current-state accuracy, not aspirational descriptions.
-- Must keep `playwright*.config.ts` and `scripts/e2e/*` references aligned with the current automation entrypoints.
+- Are public routes changing under `/api/*`?
+- Are TCP contracts in `backend/shared/src/contracts/*` changing?
+- Are ports, launcher defaults, or health payload fields changing?
+- Are frontend store boundaries or the `Save Vocabulary` flow changing?
+- Are test commands, launcher steps, or local setup instructions changing?
+- Are agent-facing docs or MCP project maps now stale because of this task?
 
 ## Handoff Protocol
 
-Every significant task handoff must include:
+Every non-trivial handoff should include:
 
 - `goal`
 - `scope`
 - `constraints`
-- `inputs`
-- `deliverables`
+- `changed files`
 - `verification`
-
-## Mandatory Checks Before Changes
-
-Verify all applicable items before implementation:
-
-- Are public routes changing?
-  - `/api/ocr`
-  - `/api/health`
-  - `/api/tts`
-  - `/api/documents/*`
-  - `/api/documents/:id/vocabulary/*`
-  - `/api/vocabulary/*`
-  - `/api/practice/*`
-  - `/api/agents/*`
-- Are TCP contracts in `backend/shared/src/contracts/*` changing?
-- Are health response fields changing?
-- Are launcher defaults or runtime ports changing?
-- Are frontend store boundaries or result-panel flows changing?
-- Are docs now stale because of this task?
+- `open risks`
 
 ## Primary Entry Points
 
-- Gateway bootstrap: `backend/gateway/src/main.ts`
-- Gateway root module: `backend/gateway/src/app.module.ts`
-- OCR TCP service: `backend/services/ocr/src/main.ts`
-- TTS TCP service: `backend/services/tts/src/main.ts`
-- Document TCP service: `backend/services/document/src/main.ts`
-- Vocabulary TCP service: `backend/services/vocabulary/src/main.ts`
-- Agentic TCP service: `backend/services/agentic/src/main.ts`
-- Frontend root: `frontend/src/App.tsx`
+- gateway bootstrap: `backend/gateway/src/main.ts`
+- gateway root module: `backend/gateway/src/app.module.ts`
+- OCR service: `backend/services/ocr/src/main.ts`
+- TTS service: `backend/services/tts/src/main.ts`
+- document service: `backend/services/document/src/main.ts`
+- vocabulary service: `backend/services/vocabulary/src/main.ts`
+- agentic service: `backend/services/agentic/src/main.ts`
+- frontend root: `frontend/src/App.tsx`
+- launcher: `scripts/linux/ocr.sh`
+- local MCP: `scripts/mcp-vocab-server.js`
 
 ## Current Runtime Facts
 
-- launcher defaults currently enable Kokoro by default
+- launcher defaults currently enable Kokoro and disable Supertone
 - Kokoro is blocked client-side for Cyrillic text
-- browser/perf automation may run with `LM_STUDIO_SMOKE_ONLY=true`
-- `Save Vocabulary` prepares document-scoped candidates before writing to the shared vocabulary store
-- the review overlay contains an embedded editor and optional LLM review toggle
-- lightweight browser e2e exists for this flow via `test:e2e:browser:vocab`
-- document vocabulary extraction prefers the optional Stanza sidecar on `:8501`
-- for English targets, BERT sidecar on `:8502` (`prajjwal1/bert-tiny`) scores candidates via MLM and adjusts `selectedByDefault`; optional and degrades silently
+- document vocabulary extraction prefers Stanza on `:8501`
+- English candidate scoring may use the optional BERT sidecar on `:8502`
+- `Save Vocabulary` uses prepare and confirm endpoints before writing to the shared vocabulary store
+- browser and perf automation may use `LM_STUDIO_SMOKE_ONLY=true`
+- the local project MCP has been expanded to cover maps, repo navigation, DB access, testing, launcher control, and log diagnosis
 
-## Related Docs
+## Kept Agent Docs
 
-- `README.md`
-- `CLAUDE.md`
-- `structure.md`
-- `docs/agents/project-overview.md`
 - `docs/agents/architecture.md`
-- `docs/agents/file-map.md`
 - `docs/agents/runbook.md`
 - `docs/agents/context.md`
-- `docs/agents/adr.md`
-- `docs/agents/task-log.md`

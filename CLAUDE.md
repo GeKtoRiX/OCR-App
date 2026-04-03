@@ -20,7 +20,8 @@ The current backend runtime is no longer a single NestJS process. It is split in
 - `agents.md` - agent roles, handoff rules, working constraints
 - `structure.md` - repository structure contract
 - `docs/agents/architecture.md` - detailed architecture
-- `docs/agents/runbook.md` - current commands and endpoint examples
+- `docs/agents/runbook.md` - current commands, launcher workflow, and key endpoints
+- `docs/agents/context.md` - live operational facts and current agent context
 
 ## Tech Stack
 

@@ -29,6 +29,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 const { execFile } = require('child_process');
 const util = require('util');
 const Database = require('better-sqlite3');
@@ -49,6 +50,8 @@ const DEFAULT_LM_STUDIO_URL =
 const PERF_LOG_DIR = path.join(ROOT, 'tmp', 'perf', 'logs');
 const RUNTIME_LOG_DIR = path.join(ROOT, 'logs');
 const OCR_LAUNCHER = path.join(ROOT, 'scripts', 'linux', 'ocr.sh');
+const ROOT_PACKAGE_JSON = path.join(ROOT, 'package.json');
+const TTS_MODELS_CONFIG = path.join(ROOT, 'scripts', 'linux', 'tts-models.conf');
 
 const vocabDb = new Database(VOCAB_DB_PATH, { readonly: true });
 const docDb = new Database(DOC_DB_PATH, { readonly: true });
@@ -62,19 +65,11 @@ const ALLOWED_SMOKE_SCRIPTS = new Set([
   'smoke:kokoro',
 ]);
 
-const ALLOWED_RUNTIME_LOGS = new Set([
-  'backend.log',
-  'svc-ocr.log',
-  'svc-tts.log',
-  'svc-doc.log',
-  'svc-vocab.log',
-  'svc-agentic.log',
-  'supertone.log',
-  'kokoro.log',
-  'stanza.log',
-  'bert.log',
-  'lmstudio.log',
-]);
+const DATABASES = {
+  vocabulary: { path: VOCAB_DB_PATH, db: vocabDb },
+  documents: { path: DOC_DB_PATH, db: docDb },
+  runtime: { path: path.join(ROOT, 'data', 'ocr-app.db') },
+};
 
 function asPrettyJson(value) {
   return JSON.stringify(value, null, 2);
@@ -133,12 +128,22 @@ function resolvePerfLogFile(filename) {
 
 function resolveRuntimeLogFile(filename) {
   const safe = path.basename(String(filename || '').trim());
-  if (!ALLOWED_RUNTIME_LOGS.has(safe)) {
-    throw new Error(
-      `filename must be one of: ${Array.from(ALLOWED_RUNTIME_LOGS).join(', ')}`,
-    );
+  if (!safe) {
+    throw new Error('filename is required');
   }
-  return path.join(RUNTIME_LOG_DIR, safe);
+  const resolved = path.join(RUNTIME_LOG_DIR, safe);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`runtime log not found: ${safe}`);
+  }
+  return resolved;
+}
+
+function resolveDatabase(value) {
+  const key = String(value || '').trim();
+  if (!DATABASES[key]) {
+    throw new Error(`database must be one of: ${Object.keys(DATABASES).join(', ')}`);
+  }
+  return { key, ...DATABASES[key] };
 }
 
 function ensureProjectRelativeFile(value) {
@@ -159,6 +164,65 @@ function ensureSupportedTestFile(resolvedPath, patterns) {
   if (!patterns.some((pattern) => pattern.test(normalized))) {
     throw new Error('path is not a supported test file for this runner');
   }
+}
+
+function parseJsonArray(value, fallback = []) {
+  if (value == null) {
+    return fallback;
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  const parsed = JSON.parse(String(value));
+  if (!Array.isArray(parsed)) {
+    throw new Error('value must be a JSON array');
+  }
+  return parsed;
+}
+
+function ensureSafeReadOnlySql(sql) {
+  const normalized = String(sql || '').trim();
+  if (!normalized) {
+    throw new Error('sql is required');
+  }
+
+  const compact = normalized.replace(/\s+/g, ' ').trim();
+  if (compact.includes(';')) {
+    throw new Error('only a single SQL statement is allowed');
+  }
+
+  const lower = compact.toLowerCase();
+  const startsReadOnly =
+    lower.startsWith('select ') ||
+    lower.startsWith('with ') ||
+    lower.startsWith('explain ') ||
+    lower.startsWith('pragma table_info(') ||
+    lower.startsWith('pragma index_list(') ||
+    lower.startsWith('pragma index_info(') ||
+    lower.startsWith('pragma foreign_key_list(');
+  if (!startsReadOnly) {
+    throw new Error('only read-only SELECT/EXPLAIN and schema PRAGMA statements are allowed');
+  }
+
+  const forbidden = [
+    'attach ',
+    'detach ',
+    'alter ',
+    'create ',
+    'delete ',
+    'drop ',
+    'insert ',
+    'replace ',
+    'truncate ',
+    'update ',
+    'vacuum',
+    'reindex',
+  ];
+  if (forbidden.some((token) => lower.includes(token))) {
+    throw new Error('SQL contains a disallowed write/admin keyword');
+  }
+
+  return compact;
 }
 
 function walkProject(dir, options, acc = []) {
@@ -192,7 +256,521 @@ function walkProject(dir, options, acc = []) {
   return acc;
 }
 
+function isSecretLikeKey(key) {
+  return /(token|secret|key|password|passwd|auth)/i.test(String(key || ''));
+}
+
+function redactEnvValue(key, value) {
+  if (value == null || value === '') {
+    return '';
+  }
+  if (isSecretLikeKey(key)) {
+    return '<redacted>';
+  }
+  return String(value);
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function loadRootPackage() {
+  return readJsonFile(ROOT_PACKAGE_JSON);
+}
+
+function loadWorkspacePackages() {
+  const rootPackage = loadRootPackage();
+  return (rootPackage.workspaces || []).map((workspacePath) => {
+    const packageJsonPath = path.join(ROOT, workspacePath, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+      return {
+        path: workspacePath,
+        package_name: null,
+        has_package_json: false,
+      };
+    }
+
+    const pkg = readJsonFile(packageJsonPath);
+    return {
+      path: workspacePath,
+      package_name: pkg.name || null,
+      version: pkg.version || null,
+      scripts: Object.keys(pkg.scripts || {}).sort(),
+      has_package_json: true,
+    };
+  });
+}
+
+function loadWorkspacePackageDetails() {
+  const rootPackage = loadRootPackage();
+  return (rootPackage.workspaces || []).map((workspacePath) => {
+    const packageJsonPath = path.join(ROOT, workspacePath, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+      return {
+        path: workspacePath,
+        package_name: null,
+        package_json_path: path.relative(ROOT, packageJsonPath).replace(/\\/g, '/'),
+        has_package_json: false,
+        dependencies: {},
+        dev_dependencies: {},
+      };
+    }
+
+    const pkg = readJsonFile(packageJsonPath);
+    return {
+      path: workspacePath,
+      package_name: pkg.name || null,
+      package_json_path: path.relative(ROOT, packageJsonPath).replace(/\\/g, '/'),
+      version: pkg.version || null,
+      has_package_json: true,
+      scripts: Object.keys(pkg.scripts || {}).sort(),
+      dependencies: pkg.dependencies || {},
+      dev_dependencies: pkg.devDependencies || {},
+    };
+  });
+}
+
+function collectWorkspaceSourceFiles(workspacePath) {
+  const roots = [workspacePath];
+  const nestedSourceRoots = [
+    path.join(workspacePath, 'src'),
+    path.join(workspacePath, 'gateway', 'src'),
+    path.join(workspacePath, 'services'),
+  ].filter((candidate, index, all) => all.indexOf(candidate) === index);
+
+  for (const candidate of nestedSourceRoots) {
+    if (fs.existsSync(path.join(ROOT, candidate))) {
+      roots.push(candidate);
+    }
+  }
+
+  const seen = new Set();
+  const files = [];
+  for (const rootPath of roots) {
+    const absoluteRoot = path.join(ROOT, rootPath);
+    if (!fs.existsSync(absoluteRoot)) {
+      continue;
+    }
+
+    const discovered = walkProject(absoluteRoot, {
+      maxDepth: 8,
+      skipDirs: new Set(['node_modules', '.git', 'dist', 'coverage', '.venv', '.venv.bak', '__pycache__']),
+      fileFilter: (_, name) =>
+        /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name) &&
+        !name.endsWith('.spec.ts') &&
+        !name.endsWith('.spec.tsx'),
+    });
+    for (const relative of discovered) {
+      if (!seen.has(relative)) {
+        seen.add(relative);
+        files.push(relative);
+      }
+    }
+  }
+  return files.sort();
+}
+
+function buildDependencyMap() {
+  const rootPackage = loadRootPackage();
+  const workspacePackages = loadWorkspacePackageDetails();
+  const workspaceNames = new Set(
+    workspacePackages
+      .map((item) => item.package_name)
+      .filter(Boolean),
+  );
+
+  const packages = workspacePackages.map((workspace) => {
+    const declaredDeps = workspace.dependencies || {};
+    const declaredDevDeps = workspace.dev_dependencies || {};
+    const sourceFiles = collectWorkspaceSourceFiles(workspace.path);
+    const sourceTextByFile = sourceFiles.map((relativePath) => ({
+      path: relativePath,
+      text: fs.readFileSync(path.join(ROOT, relativePath), 'utf8'),
+    }));
+
+    const internalWorkspaceDeps = workspacePackages
+      .filter((candidate) => candidate.package_name && candidate.package_name !== workspace.package_name)
+      .map((candidate) => {
+        const hits = sourceTextByFile
+          .filter((file) => file.text.includes(candidate.package_name))
+          .map((file) => file.path)
+          .slice(0, 10);
+        if (hits.length === 0) {
+          return null;
+        }
+        return {
+          package_name: candidate.package_name,
+          workspace_path: candidate.path,
+          declared_in_package_json:
+            Object.prototype.hasOwnProperty.call(declaredDeps, candidate.package_name) ||
+            Object.prototype.hasOwnProperty.call(declaredDevDeps, candidate.package_name),
+          evidence_files: hits,
+        };
+      })
+      .filter(Boolean);
+
+    const externalDependencies = Object.entries(declaredDeps)
+      .filter(([depName]) => !workspaceNames.has(depName))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([depName, version]) => ({ name: depName, version }));
+
+    const externalDevDependencies = Object.entries(declaredDevDeps)
+      .filter(([depName]) => !workspaceNames.has(depName))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([depName, version]) => ({ name: depName, version }));
+
+    return {
+      path: workspace.path,
+      package_name: workspace.package_name,
+      version: workspace.version || null,
+      package_json_path: workspace.package_json_path,
+      internal_workspace_dependencies: internalWorkspaceDeps,
+      external_dependencies: externalDependencies,
+      external_dev_dependencies: externalDevDependencies,
+      source_file_count: sourceFiles.length,
+    };
+  });
+
+  return {
+    root_package: {
+      name: rootPackage.name || null,
+      version: rootPackage.version || null,
+      workspaces: rootPackage.workspaces || [],
+    },
+    packages,
+    notes: [
+      'internal_workspace_dependencies are inferred from source imports/usages, not only package.json declarations.',
+      'declared_in_package_json helps spot workspace links that rely on tsconfig/path mapping or npm workspace linking without explicit dependency entries.',
+      'external dependency lists exclude workspace-local packages.',
+    ],
+  };
+}
+
+function parseSimpleEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+  const result = {};
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+    const match = trimmed.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (!match) {
+      continue;
+    }
+    result[match[1]] = match[2];
+  }
+  return result;
+}
+
+function buildDocCatalog() {
+  const docs = [
+    { path: 'README.md', purpose: 'user-facing overview, setup, runtime, and MCP registration' },
+    { path: 'CLAUDE.md', purpose: 'engineering guide and local operating context' },
+    { path: 'agents.md', purpose: 'agent roles, boundaries, and collaboration notes' },
+    { path: 'structure.md', purpose: 'repository structure contract and allowed layout' },
+    { path: 'docs/agents/architecture.md', purpose: 'architecture, flows, ports, and constraints' },
+    { path: 'docs/agents/context.md', purpose: 'recent confirmed facts, risks, and current context' },
+    { path: 'docs/agents/runbook.md', purpose: 'operational runbook and workflow notes' },
+  ];
+
+  return docs.filter((item) => fs.existsSync(path.join(ROOT, item.path)));
+}
+
+function buildRepoTree(relativePath = '.', options = {}) {
+  const start = ensureProjectRelativeFile(relativePath);
+  const maxDepth = Math.max(0, Math.min(Number.parseInt(String(options.maxDepth ?? 2), 10) || 2, 6));
+  const includeFiles = options.includeFiles !== false;
+  const limit = Math.max(1, Math.min(Number.parseInt(String(options.limit ?? 500), 10) || 500, 2000));
+  const skipDirs = new Set(['node_modules', '.git', 'dist', 'coverage', '.venv', '.venv.bak', '__pycache__']);
+  const results = [];
+
+  function visit(currentPath, depth) {
+    if (results.length >= limit || depth > maxDepth) {
+      return;
+    }
+
+    const stat = fs.statSync(currentPath);
+    const rel = path.relative(ROOT, currentPath).replace(/\\/g, '/') || '.';
+    if (stat.isDirectory()) {
+      results.push({ path: rel, type: 'dir', depth });
+      const entries = fs.readdirSync(currentPath, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        if (results.length >= limit) {
+          break;
+        }
+        if (entry.isDirectory()) {
+          if (skipDirs.has(entry.name)) {
+            continue;
+          }
+          visit(path.join(currentPath, entry.name), depth + 1);
+        } else if (includeFiles) {
+          results.push({
+            path: path.relative(ROOT, path.join(currentPath, entry.name)).replace(/\\/g, '/'),
+            type: 'file',
+            depth: depth + 1,
+          });
+        }
+      }
+      return;
+    }
+
+    if (includeFiles) {
+      results.push({ path: rel, type: 'file', depth });
+    }
+  }
+
+  visit(start, 0);
+  return {
+    root: path.relative(ROOT, start).replace(/\\/g, '/') || '.',
+    max_depth: maxDepth,
+    include_files: includeFiles,
+    limit,
+    truncated: results.length >= limit,
+    entries: results.slice(0, limit),
+  };
+}
+
+function discoverGatewayRoutes() {
+  const controllerFiles = walkProject(path.join(ROOT, 'backend', 'gateway', 'src'), {
+    maxDepth: 3,
+    fileFilter: (fullPath, name) => name.endsWith('.controller.ts'),
+  }).sort();
+
+  const routes = [];
+  for (const relative of controllerFiles) {
+    const filePath = path.join(ROOT, relative);
+    const source = fs.readFileSync(filePath, 'utf8');
+    const controllerMatch = source.match(/@Controller\(\s*['"`]([^'"`]+)['"`]\s*\)/);
+    const base = controllerMatch ? controllerMatch[1] : '';
+    const regex = /@(Get|Post|Put|Delete|Patch)\(\s*(?:['"`]([^'"`]*)['"`])?\s*\)/g;
+    let match = null;
+    while ((match = regex.exec(source)) !== null) {
+      const method = match[1].toUpperCase();
+      const suffix = match[2] || '';
+      const fullPath = `/${[base, suffix].filter(Boolean).join('/')}`.replace(/\/+/g, '/');
+      routes.push({
+        file: relative,
+        method,
+        path: fullPath,
+        controller_base: base,
+      });
+    }
+  }
+
+  return {
+    controllers: controllerFiles,
+    routes,
+  };
+}
+
+function buildServiceInventory() {
+  const gatewayControllers = walkProject(path.join(ROOT, 'backend', 'gateway', 'src'), {
+    maxDepth: 3,
+    fileFilter: (fullPath, name) => name.endsWith('.controller.ts') || name.endsWith('.module.ts'),
+  }).sort();
+  const serviceEntrypoints = walkProject(path.join(ROOT, 'backend', 'services'), {
+    maxDepth: 4,
+    fileFilter: (fullPath, name) => ['main.ts', 'app.module.ts'].includes(name) || name.endsWith('.message.controller.ts'),
+  }).sort();
+  const sidecars = walkProject(path.join(ROOT, 'services'), {
+    maxDepth: 4,
+    fileFilter: (_, name) => ['main.py', 'requirements.txt', 'smoke_test.py'].includes(name),
+  }).sort();
+
+  return {
+    gateway: gatewayControllers,
+    services: serviceEntrypoints,
+    sidecars,
+    launcher: [
+      'scripts/linux/ocr.sh',
+      'scripts/linux/ocr-common.sh',
+      'scripts/linux/tts-models.conf',
+    ],
+  };
+}
+
+function buildConfigMap() {
+  const rootPackage = loadRootPackage();
+  const launcherDefaults = parseSimpleEnvFile(TTS_MODELS_CONFIG);
+  const envFile = parseSimpleEnvFile(path.join(ROOT, '.env'));
+
+  return {
+    root_package: {
+      name: rootPackage.name || null,
+      version: rootPackage.version || null,
+      workspaces: rootPackage.workspaces || [],
+      scripts: Object.keys(rootPackage.scripts || {}).sort(),
+    },
+    workspace_packages: loadWorkspacePackages(),
+    launcher_tts_defaults: launcherDefaults,
+    env_file_keys: Object.keys(envFile).sort().map((key) => ({
+      key,
+      value: redactEnvValue(key, envFile[key]),
+    })),
+  };
+}
+
+function buildEnvMap() {
+  const envFile = parseSimpleEnvFile(path.join(ROOT, '.env'));
+  const interestingKeys = [
+    'PORT',
+    'OCR_SERVICE_PORT',
+    'TTS_SERVICE_PORT',
+    'DOCUMENT_SERVICE_PORT',
+    'VOCABULARY_SERVICE_PORT',
+    'AGENTIC_SERVICE_PORT',
+    'LM_STUDIO_BASE_URL',
+    'STRUCTURING_MODEL',
+    'DOCUMENTS_SQLITE_DB_PATH',
+    'VOCABULARY_SQLITE_DB_PATH',
+    'SQLITE_DB_PATH',
+    'SUPERTONE_HOST',
+    'SUPERTONE_PORT',
+    'KOKORO_HOST',
+    'KOKORO_PORT',
+    'STANZA_HOST',
+    'STANZA_PORT',
+    'BERT_HOST',
+    'BERT_PORT',
+    'BERT_MODEL_NAME',
+    'OPENAI_API_KEY',
+    'LM_STUDIO_SMOKE_ONLY',
+  ];
+
+  return interestingKeys.map((key) => ({
+    key,
+    in_dotenv: Object.prototype.hasOwnProperty.call(envFile, key),
+    dotenv_value: Object.prototype.hasOwnProperty.call(envFile, key)
+      ? redactEnvValue(key, envFile[key])
+      : null,
+    in_process_env: Object.prototype.hasOwnProperty.call(process.env, key),
+    process_value: Object.prototype.hasOwnProperty.call(process.env, key)
+      ? redactEnvValue(key, process.env[key])
+      : null,
+  }));
+}
+
+function buildDatabaseSchema(databaseKey, tableName = null) {
+  const database = resolveDatabase(databaseKey);
+  if (!fs.existsSync(database.path)) {
+    return {
+      database: database.key,
+      path: path.relative(ROOT, database.path),
+      exists: false,
+      tables: [],
+    };
+  }
+
+  const activeDb = database.db || new Database(database.path, { readonly: true });
+  try {
+    const tables = activeDb.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name ASC
+    `).all().map((row) => row.name);
+
+    const selectedTables = tableName ? [tableName] : tables;
+    const schema = [];
+    for (const table of selectedTables) {
+      if (!tables.includes(table)) {
+        throw new Error(`table not found in ${database.key}: ${table}`);
+      }
+      const columns = activeDb.prepare(`PRAGMA table_info(${JSON.stringify(table)})`).all();
+      const indexes = activeDb.prepare(`PRAGMA index_list(${JSON.stringify(table)})`).all();
+      const foreignKeys = activeDb.prepare(`PRAGMA foreign_key_list(${JSON.stringify(table)})`).all();
+      schema.push({
+        table,
+        columns,
+        indexes,
+        foreign_keys: foreignKeys,
+      });
+    }
+
+    return {
+      database: database.key,
+      path: path.relative(ROOT, database.path),
+      tables: schema,
+    };
+  } finally {
+    if (!database.db) {
+      activeDb.close();
+    }
+  }
+}
+
+async function getProcessSnapshot() {
+  const result = await runCommandCapture(
+    'bash',
+    ['-lc', `ps -eo pid=,ppid=,comm=,args= | rg -i "(${ROOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|ocrProject|lmstudio|uvicorn|playwright|nest start|backend/dist|frontend|stanza-service|bert-service|kokoro-service|supertone-service)"`],
+    { cwd: ROOT, timeout: 15_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+  const lines = result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+  return {
+    ok: result.ok,
+    processes: lines,
+    stderr: result.stderr,
+  };
+}
+
+function probeTcpPort(port, host = '127.0.0.1', timeoutMs = 1200) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    const finish = (status, error = null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      socket.destroy();
+      resolve({ port, host, open: status, error });
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false, 'timeout'));
+    socket.once('error', (error) => finish(false, error.message));
+    socket.connect(port, host);
+  });
+}
+
+async function buildPortStatus(extraPorts = []) {
+  const known = [
+    { name: 'gateway', port: 3000 },
+    { name: 'vite', port: 5173 },
+    { name: 'ocr-service', port: 3901 },
+    { name: 'tts-service', port: 3902 },
+    { name: 'document-service', port: 3903 },
+    { name: 'vocabulary-service', port: 3904 },
+    { name: 'agentic-service', port: 3905 },
+    { name: 'lm-studio', port: 1234 },
+    { name: 'supertone', port: 8100 },
+    { name: 'kokoro', port: 8200 },
+    { name: 'stanza', port: 8501 },
+    { name: 'bert', port: 8502 },
+  ];
+  for (const port of extraPorts) {
+    const parsed = Number.parseInt(String(port), 10);
+    if (Number.isFinite(parsed) && !known.some((item) => item.port === parsed)) {
+      known.push({ name: `custom-${parsed}`, port: parsed });
+    }
+  }
+
+  const statuses = await Promise.all(known.map(async (item) => ({
+    ...item,
+    ...(await probeTcpPort(item.port)),
+  })));
+  return statuses;
+}
+
 function buildProjectMap() {
+  const workspacePackages = loadWorkspacePackages();
+  const docs = buildDocCatalog();
   const zones = [
     {
       area: 'frontend',
@@ -232,7 +810,7 @@ function buildProjectMap() {
     {
       area: 'data',
       path: 'data',
-      purpose: 'live SQLite and editor asset storage',
+      purpose: 'live SQLite stores, editor assets, and legacy runtime DB',
     },
     {
       area: 'e2e',
@@ -260,14 +838,76 @@ function buildProjectMap() {
 
   return {
     root: ROOT,
+    workspace_packages: workspacePackages,
     zones,
     key_files: keyFiles,
     package_files: packageFiles,
+    docs,
     notes: [
       'Gateway lives under backend/gateway/src, while most core logic and infrastructure live under backend/src.',
-      'Live user data is stored in data/*.sqlite.',
+      'Live user data is primarily stored in data/documents.sqlite and data/vocabulary.sqlite, with data/ocr-app.db still present as a legacy/runtime database.',
       'The project MCP server itself lives in scripts/mcp-vocab-server.js.',
     ],
+  };
+}
+
+function buildArchitectureMap() {
+  const launcherDefaults = parseSimpleEnvFile(TTS_MODELS_CONFIG);
+
+  return {
+    runtime_topology: {
+      frontend: { type: 'React/Vite SPA', path: 'frontend', port: 5173 },
+      gateway: { type: 'NestJS HTTP gateway', path: 'backend/gateway', port: 3000 },
+      services: [
+        { name: 'ocr', transport: 'TCP', path: 'backend/services/ocr', port: 3901 },
+        { name: 'tts', transport: 'TCP', path: 'backend/services/tts', port: 3902 },
+        { name: 'document', transport: 'TCP', path: 'backend/services/document', port: 3903 },
+        { name: 'vocabulary', transport: 'TCP', path: 'backend/services/vocabulary', port: 3904 },
+        { name: 'agentic', transport: 'TCP', path: 'backend/services/agentic', port: 3905, optional_cloud_dependency: true },
+      ],
+      python_sidecars: [
+        { name: 'stanza', path: 'services/nlp/stanza-service', port: 8501, optional: true },
+        { name: 'bert', path: 'services/nlp/bert-service', port: 8502, optional: true, language_scope: 'en' },
+        { name: 'supertone', path: 'services/tts/supertone-service', port: 8100, optional: true },
+        { name: 'kokoro', path: 'services/tts/kokoro-service', port: 8200, optional: true },
+      ],
+      llm_runtime: {
+        provider: 'LM Studio',
+        base_url: 'http://127.0.0.1:1234/v1',
+        used_by: ['ocr', 'vocabulary', 'document candidate enrichment', 'practice/session analysis'],
+      },
+    },
+    codebase_shape: {
+      monorepo_workspaces: loadWorkspacePackages(),
+      backend_layers: [
+        'backend/shared for contracts and shared abstractions',
+        'backend/gateway for HTTP controllers and static hosting',
+        'backend/services/* for TCP-hosted bounded contexts',
+        'backend/src for reusable clean-architecture implementation',
+      ],
+      frontend_shape: [
+        'feature-oriented folders under frontend/src/features',
+        'shared API/types utilities under frontend/src/shared',
+        'screen composition under frontend/src/view',
+        'reusable UI atoms under frontend/src/ui',
+      ],
+    },
+    storage: {
+      primary_databases: buildDatabaseOverview().map((item) => ({
+        database: item.database,
+        path: item.path,
+        tables: item.tables,
+        exists: item.exists,
+      })),
+      assets: ['data/editor-assets'],
+    },
+    constraints: [
+      'Base OCR/TTS/document/vocabulary flows are local-first.',
+      'Agentic HTTP routes still depend on OPENAI_API_KEY.',
+      'Browser/perf automation may use LM_STUDIO_SMOKE_ONLY=true.',
+      `Launcher TTS defaults currently read as SUPERTONE=${launcherDefaults.TTS_ENABLE_SUPERTONE || 'unset'}, KOKORO=${launcherDefaults.TTS_ENABLE_KOKORO || 'unset'}.`,
+    ],
+    key_docs: buildDocCatalog(),
   };
 }
 
@@ -333,10 +973,351 @@ function buildApiMap() {
         routes: ['POST /architecture', 'POST /deploy'],
       },
     ],
+    static_assets: [
+      'GET /editor-assets/*',
+    ],
+  };
+}
+
+function normalizeRouteMethod(value) {
+  const method = String(value || '').trim().toUpperCase();
+  if (!method) {
+    return null;
+  }
+  const allowed = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+  if (!allowed.has(method)) {
+    throw new Error(`method must be one of: ${Array.from(allowed).join(', ')}`);
+  }
+  return method;
+}
+
+function normalizeApiLikePath(value) {
+  const routePath = String(value || '').trim();
+  if (!routePath.startsWith('/')) {
+    throw new Error('path must start with /');
+  }
+  return routePath;
+}
+
+function routePatternMatches(pattern, actualPath) {
+  const patternParts = String(pattern).split('/').filter(Boolean);
+  const actualParts = String(actualPath).split('/').filter(Boolean);
+  if (patternParts.length !== actualParts.length) {
+    return false;
+  }
+  for (let index = 0; index < patternParts.length; index += 1) {
+    const patternPart = patternParts[index];
+    const actualPart = actualParts[index];
+    if (patternPart.startsWith(':')) {
+      continue;
+    }
+    if (patternPart !== actualPart) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildRouteTrace(method, routePath) {
+  const normalizedMethod = normalizeRouteMethod(method);
+  const normalizedPath = normalizeApiLikePath(routePath);
+  const discovered = discoverGatewayRoutes();
+
+  const matches = discovered.routes.filter((route) => {
+    if (normalizedMethod && route.method !== normalizedMethod) {
+      return false;
+    }
+    return route.path === normalizedPath || routePatternMatches(route.path, normalizedPath);
+  }).map((route) => {
+    const controllerAbsolute = path.join(ROOT, route.file);
+    const modulePath = route.file.replace('.controller.ts', '.module.ts');
+    const specPath = route.file.replace('.controller.ts', '.controller.spec.ts');
+    return {
+      method: route.method,
+      path: route.path,
+      requested_path: normalizedPath,
+      controller_file: route.file,
+      controller_exists: fs.existsSync(controllerAbsolute),
+      module_file: fs.existsSync(path.join(ROOT, modulePath)) ? modulePath : null,
+      spec_file: fs.existsSync(path.join(ROOT, specPath)) ? specPath : null,
+      controller_base: route.controller_base,
+    };
+  });
+
+  return {
+    method: normalizedMethod,
+    requested_path: normalizedPath,
+    match_count: matches.length,
+    matches,
+  };
+}
+
+async function buildFeatureMap(query, limit = 40) {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) {
+    throw new Error('query is required');
+  }
+  const normalizedLimit = normalizeLimit(limit, 40, 200);
+  const sharedArgs = [
+    '-n',
+    '-i',
+    '--no-heading',
+    '--color',
+    'never',
+    '--max-count',
+    String(normalizedLimit),
+  ];
+
+  const content = await runCommandCapture(
+    'rg',
+    [
+      ...sharedArgs,
+      '-g', '!package-lock.json',
+      '-g', '!**/node_modules/**',
+      '-g', '!**/dist/**',
+      '-g', '!**/coverage/**',
+      normalizedQuery,
+      ROOT,
+    ],
+    { cwd: ROOT, timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+
+  const filenames = await runCommandCapture(
+    'rg',
+    [
+      '--files',
+      ROOT,
+      '-g', `*${normalizedQuery}*`,
+    ],
+    { cwd: ROOT, timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+
+  const fileMatches = filenames.ok
+    ? filenames.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((item) => path.relative(ROOT, item))
+      .slice(0, normalizedLimit)
+    : [];
+
+  const contentMatches = content.ok
+    ? content.stdout
+      .split('\n')
+      .filter(Boolean)
+      .slice(0, normalizedLimit)
+      .map((line) => {
+        const parts = line.split(':');
+        const filePath = parts.shift() || '';
+        const lineNumber = Number.parseInt(parts.shift() || '0', 10) || null;
+        return {
+          path: path.relative(ROOT, filePath),
+          line: lineNumber,
+          snippet: parts.join(':').trim(),
+        };
+      })
+    : [];
+
+  const grouped = {
+    docs: [],
+    frontend: [],
+    backend: [],
+    tests: [],
+    scripts: [],
+    other: [],
+  };
+
+  const classifyPath = (relativePath) => {
+    if (relativePath.startsWith('docs/') || ['README.md', 'CLAUDE.md', 'agents.md', 'structure.md'].includes(relativePath)) {
+      return 'docs';
+    }
+    if (relativePath.startsWith('frontend/')) {
+      return 'frontend';
+    }
+    if (relativePath.startsWith('backend/')) {
+      return relativePath.includes('.spec.') || relativePath.includes('.e2e.') ? 'tests' : 'backend';
+    }
+    if (relativePath.startsWith('e2e/')) {
+      return 'tests';
+    }
+    if (relativePath.startsWith('scripts/')) {
+      return 'scripts';
+    }
+    return 'other';
+  };
+
+  for (const item of contentMatches) {
+    grouped[classifyPath(item.path)].push(item);
+  }
+
+  return {
+    query: normalizedQuery,
+    limit: normalizedLimit,
+    filename_matches: fileMatches,
+    content_matches: grouped,
+    notes: [
+      'filename_matches are broad path hits and are useful as a first navigation pass.',
+      'content_matches are grouped by project area to reduce manual ripgrep usage.',
+    ],
+  };
+}
+
+function stripAnsi(value) {
+  return String(value || '').replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function buildImportGraph(relativePath, maxCallers = 50) {
+  const filePath = ensureProjectRelativeFile(relativePath);
+  const normalizedPath = path.relative(ROOT, filePath).replace(/\\/g, '/');
+  const source = fs.readFileSync(filePath, 'utf8');
+  const importRegex = /(?:import\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?|export\s+[\s\S]*?\s+from\s+|require\()\s*['"`]([^'"`]+)['"`]/g;
+  const imports = [];
+  let match = null;
+  while ((match = importRegex.exec(source)) !== null) {
+    imports.push(match[1]);
+  }
+
+  const internalImports = [];
+  const externalImports = [];
+  for (const specifier of imports) {
+    if (specifier.startsWith('.') || specifier.startsWith('/')) {
+      internalImports.push(specifier);
+    } else {
+      externalImports.push(specifier);
+    }
+  }
+
+  const callers = walkProject(ROOT, {
+    maxDepth: 8,
+    skipDirs: new Set(['node_modules', '.git', 'dist', 'coverage', '.venv', '.venv.bak', '__pycache__']),
+    fileFilter: (_, name) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name),
+  })
+    .filter((candidate) => candidate !== normalizedPath)
+    .filter((candidate) => {
+      const candidateSource = fs.readFileSync(path.join(ROOT, candidate), 'utf8');
+      return candidateSource.includes(normalizedPath) || candidateSource.includes(path.basename(normalizedPath));
+    })
+    .slice(0, Math.max(1, Math.min(Number.parseInt(String(maxCallers), 10) || 50, 200)));
+
+  return {
+    path: normalizedPath,
+    internal_imports: Array.from(new Set(internalImports)).sort(),
+    external_imports: Array.from(new Set(externalImports)).sort(),
+    imported_by_candidates: callers,
+    notes: [
+      'imported_by_candidates are heuristic text matches and are meant for navigation, not exact compiler resolution.',
+      'internal_imports preserve relative specifiers exactly as written in the file.',
+    ],
+  };
+}
+
+function buildTestCoverageMap(targetPath) {
+  const resolved = ensureProjectRelativeFile(targetPath);
+  const normalizedPath = path.relative(ROOT, resolved).replace(/\\/g, '/');
+  const baseName = path.basename(normalizedPath).replace(/\.(tsx?|jsx?|mjs|cjs)$/, '');
+  const parentDir = path.dirname(normalizedPath);
+
+  const allTests = walkProject(ROOT, {
+    maxDepth: 8,
+    skipDirs: new Set(['node_modules', '.git', 'dist', 'coverage', '.venv', '.venv.bak', '__pycache__']),
+    fileFilter: (_, name) => /(\.spec\.|\.test\.|\.e2e\.)\w+$/.test(name),
+  }).sort();
+
+  const directMatches = allTests.filter((testPath) => {
+    const testSource = fs.readFileSync(path.join(ROOT, testPath), 'utf8');
+    return testSource.includes(normalizedPath) || testSource.includes(baseName) || testPath.includes(baseName);
+  });
+
+  const nearbyTests = allTests.filter((testPath) => {
+    if (directMatches.includes(testPath)) {
+      return false;
+    }
+    return path.dirname(testPath).startsWith(parentDir);
+  }).slice(0, 40);
+
+  const recommendedScripts = [];
+  if (normalizedPath.startsWith('frontend/')) {
+    recommendedScripts.push('npm run test --workspace=frontend');
+  }
+  if (normalizedPath.startsWith('backend/gateway/')) {
+    recommendedScripts.push('npm run test --workspace=./backend');
+    recommendedScripts.push('npm run test:e2e:api');
+  } else if (normalizedPath.startsWith('backend/')) {
+    recommendedScripts.push('npm run test --workspace=./backend');
+  }
+  if (normalizedPath.startsWith('e2e/')) {
+    recommendedScripts.push('npm run test:e2e:browser');
+  }
+
+  return {
+    target_path: normalizedPath,
+    direct_test_matches: directMatches,
+    nearby_tests: nearbyTests,
+    recommended_scripts: Array.from(new Set(recommendedScripts)),
+    notes: [
+      'direct_test_matches are based on filename affinity and explicit text references to the target file or symbol stem.',
+      'nearby_tests help when coverage exists at the feature-folder level rather than the exact file level.',
+    ],
+  };
+}
+
+async function runLauncherCommand(subcommand) {
+  const args = [OCR_LAUNCHER];
+  if (subcommand) {
+    args.push(subcommand);
+  }
+  return runCommandCapture('bash', args, {
+    cwd: ROOT,
+    timeout: 20 * 60 * 1000,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+}
+
+async function buildLogDiagnose(filename, lines = 120) {
+  const logPath = resolveRuntimeLogFile(filename);
+  const lineCount = Math.max(20, Math.min(Number.parseInt(String(lines), 10) || 120, 400));
+  const result = await runCommandCapture(
+    'tail',
+    ['-n', String(lineCount), logPath],
+    { cwd: ROOT, timeout: 15_000, maxBuffer: 4 * 1024 * 1024 },
+  );
+
+  const text = stripAnsi(result.stdout || '');
+  const rawLines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const lowered = text.toLowerCase();
+  const issuePatterns = [
+    { key: 'address_in_use', test: /eaddrinuse|address already in use|listen eaddrinuse/i, recommendation: 'Free the occupied port or stop the previous process before restarting the service.' },
+    { key: 'module_not_found', test: /cannot find module|module not found/i, recommendation: 'Check build output paths, workspace installs, and package resolution.' },
+    { key: 'sqlite', test: /sqlite|database is locked|no such table/i, recommendation: 'Inspect SQLite paths, schema state, and concurrent writers.' },
+    { key: 'lm_studio', test: /lm studio|127\.0\.0\.1:1234|v1\/models|fetch failed/i, recommendation: 'Verify LM Studio is running, reachable, and has a loaded model.' },
+    { key: 'openai_key', test: /openai_api_key|api key|unauthorized/i, recommendation: 'Set the required API key or disable the optional cloud-dependent path.' },
+    { key: 'python_sidecar', test: /uvicorn|traceback|fastapi|pydantic/i, recommendation: 'Inspect the sidecar virtualenv, python dependencies, and service-specific startup args.' },
+  ];
+
+  const findings = issuePatterns.filter((pattern) => pattern.test.test(text)).map((pattern) => ({
+    key: pattern.key,
+    recommendation: pattern.recommendation,
+  }));
+
+  const errorLines = rawLines.filter((line) => /\b(error|exception|traceback|failed|fail|refused)\b/i.test(line)).slice(-20);
+  const warningLines = rawLines.filter((line) => /\b(warn|warning)\b/i.test(line)).slice(-20);
+
+  return {
+    filename: path.basename(logPath),
+    line_count: rawLines.length,
+    findings,
+    error_lines: errorLines,
+    warning_lines: warningLines,
+    last_lines: rawLines.slice(-30),
+    summary: lowered.includes('successfully started')
+      ? 'Service appears to have started successfully in the captured log tail.'
+      : findings.length > 0
+        ? 'Potential failure signatures detected in the log tail.'
+        : 'No strong failure signature detected in the captured log tail.',
   };
 }
 
 function buildRuntimeMap(health, lmStudio, lms) {
+  const launcherDefaults = parseSimpleEnvFile(TTS_MODELS_CONFIG);
   return {
     gateway: {
       url: DEFAULT_GATEWAY_URL,
@@ -352,17 +1333,27 @@ function buildRuntimeMap(health, lmStudio, lms) {
       lms_ps: lms,
     },
     tcp_services: [
-      { name: 'ocr-service', port: 3901 },
-      { name: 'tts-service', port: 3902 },
-      { name: 'document-service', port: 3903 },
-      { name: 'vocabulary-service', port: 3904 },
-      { name: 'agentic-service', port: 3905 },
+      { name: 'ocr-service', port: 3901, entrypoint: 'backend/services/ocr/src/main.ts' },
+      { name: 'tts-service', port: 3902, entrypoint: 'backend/services/tts/src/main.ts' },
+      { name: 'document-service', port: 3903, entrypoint: 'backend/services/document/src/main.ts' },
+      { name: 'vocabulary-service', port: 3904, entrypoint: 'backend/services/vocabulary/src/main.ts' },
+      { name: 'agentic-service', port: 3905, entrypoint: 'backend/services/agentic/src/main.ts', optional_cloud_dependency: true },
     ],
     sidecars: [
       { name: 'supertone', port: 8100, reachable: health.data?.superToneReachable ?? null },
       { name: 'kokoro', port: 8200, reachable: health.data?.kokoroReachable ?? null },
       { name: 'stanza', port: 8501, reachable: null },
       { name: 'bert', port: 8502, reachable: null },
+    ],
+    launcher_defaults: {
+      tts_enable_supertone: launcherDefaults.TTS_ENABLE_SUPERTONE || null,
+      tts_enable_kokoro: launcherDefaults.TTS_ENABLE_KOKORO || null,
+      config_path: path.relative(ROOT, TTS_MODELS_CONFIG),
+    },
+    environment_switches: [
+      'OPENAI_API_KEY gates the optional agentic runtime.',
+      'LM_STUDIO_SMOKE_ONLY swaps LM Studio-dependent logic for smoke-friendly stubs in automation paths.',
+      'DOCUMENTS_SQLITE_DB_PATH and VOCABULARY_SQLITE_DB_PATH are used by e2e/perf harnesses for isolated test databases.',
     ],
     launchers: [
       'scripts/linux/ocr.sh',
@@ -374,22 +1365,25 @@ function buildRuntimeMap(health, lmStudio, lms) {
 }
 
 function buildDataMap() {
+  const databases = buildDatabaseOverview();
   return {
-    sqlite: [
-      { file: 'data/vocabulary.sqlite', tables: ['vocabulary', 'exercise_attempts', 'practice_sessions', 'generated_exercises', 'generated_exercise_sets'] },
-      { file: 'data/documents.sqlite', tables: ['saved_documents', 'document_vocab_candidates'] },
-      { file: 'data/ocr-app.db', tables: 'legacy_or_other_runtime_db' },
-    ],
+    sqlite: databases,
     other_storage: [
       'data/editor-assets',
       'logs',
       'tmp/perf/logs',
       '.pids',
+      'tmp/test-db',
     ],
     important_links: [
       'vocabulary.source_document_id -> saved_documents.id',
       'exercise_attempts.vocabulary_id -> vocabulary.id',
       'document_vocab_candidates.document_id -> saved_documents.id',
+    ],
+    notes: [
+      'Document and vocabulary data are split into dedicated SQLite files for the active runtime.',
+      'tmp/test-db is used by browser/perf harnesses to isolate automation data.',
+      'data/ocr-app.db still exists and may reflect an older combined-schema runtime.',
     ],
   };
 }
@@ -407,6 +1401,11 @@ function buildTestMap() {
       backend_e2e: tests.filter((item) => item.startsWith('backend/') && item.includes('.e2e.')).length,
       playwright: tests.filter((item) => item.startsWith('e2e/')).length,
     },
+    groups: {
+      browser_specs: tests.filter((item) => item.startsWith('e2e/')),
+      gateway_specs: tests.filter((item) => item.startsWith('backend/gateway/')),
+      agentic_specs: tests.filter((item) => item.includes('/agentic/')),
+    },
     scripts: {
       frontend_unit: 'npm run test --workspace=frontend',
       backend_unit: 'npm run test --workspace=./backend',
@@ -416,6 +1415,9 @@ function buildTestMap() {
       browser_ai_e2e: 'npm run test:e2e:browser:ai',
       browser_vocab_e2e: 'npm run test:e2e:browser:vocab',
       launcher_e2e: 'npm run test:e2e:launcher',
+      perf_api: 'npm run perf:api',
+      perf_browser: 'npm run perf:browser',
+      perf_phase4: 'npm run perf:phase4',
       smoke: Array.from(ALLOWED_SMOKE_SCRIPTS),
     },
     files: tests,
@@ -423,6 +1425,7 @@ function buildTestMap() {
 }
 
 function buildEntryPointMap() {
+  const rootScripts = Object.keys(getNpmScripts()).sort();
   return {
     launch: [
       'scripts/linux/ocr.sh',
@@ -433,14 +1436,7 @@ function buildEntryPointMap() {
       '/home/cbandy/.codex/config.toml',
       '/home/cbandy/.lmstudio/mcp.json',
     ],
-    root_scripts: [
-      'npm run dev:frontend',
-      'npm run dev:backend',
-      'npm run mcp:project',
-      'npm run smoke:ocr',
-      'npm run smoke:lmstudio',
-      'npm run test:e2e:browser',
-    ],
+    root_scripts: rootScripts.map((name) => `npm run ${name}`),
     backend_entrypoints: [
       'backend/gateway/src/main.ts',
       'backend/services/ocr/src/main.ts',
@@ -449,7 +1445,109 @@ function buildEntryPointMap() {
       'backend/services/vocabulary/src/main.ts',
       'backend/services/agentic/src/main.ts',
     ],
+    browser_harnesses: [
+      'scripts/e2e/prepare-browser-env.sh',
+      'scripts/e2e/prepare-save-vocabulary-env.sh',
+      'scripts/e2e/browser-stack.sh',
+      'scripts/e2e/stop-browser-env.sh',
+    ],
+    perf_harnesses: [
+      'scripts/perf/api-benchmark.mjs',
+      'scripts/perf/browser-benchmark.mjs',
+      'scripts/perf/run-phase4.sh',
+    ],
   };
+}
+
+function buildDocsMap() {
+  return {
+    docs: buildDocCatalog(),
+    notes: [
+      'README.md is the user/operator entrypoint.',
+      'structure.md is the closest thing to a repository contract.',
+      'docs/agents/* is intentionally compact and captures architecture, runbook, and live context only.',
+    ],
+  };
+}
+
+function buildDatabaseOverview(databaseKey) {
+  const requested = databaseKey ? [resolveDatabase(databaseKey)] : Object.entries(DATABASES).map(
+    ([key, value]) => ({ key, ...value }),
+  );
+
+  return requested.map(({ key, path: dbPath, db }) => {
+    if (!fs.existsSync(dbPath)) {
+      return {
+        database: key,
+        path: path.relative(ROOT, dbPath),
+        exists: false,
+        tables: [],
+      };
+    }
+
+    const activeDb = db || new Database(dbPath, { readonly: true });
+    try {
+      const tables = activeDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name ASC
+      `).all().map((row) => row.name);
+
+      const views = activeDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'view'
+        ORDER BY name ASC
+      `).all().map((row) => row.name);
+
+      return {
+        database: key,
+        path: path.relative(ROOT, dbPath),
+        exists: true,
+        tables,
+        views,
+      };
+    } finally {
+      if (!db) {
+        activeDb.close();
+      }
+    }
+  });
+}
+
+function listProjectLogs(scope = 'all') {
+  const includeRuntime = scope === 'all' || scope === 'runtime';
+  const includePerf = scope === 'all' || scope === 'perf';
+  const result = {};
+
+  if (includeRuntime) {
+    result.runtime = fs.existsSync(RUNTIME_LOG_DIR)
+      ? fs.readdirSync(RUNTIME_LOG_DIR).filter(Boolean).sort()
+      : [];
+  }
+
+  if (includePerf) {
+    result.perf = fs.existsSync(PERF_LOG_DIR)
+      ? fs.readdirSync(PERF_LOG_DIR).filter(Boolean).sort()
+      : [];
+  }
+
+  return result;
+}
+
+function getNpmScripts() {
+  const pkg = JSON.parse(fs.readFileSync(ROOT_PACKAGE_JSON, 'utf8'));
+  return pkg.scripts || {};
+}
+
+function getAllowedRootScripts() {
+  const scripts = getNpmScripts();
+  return Object.keys(scripts)
+    .filter((name) =>
+      /^(bootstrap:js|build(?::|$)|test(?::|$)|smoke(?::|$)|perf(?::|$))/.test(name),
+    )
+    .sort();
 }
 
 async function fetchJson(url, options = {}) {
@@ -976,10 +2074,29 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'architecture_map',
+    description:
+      'Detailed architecture map of runtime topology, codebase layering, storage, constraints, and key docs.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'api_map',
     description:
       'Compact map of the gateway HTTP API grouped by controller area and route family.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'route_trace',
+    description:
+      'Finds the gateway controller, module, and likely spec file for a given HTTP method and route path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        method: { type: 'string' },
+        path: { type: 'string' },
+      },
+      required: ['path'],
+    },
   },
   {
     name: 'runtime_map',
@@ -1003,6 +2120,94 @@ const TOOLS = [
     name: 'entrypoint_map',
     description:
       'Map of the main launch, MCP, backend, and root script entrypoints used to operate the project.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'docs_map',
+    description:
+      'Map of project documentation files and the role each one plays during maintenance and development.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'service_inventory',
+    description:
+      'Inventory of gateway controllers/modules, TCP service entrypoints, sidecars, and launcher files.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'config_map',
+    description:
+      'Summarizes root/workspace package scripts, launcher defaults, and .env keys with secret values redacted.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'dependency_map',
+    description:
+      'Maps workspace package relationships plus declared external dependencies. Useful for understanding architectural coupling quickly.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'env_map',
+    description:
+      'Shows important environment variables, whether they are present in .env or process env, and redacted values when safe.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'repo_tree',
+    description:
+      'Returns a bounded directory tree for any project path. Useful for understanding an area before reading files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        max_depth: { type: 'integer', minimum: 0, maximum: 6 },
+        include_files: { type: 'boolean' },
+        limit: { type: 'integer', minimum: 1, maximum: 2000 },
+      },
+    },
+  },
+  {
+    name: 'feature_map',
+    description:
+      'Searches the repo for a concept or feature term and groups matching files/snippets by docs, frontend, backend, tests, and scripts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 200 },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'import_graph',
+    description:
+      'Shows direct imports from one file plus heuristic reverse references from other project files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        max_callers: { type: 'integer', minimum: 1, maximum: 200 },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'test_coverage_map',
+    description:
+      'Maps likely direct and nearby tests for a project file and suggests the most relevant test commands.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'discover_api_routes',
+    description:
+      'Discovers gateway HTTP routes directly from controller decorators instead of relying on static docs.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -1042,6 +2247,56 @@ const TOOLS = [
         },
       },
       required: ['script'],
+    },
+  },
+  {
+    name: 'run_root_script',
+    description:
+      'Runs one safe root npm script for build/test/smoke/perf flows so common verification does not require manual shell use.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        script: {
+          type: 'string',
+          enum: getAllowedRootScripts(),
+        },
+      },
+      required: ['script'],
+    },
+  },
+  {
+    name: 'git_status',
+    description:
+      'Returns concise git working tree status and branch/head information for the project.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'git_diff_summary',
+    description:
+      'Returns a compact git diff summary, optionally narrowed to one project path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        staged: { type: 'boolean' },
+      },
+    },
+  },
+  {
+    name: 'list_npm_scripts',
+    description:
+      'Lists root package.json scripts so development, build, smoke, test, and perf entrypoints are visible through MCP.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_project_logs',
+    description:
+      'Lists available runtime and perf log filenames so the right log can be tailed without guessing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', enum: ['all', 'runtime', 'perf'] },
+      },
     },
   },
   {
@@ -1255,6 +2510,120 @@ const TOOLS = [
     },
   },
   {
+    name: 'log_diagnose',
+    description:
+      'Analyzes the tail of a runtime log and highlights likely failure signatures with concise recommendations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filename: { type: 'string' },
+        lines: { type: 'integer', minimum: 20, maximum: 400 },
+      },
+      required: ['filename'],
+    },
+  },
+  {
+    name: 'db_overview',
+    description:
+      'Lists project SQLite databases with table and view names. Useful before running targeted read-only queries.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        database: {
+          type: 'string',
+          enum: Object.keys(DATABASES),
+        },
+      },
+    },
+  },
+  {
+    name: 'db_query',
+    description:
+      'Executes a read-only SQLite query against one project database. Only SELECT/EXPLAIN and schema PRAGMA statements are allowed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        database: {
+          type: 'string',
+          enum: Object.keys(DATABASES),
+        },
+        sql: { type: 'string' },
+        params: {
+          description: 'Optional JSON array of positional bind parameters.',
+          oneOf: [
+            { type: 'array' },
+            { type: 'string' },
+          ],
+        },
+        limit: { type: 'integer', minimum: 1, maximum: 500 },
+      },
+      required: ['database', 'sql'],
+    },
+  },
+  {
+    name: 'db_schema',
+    description:
+      'Returns columns, indexes, and foreign keys for tables in one project SQLite database.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        database: {
+          type: 'string',
+          enum: Object.keys(DATABASES),
+        },
+        table: { type: 'string' },
+      },
+      required: ['database'],
+    },
+  },
+  {
+    name: 'process_snapshot',
+    description:
+      'Lists currently running project-related processes such as gateway, services, sidecars, Playwright, and LM Studio.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'port_status',
+    description:
+      'Checks whether known project ports are currently reachable on localhost. Extra custom ports may be supplied.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        extra_ports: {
+          description: 'Optional list of extra TCP ports to probe.',
+          oneOf: [
+            { type: 'array' },
+            { type: 'string' },
+          ],
+        },
+      },
+    },
+  },
+  {
+    name: 'git_recent_commits',
+    description:
+      'Returns recent git commits for the repo, optionally narrowed to a project path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        limit: { type: 'integer', minimum: 1, maximum: 50 },
+      },
+    },
+  },
+  {
+    name: 'stack_start',
+    description:
+      'Starts the local OCR app stack through the project launcher and returns the launcher output.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'stack_stop',
+    description:
+      'Stops the local OCR app stack through the project launcher and returns the launcher output.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'run_frontend_unit_test',
     description:
       'Runs one frontend Vitest spec file. Use for focused UI/unit verification.',
@@ -1317,7 +2686,7 @@ const TOOLS = [
 ];
 
 const server = new Server(
-  { name: 'ocr-project', version: '2.0.0' },
+  { name: 'ocr-project', version: '2.6.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -1338,8 +2707,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       return okJson(buildProjectMap());
     }
 
+    if (name === 'architecture_map') {
+      return okJson(buildArchitectureMap());
+    }
+
     if (name === 'api_map') {
       return okJson(buildApiMap());
+    }
+
+    if (name === 'route_trace') {
+      return okJson(buildRouteTrace(args.method, args.path));
     }
 
     if (name === 'runtime_map') {
@@ -1359,6 +2736,50 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
     if (name === 'entrypoint_map') {
       return okJson(buildEntryPointMap());
+    }
+
+    if (name === 'docs_map') {
+      return okJson(buildDocsMap());
+    }
+
+    if (name === 'service_inventory') {
+      return okJson(buildServiceInventory());
+    }
+
+    if (name === 'config_map') {
+      return okJson(buildConfigMap());
+    }
+
+    if (name === 'dependency_map') {
+      return okJson(buildDependencyMap());
+    }
+
+    if (name === 'env_map') {
+      return okJson(buildEnvMap());
+    }
+
+    if (name === 'repo_tree') {
+      return okJson(buildRepoTree(String(args.path || '.'), {
+        maxDepth: args.max_depth,
+        includeFiles: args.include_files,
+        limit: args.limit,
+      }));
+    }
+
+    if (name === 'feature_map') {
+      return okJson(await buildFeatureMap(args.query, args.limit));
+    }
+
+    if (name === 'import_graph') {
+      return okJson(buildImportGraph(args.path, args.max_callers));
+    }
+
+    if (name === 'test_coverage_map') {
+      return okJson(buildTestCoverageMap(args.path));
+    }
+
+    if (name === 'discover_api_routes') {
+      return okJson(discoverGatewayRoutes());
     }
 
     if (name === 'project_doctor') {
@@ -1411,6 +2832,89 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         stdout: stdout.trim(),
         stderr: stderr.trim(),
       });
+    }
+
+    if (name === 'run_root_script') {
+      const script = String(args.script || '');
+      const allowedScripts = getAllowedRootScripts();
+      if (!allowedScripts.includes(script)) {
+        return errorText(
+          `Unsupported root script "${script}". Allowed: ${allowedScripts.join(', ')}`,
+        );
+      }
+
+      const { stdout, stderr } = await execFileAsync(
+        'npm',
+        ['run', script],
+        { cwd: ROOT, timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+      );
+
+      return okJson({
+        script,
+        ok: true,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+      });
+    }
+
+    if (name === 'stack_start') {
+      return okJson(await runLauncherCommand(null));
+    }
+
+    if (name === 'stack_stop') {
+      return okJson(await runLauncherCommand('stop'));
+    }
+
+    if (name === 'git_status') {
+      const branch = await runCommandCapture(
+        'git',
+        ['branch', '--show-current'],
+        { cwd: ROOT, timeout: 15_000 },
+      );
+      const head = await runCommandCapture(
+        'git',
+        ['rev-parse', '--short', 'HEAD'],
+        { cwd: ROOT, timeout: 15_000 },
+      );
+      const status = await runCommandCapture(
+        'git',
+        ['status', '--short', '--branch'],
+        { cwd: ROOT, timeout: 15_000 },
+      );
+      return okJson({
+        branch: branch.stdout,
+        head: head.stdout,
+        status,
+      });
+    }
+
+    if (name === 'git_diff_summary') {
+      const diffArgs = ['diff', '--stat=120'];
+      if (Boolean(args.staged)) {
+        diffArgs.push('--cached');
+      }
+      if (args.path) {
+        const filePath = ensureProjectRelativeFile(args.path);
+        diffArgs.push('--', path.relative(ROOT, filePath));
+      }
+      const result = await runCommandCapture('git', diffArgs, { cwd: ROOT, timeout: 30_000 });
+      return okJson({
+        path: args.path ? path.relative(ROOT, ensureProjectRelativeFile(args.path)) : null,
+        staged: Boolean(args.staged),
+        ...result,
+      });
+    }
+
+    if (name === 'list_npm_scripts') {
+      return okJson(getNpmScripts());
+    }
+
+    if (name === 'list_project_logs') {
+      const scope = String(args.scope || 'all');
+      if (!['all', 'runtime', 'perf'].includes(scope)) {
+        return errorText('scope must be one of: all, runtime, perf');
+      }
+      return okJson(listProjectLogs(scope));
     }
 
     if (name === 'repo_list_files') {
@@ -1756,6 +3260,81 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         filename: path.basename(filePath),
         lines: lineCount,
         output: stdout,
+      });
+    }
+
+    if (name === 'log_diagnose') {
+      return okJson(await buildLogDiagnose(args.filename, args.lines));
+    }
+
+    if (name === 'db_overview') {
+      return okJson(buildDatabaseOverview(args.database ? String(args.database) : null));
+    }
+
+    if (name === 'db_query') {
+      const database = resolveDatabase(args.database);
+      const sql = ensureSafeReadOnlySql(args.sql);
+      const params = parseJsonArray(args.params, []);
+      const limit = normalizeLimit(args.limit, 100, 500);
+
+      if (!fs.existsSync(database.path)) {
+        return errorText(`Database file does not exist: ${path.relative(ROOT, database.path)}`);
+      }
+
+      const activeDb = database.db || new Database(database.path, { readonly: true });
+      try {
+        const stmt = activeDb.prepare(sql);
+        if (!stmt.reader) {
+          return errorText('Query must be read-only');
+        }
+
+        let rows = stmt.all(...params);
+        if (Array.isArray(rows)) {
+          rows = rows.slice(0, limit);
+        }
+
+        return okJson({
+          database: database.key,
+          path: path.relative(ROOT, database.path),
+          sql,
+          params,
+          row_count: Array.isArray(rows) ? rows.length : 0,
+          rows,
+        });
+      } finally {
+        if (!database.db) {
+          activeDb.close();
+        }
+      }
+    }
+
+    if (name === 'db_schema') {
+      return okJson(buildDatabaseSchema(
+        String(args.database || ''),
+        args.table ? String(args.table) : null,
+      ));
+    }
+
+    if (name === 'process_snapshot') {
+      return okJson(await getProcessSnapshot());
+    }
+
+    if (name === 'port_status') {
+      return okJson(await buildPortStatus(parseJsonArray(args.extra_ports, [])));
+    }
+
+    if (name === 'git_recent_commits') {
+      const limit = normalizeLimit(args.limit, 10, 50);
+      const gitArgs = ['log', `--max-count=${limit}`, '--date=iso', '--pretty=format:%h%x09%ad%x09%an%x09%s'];
+      if (args.path) {
+        const filePath = ensureProjectRelativeFile(args.path);
+        gitArgs.push('--', path.relative(ROOT, filePath));
+      }
+      const result = await runCommandCapture('git', gitArgs, { cwd: ROOT, timeout: 30_000 });
+      return okJson({
+        path: args.path ? path.relative(ROOT, ensureProjectRelativeFile(args.path)) : null,
+        limit,
+        ...result,
       });
     }
 

@@ -195,9 +195,19 @@ This repo ships a local stdio MCP server at `scripts/mcp-vocab-server.js`.
 It is designed for practical day-to-day development work and exposes tools for:
 
 - whole-project maps via `project_map`, `api_map`, `runtime_map`, `data_map`, `test_map`, and `entrypoint_map`
+- architecture and documentation maps via `architecture_map` and `docs_map`
+- dynamic route/config/service visibility via `discover_api_routes`, `route_trace`, `config_map`, and `service_inventory`
+- codebase dependency visibility via `dependency_map`
+- environment/runtime introspection via `env_map`, `process_snapshot`, and `port_status`
+- bounded repo structure views via `repo_tree`
+- targeted code discovery via `feature_map` and `import_graph`
 - runtime health checks for the gateway and LM Studio
 - high-signal runtime diagnosis via `project_doctor`
+- git visibility via `git_status` and `git_diff_summary`
+- recent history via `git_recent_commits`
+- root script discovery via `list_npm_scripts`
 - read-only JSON access to key gateway endpoints via `get_gateway_json`
+- runtime/perf log inventory via `list_project_logs`
 - launcher-oriented startup inspection via `launcher_status`
 - saved document lookup and candidate inspection
 - document incident triage via `debug_failed_document`
@@ -205,11 +215,14 @@ It is designed for practical day-to-day development work and exposes tools for:
 - end-to-end word tracing via `trace_word_lifecycle`
 - recent practice mistake inspection
 - direct practice session inspection from SQLite
-- repo navigation helpers for listing files, searching text, and reading file slices
+- SQLite schema and read-only query access via `db_overview` and `db_query`
+- table/index/foreign-key inspection via `db_schema`
+- repo navigation helpers for listing files, searching text, reading file slices, and mapping likely tests via `test_coverage_map` and `recommend_test_strategy`
 - focused test runners for frontend Vitest, backend Jest, and Playwright e2e specs
 - quick `tmp/perf/logs` tailing for local runtime debugging
 - quick `logs/*.log` tailing for startup/runtime failures
 - whitelisted smoke-test execution
+- launcher start/stop helpers via `stack_start` and `stack_stop`
 
 Run it directly:
 
@@ -376,6 +389,6 @@ Launcher-side TTS defaults are controlled separately in `scripts/linux/tts-model
 
 - `CLAUDE.md`
 - `agents.md`
-- `structure.md`
-- `docs/agents/project-overview.md`
+- `docs/agents/architecture.md`
 - `docs/agents/runbook.md`
+- `docs/agents/context.md`

@@ -8,34 +8,30 @@ Release baseline: `v0.1.0-alpha.1`
 npm install
 ```
 
-Set up the required Python sidecars manually under:
+Python sidecars are optional but expected under:
 
 - `services/nlp/stanza-service/.venv`
 - `services/nlp/bert-service/.venv`
 - `services/tts/supertone-service/.venv`
 - `services/tts/kokoro-service/.venv`
 
-For the BERT sidecar, create the venv and pre-download the model (first run downloads ~1.3 GB):
+## Core Commands
+
+### Development
 
 ```bash
-cd services/nlp/bert-service
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-BERT_MODEL_DIR="${PWD}/models" .venv/bin/python -c \
-  "from transformers import BertForMaskedLM, BertTokenizerFast; \
-   BertTokenizerFast.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
-   BertForMaskedLM.from_pretrained('prajjwal1/bert-tiny', cache_dir='models'); \
-   print('OK')"
-```
-
-## Development Commands
-
-```bash
+npm run mcp:project
 npm run dev:frontend
 npm run dev:stanza
 npm run dev:bert
 npm run dev:supertone
 npm run dev:kokoro
+```
 
+### Smoke
+
+```bash
+npm run smoke:ocr
 npm run smoke:stanza
 npm run smoke:bert
 npm run smoke:supertone
@@ -43,13 +39,13 @@ npm run smoke:kokoro
 npm run smoke:lmstudio
 ```
 
-## Build
+### Build
 
 ```bash
 npm run build
 ```
 
-## Tests
+### Tests
 
 ```bash
 npm run test:frontend
@@ -63,7 +59,7 @@ npm run test:e2e:browser
 npm run test:e2e:browser:vocab
 ```
 
-## Perf
+### Perf
 
 ```bash
 npm run perf:api
@@ -73,7 +69,28 @@ npm run perf:phase4
 
 `test:e2e:browser` and `perf:phase4` may run with `LM_STUDIO_SMOKE_ONLY=true`.
 
-`test:e2e:browser:vocab` is the lightweight browser e2e for the `Save Vocabulary` review/editor flow. It starts only `document`, `vocabulary`, and `gateway`.
+## Launcher
+
+Primary stack launcher:
+
+```bash
+./scripts/linux/ocr.sh
+```
+
+Lifecycle:
+
+```bash
+./scripts/linux/ocr.sh stop
+./scripts/linux/ocr.sh status
+./scripts/linux/ocr.sh wipe
+```
+
+Current launcher facts:
+
+- defaults come from `scripts/linux/tts-models.conf`
+- current default is Kokoro on, Supertone off
+- logs go to `logs/`
+- pid files go to `.pids/`
 
 ## Production-Style Start
 
@@ -87,30 +104,13 @@ node backend/dist/services/agentic/src/main.js
 node backend/dist/gateway/main.js
 ```
 
-## Launcher Scripts
+## Important Endpoints
+
+### Health
 
 ```bash
-./scripts/linux/ocr.sh
+curl http://localhost:3000/api/health
 ```
-
-Lifecycle:
-
-```bash
-./scripts/linux/ocr.sh stop
-
-./scripts/linux/ocr.sh status
-
-./scripts/linux/ocr.sh wipe
-```
-
-Notes:
-
-- launcher defaults are controlled in `scripts/linux/tts-models.conf`
-- current default is Kokoro only
-- logs go to `logs/`
-- pid files go to `.pids/`
-
-## Public Endpoints
 
 ### OCR
 
@@ -119,31 +119,7 @@ curl -X POST http://localhost:3000/api/ocr \
   -F "image=@image_test.jpg"
 ```
 
-### Health
-
-```bash
-curl http://localhost:3000/api/health
-```
-
-### TTS - Supertone
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"supertone","voice":"M1","lang":"en","speed":1.05,"totalSteps":5}' \
-  --output speech.wav
-```
-
-### TTS - Piper
-
-```bash
-curl -X POST http://localhost:3000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","engine":"piper","voice":"en_US-amy-medium","speed":1.05}' \
-  --output speech.wav
-```
-
-### TTS - Kokoro
+### TTS
 
 ```bash
 curl -X POST http://localhost:3000/api/tts \
@@ -155,83 +131,54 @@ curl -X POST http://localhost:3000/api/tts \
 ### Documents
 
 ```bash
-curl -X POST http://localhost:3000/api/documents \
-  -H "Content-Type: application/json" \
-  -d '{"markdown":"# Hello","filename":"scan.png"}'
-
 curl http://localhost:3000/api/documents
 curl http://localhost:3000/api/documents/<id>
+```
 
-curl -X PUT http://localhost:3000/api/documents/<id> \
-  -H "Content-Type: application/json" \
-  -d '{"markdown":"# Updated"}'
+### Save Vocabulary
 
-curl -X DELETE http://localhost:3000/api/documents/<id>
-
+```bash
 curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/prepare \
   -H "Content-Type: application/json" \
   -d '{"llmReview":true,"targetLang":"en","nativeLang":"ru"}'
 
 curl -X POST http://localhost:3000/api/documents/<id>/vocabulary/confirm \
   -H "Content-Type: application/json" \
-  -d '{"targetLang":"en","nativeLang":"ru","items":[{"candidateId":"<candidate-id>","word":"give up","vocabType":"phrasal_verb","translation":"сдаваться","contextSentence":"She gave up too early."}]}'
+  -d '{"targetLang":"en","nativeLang":"ru","items":[]}'
 ```
 
-### Vocabulary
+### Vocabulary And Practice
 
 ```bash
-curl -X POST http://localhost:3000/api/vocabulary \
-  -H "Content-Type: application/json" \
-  -d '{"word":"beautiful","vocabType":"word","translation":"krasivyy","targetLang":"en","nativeLang":"ru","contextSentence":"The sunset was beautiful."}'
-
 curl "http://localhost:3000/api/vocabulary?targetLang=en&nativeLang=ru"
 curl "http://localhost:3000/api/vocabulary/review/due?limit=20"
-
-curl -X PUT http://localhost:3000/api/vocabulary/<id> \
-  -H "Content-Type: application/json" \
-  -d '{"translation":"krasivyy","contextSentence":"updated context"}'
-
-curl -X DELETE http://localhost:3000/api/vocabulary/<id>
-```
-
-### Practice
-
-```bash
-curl -X POST http://localhost:3000/api/practice/start \
-  -H "Content-Type: application/json" \
-  -d '{"targetLang":"en","nativeLang":"ru","wordLimit":10}'
-
-curl -X POST http://localhost:3000/api/practice/answer \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<id>","vocabularyId":"<id>","exerciseType":"spelling","prompt":"Spell: krasivyy","correctAnswer":"beautiful","userAnswer":"beatiful"}'
-
-curl -X POST http://localhost:3000/api/practice/complete \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId":"<id>"}'
-
 curl http://localhost:3000/api/practice/sessions
-curl http://localhost:3000/api/practice/stats/<vocabularyId>
 ```
 
-### Agentic
+## Local MCP
+
+Project MCP server:
 
 ```bash
-curl -X POST http://localhost:3000/api/agents/architecture \
-  -H "Content-Type: application/json" \
-  -d '{"request":"Design an autonomous agent ecosystem"}'
-
-curl -X POST http://localhost:3000/api/agents/deploy \
-  -H "Content-Type: application/json" \
-  -d '{"request":"Design an autonomous agent ecosystem","workspaceName":"demo-workspace"}'
+node scripts/mcp-vocab-server.js
 ```
+
+High-value MCP tools now include:
+
+- project and architecture maps
+- route tracing and feature search
+- repo tree, repo search, file reads
+- dependency and import maps
+- DB overview, schema, and read-only SQL
+- focused test runners
+- launcher status, stack start/stop, health, ports, processes
+- runtime log tailing and diagnosis
 
 ## Operational Notes
 
-- base OCR requires LM Studio
-- TTS is optional for OCR, but the TTS service process still starts in backend-enabled stacks
-- Piper is served through the Supertone sidecar
-- the result panel currently exposes Kokoro
-- Kokoro rejects Cyrillic text on the frontend
-- BERT sidecar is optional; vocabulary pipeline degrades gracefully to Stanza-only when it is unavailable
-- BERT scoring is English-only (`targetLang === 'en'`); other languages skip the sidecar call entirely
-- BERT model is cached under `services/nlp/bert-service/models/` and excluded from git
+- base OCR requires LM Studio on `:1234`
+- document DB defaults to `data/documents.sqlite`
+- vocabulary and practice DB default to `data/vocabulary.sqlite`
+- Stanza and BERT are optional in the document vocabulary pipeline
+- BERT scoring is English-only
+- agentic endpoints require `OPENAI_API_KEY`
