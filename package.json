@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "bootstrap:js": "bash scripts/linux/bootstrap-js-tooling.sh",
-    "mcp:project": "node scripts/mcp-vocab-server.js",
+    "mcp:project": "node scripts/mcp-server.js",
+    "smoke:mcp": "node scripts/mcp-smoke-test.js",
     "dev:backend": "bash scripts/linux/run-js-command.sh npm run start:dev --workspace=./backend",
     "dev:frontend": "bash scripts/linux/run-js-command.sh npm run dev --workspace=frontend",
     "dev:stanza": "HSA_OVERRIDE_GFX_VERSION=11.0.0 STANZA_USE_GPU=false STANZA_MODEL_DIR=services/nlp/stanza-service/models services/nlp/stanza-service/.venv/bin/python -m uvicorn --app-dir services/nlp/stanza-service main:app --host 0.0.0.0 --port 8501",
@@ -46,6 +47,11 @@
     "start:prod:svc-doc": "bash scripts/linux/run-js-command.sh node backend/dist/services/document/src/main.js",
     "start:prod:svc-vocab": "bash scripts/linux/run-js-command.sh node backend/dist/services/vocabulary/src/main.js",
     "start:prod:svc-agentic": "bash scripts/linux/run-js-command.sh node backend/dist/services/agentic/src/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.8.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
