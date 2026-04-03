@@ -47,6 +47,21 @@ describe('DocumentController', () => {
       });
     });
 
+    it('accepts rich text html without markdown', async () => {
+      mockUseCase.create.mockResolvedValue(docOutput);
+
+      await controller.create({
+        richTextHtml: '<p>Hello</p>',
+        filename: 'test.html',
+      });
+
+      expect(mockUseCase.create).toHaveBeenCalledWith({
+        markdown: undefined,
+        richTextHtml: '<p>Hello</p>',
+        filename: 'test.html',
+      });
+    });
+
     it('throws BadRequest when markdown is empty', async () => {
       await expect(
         controller.create({ markdown: '  ', filename: 'test.png' }),
@@ -106,6 +121,19 @@ describe('DocumentController', () => {
       expect(result.markdown).toBe('# Updated');
     });
 
+    it('accepts rich text html without markdown', async () => {
+      mockUseCase.update.mockResolvedValue(docOutput);
+
+      await controller.update('id-1', {
+        richTextHtml: '<p>Updated</p>',
+      });
+
+      expect(mockUseCase.update).toHaveBeenCalledWith('id-1', {
+        markdown: undefined,
+        richTextHtml: '<p>Updated</p>',
+      });
+    });
+
     it('throws BadRequest when markdown is empty', async () => {
       await expect(
         controller.update('id-1', { markdown: '' }),
@@ -140,6 +168,115 @@ describe('DocumentController', () => {
       await expect(controller.remove('missing')).rejects.toThrow(
         HttpException,
       );
+    });
+  });
+
+  describe('prepareVocabulary', () => {
+    it('trims language values and forwards llm review settings', async () => {
+      mockUseCase.prepareVocabulary.mockResolvedValue({
+        document: docOutput,
+        candidates: [],
+        llmReviewApplied: true,
+      } as any);
+
+      await controller.prepareVocabulary('id-1', {
+        llmReview: true,
+        targetLang: ' en ',
+        nativeLang: ' ru ',
+      });
+
+      expect(mockUseCase.prepareVocabulary).toHaveBeenCalledWith('id-1', {
+        llmReview: true,
+        targetLang: 'en',
+        nativeLang: 'ru',
+      });
+    });
+
+    it('throws BadRequest when language values are missing', async () => {
+      await expect(
+        controller.prepareVocabulary('id-1', {
+          llmReview: false,
+          targetLang: ' ',
+          nativeLang: '',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws 404 when the document is missing', async () => {
+      mockUseCase.prepareVocabulary.mockResolvedValue(null);
+
+      await expect(
+        controller.prepareVocabulary('missing', {
+          llmReview: false,
+          targetLang: 'en',
+          nativeLang: 'ru',
+        }),
+      ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe('confirmVocabulary', () => {
+    it('trims item fields and forwards normalized payload', async () => {
+      mockUseCase.confirmVocabulary.mockResolvedValue({
+        savedCount: 1,
+        skippedDuplicateCount: 0,
+        failedCount: 0,
+        savedItems: [],
+        skippedItems: [],
+        failedItems: [],
+      } as any);
+
+      await controller.confirmVocabulary('id-1', {
+        targetLang: ' en ',
+        nativeLang: ' ru ',
+        items: [
+          {
+            candidateId: 'cand-1',
+            word: ' hello ',
+            vocabType: 'expression',
+            pos: 'noun',
+            translation: ' привет ',
+            contextSentence: ' hello world ',
+          },
+        ],
+      });
+
+      expect(mockUseCase.confirmVocabulary).toHaveBeenCalledWith('id-1', {
+        targetLang: 'en',
+        nativeLang: 'ru',
+        items: [
+          {
+            candidateId: 'cand-1',
+            word: 'hello',
+            vocabType: 'expression',
+            pos: 'noun',
+            translation: ' привет ',
+            contextSentence: ' hello world ',
+          },
+        ],
+      });
+    });
+
+    it('throws BadRequest when items is not an array', async () => {
+      await expect(
+        controller.confirmVocabulary('id-1', {
+          targetLang: 'en',
+          nativeLang: 'ru',
+          items: undefined as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws 404 when the document is missing', async () => {
+      mockUseCase.confirmVocabulary.mockResolvedValue(null);
+
+      await expect(
+        controller.confirmVocabulary('missing', {
+          targetLang: 'en',
+          nativeLang: 'ru',
+          items: [],
+        }),
+      ).rejects.toThrow(HttpException);
     });
   });
 });

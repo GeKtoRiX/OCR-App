@@ -561,14 +561,18 @@ describe('E2E: Practice workflow (/api/practice)', () => {
     expect(res.status).toBe(201);
     const body: any = await res.json();
     expect(body.exercises).toHaveLength(8);
-    expect(body.exercises.map((exercise: any) => `${exercise.vocabularyId}:${exercise.exerciseType}`)).toEqual([
+    expect(
+      body.exercises.map(
+        (exercise: any) => `${exercise.vocabularyId}:${exercise.exerciseType}`,
+      ),
+    ).toEqual([
       `${wordIds[0]}:multiple_choice`,
-      `${wordIds[0]}:spelling`,
-      `${wordIds[0]}:context_sentence`,
-      `${wordIds[0]}:fill_blank`,
       `${wordIds[1]}:multiple_choice`,
+      `${wordIds[0]}:spelling`,
       `${wordIds[1]}:spelling`,
+      `${wordIds[0]}:context_sentence`,
       `${wordIds[1]}:context_sentence`,
+      `${wordIds[0]}:fill_blank`,
       `${wordIds[1]}:fill_blank`,
     ]);
     expect(mockVocabularyLlmService.generateExercises).toHaveBeenCalled();
@@ -596,7 +600,7 @@ describe('E2E: Practice workflow (/api/practice)', () => {
   });
 
   it('POST /api/practice/answer — records an incorrect answer', async () => {
-    const second = exercises[4];
+    const second = exercises[1];
     const res = await post('/api/practice/answer', {
       sessionId,
       vocabularyId: second.vocabularyId,

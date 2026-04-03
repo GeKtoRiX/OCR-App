@@ -45,6 +45,7 @@ describe('TcpVocabularyRepository', () => {
     expect(client.send).toHaveBeenCalledWith(VOCABULARY_PATTERNS.ADD, {
       word: 'beautiful',
       vocabType: 'word',
+      pos: null,
       translation: 'красивый',
       targetLang: 'en',
       nativeLang: 'ru',

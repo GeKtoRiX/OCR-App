@@ -1,6 +1,7 @@
 import { SqliteSavedDocumentRepository } from './sqlite-saved-document.repository';
 import { SqliteConnectionProvider } from './sqlite-connection.provider';
 import { SqliteConfig } from '../config/sqlite.config';
+import { DocumentVocabCandidate } from '../../domain/entities/document-vocab-candidate.entity';
 
 describe('SqliteSavedDocumentRepository', () => {
   let repo: SqliteSavedDocumentRepository;
@@ -111,5 +112,119 @@ describe('SqliteSavedDocumentRepository', () => {
     });
 
     expect(created.richTextHtml).toBe('<p><strong>Hello</strong> world</p>');
+  });
+
+  it('replaces and retrieves vocabulary candidates for a document', async () => {
+    const created = await repo.create({
+      markdown: '# Test',
+      richTextHtml: null,
+      filename: 'lesson.html',
+    });
+
+    const candidates = [
+      new DocumentVocabCandidate(
+        'candidate-2',
+        created.id,
+        'piece of cake',
+        'piece of cake',
+        'piece of cake',
+        'idiom',
+        null,
+        'очень легко',
+        'This task was a piece of cake.',
+        0,
+        5,
+        18,
+        true,
+        false,
+        'llm_reviewed',
+      ),
+      new DocumentVocabCandidate(
+        'candidate-1',
+        created.id,
+        'study',
+        'study',
+        'study',
+        'word',
+        'verb',
+        'учиться',
+        'They study every night.',
+        0,
+        0,
+        5,
+        true,
+        false,
+        'base_nlp',
+      ),
+    ];
+
+    await repo.replaceVocabularyCandidates(created.id, candidates);
+
+    const found = await repo.findVocabularyCandidates(created.id);
+
+    expect(found.map((candidate) => candidate.id)).toEqual([
+      'candidate-1',
+      'candidate-2',
+    ]);
+    expect(found[1]?.reviewSource).toBe('llm_reviewed');
+  });
+
+  it('update clears saved vocabulary candidates for the document', async () => {
+    const created = await repo.create({
+      markdown: '# Test',
+      richTextHtml: null,
+      filename: 'lesson.html',
+    });
+
+    await repo.replaceVocabularyCandidates(created.id, [
+      new DocumentVocabCandidate(
+        'candidate-1',
+        created.id,
+        'study',
+        'study',
+        'study',
+        'word',
+        'verb',
+        'учиться',
+        'They study every night.',
+        0,
+        0,
+        5,
+        true,
+        false,
+        'base_nlp',
+      ),
+    ]);
+
+    await repo.update(created.id, {
+      markdown: '# Updated',
+      richTextHtml: null,
+    });
+
+    expect(await repo.findVocabularyCandidates(created.id)).toEqual([]);
+  });
+
+  it('updates analysis status fields and returns the refreshed document', async () => {
+    const created = await repo.create({
+      markdown: '# Test',
+      richTextHtml: null,
+      filename: 'lesson.html',
+    });
+
+    const updated = await repo.updateAnalysisStatus(
+      created.id,
+      'failed',
+      'analysis crashed',
+    );
+
+    expect(updated?.analysisStatus).toBe('failed');
+    expect(updated?.analysisError).toBe('analysis crashed');
+    expect(updated?.analysisUpdatedAt).toBeTruthy();
+  });
+
+  it('returns null when updating analysis status for a missing document', async () => {
+    const updated = await repo.updateAnalysisStatus('missing', 'ready', null);
+
+    expect(updated).toBeNull();
   });
 });

@@ -48,6 +48,7 @@ export class SqliteConnectionProvider
         this.logger.warn(`WAL checkpoint failed: ${err}`);
       }
     }, WAL_CHECKPOINT_INTERVAL_MS);
+    this.checkpointTimer.unref?.();
   }
 
   onModuleDestroy(): void {

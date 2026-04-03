@@ -294,4 +294,77 @@ describe('SqliteVocabularyRepository', () => {
   it('delete returns false for nonexistent id', async () => {
     expect(await repo.delete('missing')).toBe(false);
   });
+
+  it('backfills missing pos for legacy word and phrasal_verb records', async () => {
+    connection.db.prepare(
+      `INSERT INTO vocabulary
+        (id, word, vocab_type, pos, translation, target_lang, native_lang, context_sentence, source_document_id, created_at, updated_at, next_review_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'legacy-word',
+      'quickly',
+      'word',
+      null,
+      'быстро',
+      'en',
+      'ru',
+      'She moved quickly.',
+      null,
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+    );
+    connection.db.prepare(
+      `INSERT INTO vocabulary
+        (id, word, vocab_type, pos, translation, target_lang, native_lang, context_sentence, source_document_id, created_at, updated_at, next_review_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'legacy-phrasal',
+      'give up',
+      'phrasal_verb',
+      null,
+      'сдаваться',
+      'en',
+      'ru',
+      'Never give up.',
+      null,
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+    );
+
+    repo.onModuleInit();
+
+    const legacyWord = await repo.findById('legacy-word');
+    const legacyPhrasalVerb = await repo.findById('legacy-phrasal');
+
+    expect(legacyWord?.pos).toBe('adverb');
+    expect(legacyPhrasalVerb?.pos).toBe('verb');
+  });
+
+  it('backfill does not overwrite existing pos values', async () => {
+    connection.db.prepare(
+      `INSERT INTO vocabulary
+        (id, word, vocab_type, pos, translation, target_lang, native_lang, context_sentence, source_document_id, created_at, updated_at, next_review_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'legacy-fixed',
+      'running',
+      'word',
+      'noun',
+      'бег',
+      'en',
+      'ru',
+      'Running is fun.',
+      null,
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+      '2024-01-01T00:00:00.000Z',
+    );
+
+    repo.onModuleInit();
+
+    const legacyWord = await repo.findById('legacy-fixed');
+    expect(legacyWord?.pos).toBe('noun');
+  });
 });

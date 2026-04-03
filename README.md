@@ -176,6 +176,7 @@ http://localhost:3000
 ## Development Commands
 
 ```bash
+npm run mcp:project
 npm run dev:frontend
 npm run dev:stanza
 npm run dev:supertone
@@ -185,6 +186,41 @@ npm run smoke:stanza
 npm run smoke:supertone
 npm run smoke:kokoro
 npm run smoke:lmstudio
+```
+
+## Project MCP
+
+This repo ships a local stdio MCP server at `scripts/mcp-vocab-server.js`.
+
+It is designed for practical day-to-day development work and exposes tools for:
+
+- whole-project maps via `project_map`, `api_map`, `runtime_map`, `data_map`, `test_map`, and `entrypoint_map`
+- runtime health checks for the gateway and LM Studio
+- high-signal runtime diagnosis via `project_doctor`
+- read-only JSON access to key gateway endpoints via `get_gateway_json`
+- launcher-oriented startup inspection via `launcher_status`
+- saved document lookup and candidate inspection
+- document incident triage via `debug_failed_document`
+- vocabulary lookup, due-review queues, and word stats
+- end-to-end word tracing via `trace_word_lifecycle`
+- recent practice mistake inspection
+- direct practice session inspection from SQLite
+- repo navigation helpers for listing files, searching text, and reading file slices
+- focused test runners for frontend Vitest, backend Jest, and Playwright e2e specs
+- quick `tmp/perf/logs` tailing for local runtime debugging
+- quick `logs/*.log` tailing for startup/runtime failures
+- whitelisted smoke-test execution
+
+Run it directly:
+
+```bash
+npm run mcp:project
+```
+
+Register it in Codex:
+
+```bash
+codex mcp add ocr-project -- node /mnt/HDD_Store/ocrProject/scripts/mcp-vocab-server.js
 ```
 
 ## Build And Test

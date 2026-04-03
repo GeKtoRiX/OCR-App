@@ -12,6 +12,7 @@ import {
   VocabularyWordPos,
 } from '../../domain/entities/vocabulary-word.entity';
 import { SqliteConnectionProvider } from './sqlite-connection.provider';
+import { inferVocabularyPosForBackfill } from '../../application/utils/vocabulary-pos';
 
 interface VocabularyRow {
   id: string;
@@ -31,6 +32,12 @@ interface VocabularyRow {
   next_review_at: string;
 }
 
+interface VocabularyBackfillRow {
+  id: string;
+  word: string;
+  vocab_type: VocabType;
+}
+
 @Injectable()
 export class SqliteVocabularyRepository
   extends IVocabularyRepository
@@ -46,6 +53,8 @@ export class SqliteVocabularyRepository
     selectDueByLang: Database.Statement;
     updateSrs: Database.Statement;
     updateFields: Database.Statement;
+    selectMissingPos: Database.Statement;
+    backfillPos: Database.Statement;
     deleteById: Database.Statement;
   };
 
@@ -112,8 +121,29 @@ export class SqliteVocabularyRepository
       updateFields: db.prepare(
         'UPDATE vocabulary SET word = ?, vocab_type = ?, pos = ?, translation = ?, context_sentence = ?, updated_at = ? WHERE id = ?',
       ),
+      selectMissingPos: db.prepare(
+        'SELECT id, word, vocab_type FROM vocabulary WHERE pos IS NULL',
+      ),
+      backfillPos: db.prepare(
+        'UPDATE vocabulary SET pos = ?, updated_at = ? WHERE id = ? AND pos IS NULL',
+      ),
       deleteById: db.prepare('DELETE FROM vocabulary WHERE id = ?'),
     };
+
+    this.backfillMissingPos();
+  }
+
+  private backfillMissingPos(): void {
+    const rows = this.stmts.selectMissingPos.all() as VocabularyBackfillRow[];
+    const now = new Date().toISOString();
+
+    for (const row of rows) {
+      const inferredPos = inferVocabularyPosForBackfill(row.word, row.vocab_type);
+      if (!inferredPos) {
+        continue;
+      }
+      this.stmts.backfillPos.run(inferredPos, now, row.id);
+    }
   }
 
   private toEntity(r: VocabularyRow): VocabularyWord {

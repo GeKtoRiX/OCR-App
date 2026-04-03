@@ -122,7 +122,7 @@ describe('ResultPanel', () => {
 
     await user.click(screen.getByText('Edit'));
 
-    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(await screen.findByRole('textbox')).toBeInTheDocument();
     expect(screen.getByText('Done')).toBeInTheDocument();
   });
 
@@ -190,7 +190,7 @@ describe('ResultPanel', () => {
     );
 
     await user.click(screen.getByText('Edit'));
-    const editor = screen.getByRole('textbox');
+    const editor = await screen.findByRole('textbox');
     await user.clear(editor);
     await user.type(editor, '<p>Updated markdown</p>');
     await user.click(screen.getByTitle('Update saved document'));
@@ -212,7 +212,7 @@ describe('ResultPanel', () => {
     );
 
     await user.click(screen.getByText('Edit'));
-    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const editor = (await screen.findByRole('textbox')) as HTMLTextAreaElement;
     const start = result.markdown.indexOf('Markdown');
     const end = start + 'Markdown'.length;
     editor.setSelectionRange(start, end);

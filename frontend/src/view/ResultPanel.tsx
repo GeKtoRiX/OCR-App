@@ -1,11 +1,20 @@
+import { lazy, Suspense } from 'react';
 import type { DocumentCandidatePos, OcrResponse, VocabType } from '../shared/types';
 import type { SaveStatus } from '../features/documents/documents.store';
 import { useResultPanel } from './useResultPanel';
 import { VocabContextMenu } from '../features/vocabulary/VocabContextMenu';
 import { VocabAddForm } from '../features/vocabulary/VocabAddForm';
 import { TtsSettingsPanel } from './TtsSettingsPanel';
-import { OcrEditor } from './OcrEditor';
 import './ResultPanel.css';
+
+const loadOcrEditor = () =>
+  import('./OcrEditor').then((module) => ({ default: module.OcrEditor }));
+
+const OcrEditor = lazy(loadOcrEditor);
+
+function prefetchOcrEditor() {
+  void loadOcrEditor();
+}
 
 interface Props {
   result: OcrResponse;
@@ -42,6 +51,13 @@ export function ResultPanel({
     existingWordsSet,
     onAddVocabulary,
   });
+
+  const handleToggleEditing = () => {
+    if (!panel.isEditing && panel.tab === 'formatted') {
+      prefetchOcrEditor();
+    }
+    panel.setIsEditing((value) => !value);
+  };
 
   return (
     <div className="result">
@@ -82,7 +98,9 @@ export function ResultPanel({
         <div className="result__actions">
           <button
             className={`result__action-btn ${panel.isEditing ? 'result__action-btn--active' : ''}`}
-            onClick={() => panel.setIsEditing(v => !v)}
+            onClick={handleToggleEditing}
+            onMouseEnter={prefetchOcrEditor}
+            onFocus={prefetchOcrEditor}
             title={panel.isEditing ? 'Finish editing' : 'Edit text'}
             data-testid="result-edit-toggle"
           >
@@ -140,13 +158,21 @@ export function ResultPanel({
 
       {panel.isEditing ? (
         panel.tab === 'formatted' ? (
-          <OcrEditor
-            value={panel.editedRichTextHtml}
-            onChange={panel.setEditedRichTextHtml}
-            onVocabContextMenu={onAddVocabulary ? panel.triggerVocabFromEditor : undefined}
-            autosaveEnabled={Boolean(isSavedDocument && onUpdate)}
-            onAutosave={onUpdate}
-          />
+          <Suspense
+            fallback={
+              <div className="result__editor" data-testid="result-editor-loading">
+                Loading editor…
+              </div>
+            }
+          >
+            <OcrEditor
+              value={panel.editedRichTextHtml}
+              onChange={panel.setEditedRichTextHtml}
+              onVocabContextMenu={onAddVocabulary ? panel.triggerVocabFromEditor : undefined}
+              autosaveEnabled={Boolean(isSavedDocument && onUpdate)}
+              onAutosave={onUpdate}
+            />
+          </Suspense>
         ) : (
           <textarea
             ref={panel.textareaRef}

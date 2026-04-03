@@ -22,6 +22,7 @@ module.exports = {
   coverageDirectory: './coverage',
   testEnvironment: 'node',
   testTimeout: 120000,
+  forceExit: true,
   moduleNameMapper: {
     '^@ocr-app/shared$': '<rootDir>/shared/src/index.ts',
     '^@domain/(.*)$': '<rootDir>/src/domain/$1',

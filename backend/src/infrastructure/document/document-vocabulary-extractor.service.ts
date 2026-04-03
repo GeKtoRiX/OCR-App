@@ -7,6 +7,7 @@ import {
 } from '../../domain/ports/document-vocabulary-extractor.port';
 import { DocumentVocabCandidate } from '../../domain/entities/document-vocab-candidate.entity';
 import type { DocumentCandidatePos } from '../../domain/entities/document-vocab-candidate.entity';
+import { guessVocabularyPos } from '../../application/utils/vocabulary-pos';
 
 interface StanzaCandidatePayload {
   surface: string;
@@ -35,12 +36,6 @@ const STOP_WORDS = new Set([
   'into', 'is', 'it', 'its', 'me', 'my', 'of', 'on', 'or', 'our', 'ours', 'she',
   'that', 'the', 'their', 'them', 'they', 'this', 'those', 'to', 'was', 'we', 'were',
   'with', 'you', 'your',
-]);
-const VERB_HINTS = new Set([
-  'be', 'become', 'break', 'bring', 'build', 'call', 'come', 'do', 'find', 'get',
-  'give', 'go', 'have', 'hit', 'keep', 'know', 'learn', 'look', 'make', 'move',
-  'pick', 'put', 'read', 'run', 'save', 'say', 'see', 'set', 'show', 'speak', 'take',
-  'turn', 'use', 'walk', 'work', 'write',
 ]);
 const PARTICLES = new Set([
   'up', 'down', 'out', 'off', 'in', 'on', 'over', 'away', 'back', 'after', 'through',
@@ -76,30 +71,6 @@ function splitSentences(text: string): Array<{ text: string; start: number }> {
       start: match.index ?? 0,
     }))
     .filter((sentence) => sentence.text.length > 0);
-}
-
-function guessPos(word: string): DocumentCandidatePos {
-  if (word.endsWith('ly')) return 'adverb';
-  if (
-    VERB_HINTS.has(word) ||
-    word.endsWith('ing') ||
-    word.endsWith('ed')
-  ) {
-    return 'verb';
-  }
-  if (
-    word.endsWith('ous') ||
-    word.endsWith('ful') ||
-    word.endsWith('ive') ||
-    word.endsWith('al') ||
-    word.endsWith('able') ||
-    word.endsWith('ible') ||
-    word.endsWith('less') ||
-    word.endsWith('ic')
-  ) {
-    return 'adjective';
-  }
-  return 'noun';
 }
 
 // Irregular noun forms: plural → singular
@@ -234,7 +205,7 @@ export function extractHeuristicDocumentVocabulary(
         return;
       }
 
-      const pos = guessPos(token.normalized);
+      const pos = guessVocabularyPos(token.normalized);
       if (!pos) {
         return;
       }

@@ -1,8 +1,13 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as crypto from 'crypto';
 import type Database from 'better-sqlite3';
-import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
-import type { VocabularyAttemptStats } from '../../domain/ports/practice-session-repository.port';
+import {
+  IPracticeSessionRepository,
+  type CachedGeneratedExercise,
+  type CachedGeneratedExerciseSet,
+  type GeneratedExerciseCacheKey,
+  type VocabularyAttemptStats,
+} from '../../domain/ports/practice-session-repository.port';
 import { PracticeSession } from '../../domain/entities/practice-session.entity';
 import {
   ExerciseAttempt,
@@ -37,6 +42,24 @@ interface AttemptRow {
   created_at: string;
 }
 
+interface GeneratedExerciseSetRow {
+  set_id: string;
+  vocabulary_id: string;
+  content_signature: string;
+  set_created_at: string;
+  exercise_type: string;
+  prompt: string;
+  correct_answer: string;
+  options_json: string | null;
+}
+
+const REQUIRED_CACHED_EXERCISE_TYPES: ExerciseType[] = [
+  'multiple_choice',
+  'spelling',
+  'context_sentence',
+  'fill_blank',
+];
+
 @Injectable()
 export class SqlitePracticeSessionRepository
   extends IPracticeSessionRepository
@@ -50,10 +73,13 @@ export class SqlitePracticeSessionRepository
     insertAttempt: Database.Statement;
     selectAttemptsBySession: Database.Statement;
     selectAttemptsByVocab: Database.Statement;
+    insertGeneratedExerciseSet: Database.Statement;
+    insertGeneratedExercise: Database.Statement;
     updateMnemonic: Database.Statement;
   };
 
   private readonly vocabStatsStmtCache = new Map<number, Database.Statement>();
+  private readonly generatedExerciseSetsStmtCache = new Map<number, Database.Statement>();
 
   constructor(private readonly connection: SqliteConnectionProvider) {
     super();
@@ -89,6 +115,29 @@ export class SqlitePracticeSessionRepository
       );
       CREATE INDEX IF NOT EXISTS idx_exercise_attempts_session ON exercise_attempts(session_id);
       CREATE INDEX IF NOT EXISTS idx_exercise_attempts_vocab ON exercise_attempts(vocabulary_id);
+
+      CREATE TABLE IF NOT EXISTS generated_exercise_sets (
+        id                TEXT PRIMARY KEY,
+        vocabulary_id     TEXT NOT NULL,
+        content_signature TEXT NOT NULL,
+        created_at        TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS generated_exercises (
+        id             TEXT PRIMARY KEY,
+        set_id         TEXT NOT NULL,
+        exercise_type  TEXT NOT NULL,
+        prompt         TEXT NOT NULL,
+        correct_answer TEXT NOT NULL,
+        options_json   TEXT,
+        created_at     TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_generated_exercise_sets_vocab
+        ON generated_exercise_sets(vocabulary_id);
+      CREATE INDEX IF NOT EXISTS idx_generated_exercise_sets_signature
+        ON generated_exercise_sets(content_signature);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_exercises_set_type
+        ON generated_exercises(set_id, exercise_type);
     `);
     this.connection.db.pragma('foreign_keys = ON');
 
@@ -117,6 +166,16 @@ export class SqlitePracticeSessionRepository
       selectAttemptsByVocab: db.prepare(
         'SELECT * FROM exercise_attempts WHERE vocabulary_id = ? ORDER BY created_at ASC',
       ),
+      insertGeneratedExerciseSet: db.prepare(
+        `INSERT INTO generated_exercise_sets
+          (id, vocabulary_id, content_signature, created_at)
+         VALUES (?, ?, ?, ?)`,
+      ),
+      insertGeneratedExercise: db.prepare(
+        `INSERT INTO generated_exercises
+          (id, set_id, exercise_type, prompt, correct_answer, options_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ),
       updateMnemonic: db.prepare(
         'UPDATE exercise_attempts SET mnemonic_sentence = ? WHERE id = ?',
       ),
@@ -141,6 +200,32 @@ export class SqlitePracticeSessionRepository
     return this.vocabStatsStmtCache.get(count)!;
   }
 
+  private getGeneratedExerciseSetsStmt(count: number): Database.Statement {
+    if (!this.generatedExerciseSetsStmtCache.has(count)) {
+      const whereClause = Array(count)
+        .fill('(s.vocabulary_id = ? AND s.content_signature = ?)')
+        .join(' OR ');
+      this.generatedExerciseSetsStmtCache.set(
+        count,
+        this.connection.db.prepare(
+          `SELECT s.id AS set_id,
+                  s.vocabulary_id,
+                  s.content_signature,
+                  s.created_at AS set_created_at,
+                  e.exercise_type,
+                  e.prompt,
+                  e.correct_answer,
+                  e.options_json
+           FROM generated_exercise_sets s
+           JOIN generated_exercises e ON e.set_id = s.id
+           WHERE ${whereClause}
+           ORDER BY s.created_at DESC, e.created_at ASC`,
+        ),
+      );
+    }
+    return this.generatedExerciseSetsStmtCache.get(count)!;
+  }
+
   private toSession(r: SessionRow): PracticeSession {
     return new PracticeSession(
       r.id, r.started_at, r.completed_at,
@@ -160,6 +245,33 @@ export class SqlitePracticeSessionRepository
       r.mnemonic_sentence,
       r.created_at,
     );
+  }
+
+  private parseGeneratedExerciseOptions(
+    value: string | null,
+  ): string[] | undefined {
+    if (!value) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')
+        ? parsed
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private isValidGeneratedExerciseSet(
+    exercises: CachedGeneratedExercise[],
+  ): boolean {
+    if (exercises.length !== REQUIRED_CACHED_EXERCISE_TYPES.length) {
+      return false;
+    }
+
+    const types = new Set(exercises.map((exercise) => exercise.exerciseType));
+    return REQUIRED_CACHED_EXERCISE_TYPES.every((type) => types.has(type));
   }
 
   async createSession(
@@ -245,6 +357,88 @@ export class SqlitePracticeSessionRepository
       attemptCount: row.attemptCount,
       incorrectCount: row.incorrectCount ?? 0,
     }));
+  }
+
+  async findGeneratedExerciseSets(
+    keys: GeneratedExerciseCacheKey[],
+  ): Promise<CachedGeneratedExerciseSet[]> {
+    if (keys.length === 0) {
+      return [];
+    }
+
+    const params = keys.flatMap((key) => [key.vocabularyId, key.contentSignature]);
+    const rows = this.getGeneratedExerciseSetsStmt(keys.length).all(
+      ...params,
+    ) as GeneratedExerciseSetRow[];
+
+    const sets = new Map<string, CachedGeneratedExerciseSet>();
+    for (const row of rows) {
+      const existing = sets.get(row.set_id);
+      const exercise: CachedGeneratedExercise = {
+        exerciseType: row.exercise_type as ExerciseType,
+        prompt: row.prompt,
+        correctAnswer: row.correct_answer,
+        options: this.parseGeneratedExerciseOptions(row.options_json),
+      };
+
+      if (existing) {
+        existing.exercises.push(exercise);
+        continue;
+      }
+
+      sets.set(row.set_id, {
+        setId: row.set_id,
+        vocabularyId: row.vocabulary_id,
+        contentSignature: row.content_signature,
+        createdAt: row.set_created_at,
+        exercises: [exercise],
+      });
+    }
+
+    return [...sets.values()].filter((set) =>
+      this.isValidGeneratedExerciseSet(set.exercises),
+    );
+  }
+
+  async saveGeneratedExerciseSet(
+    vocabularyId: string,
+    contentSignature: string,
+    exercises: CachedGeneratedExercise[],
+  ): Promise<void> {
+    if (!this.isValidGeneratedExerciseSet(exercises)) {
+      return;
+    }
+
+    const insertSet = this.connection.db.transaction(
+      (
+        wordId: string,
+        signature: string,
+        cachedExercises: CachedGeneratedExercise[],
+      ) => {
+        const setId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        this.stmts.insertGeneratedExerciseSet.run(
+          setId,
+          wordId,
+          signature,
+          now,
+        );
+
+        for (const exercise of cachedExercises) {
+          this.stmts.insertGeneratedExercise.run(
+            crypto.randomUUID(),
+            setId,
+            exercise.exerciseType,
+            exercise.prompt,
+            exercise.correctAnswer,
+            exercise.options ? JSON.stringify(exercise.options) : null,
+            now,
+          );
+        }
+      },
+    );
+
+    insertSet(vocabularyId, contentSignature, exercises);
   }
 
   async updateAttemptMnemonic(

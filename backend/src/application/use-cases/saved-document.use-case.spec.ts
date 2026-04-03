@@ -92,6 +92,19 @@ describe('SavedDocumentUseCase', () => {
         filename,
       });
     });
+
+    it('persists rich text content when html-only input is provided', async () => {
+      await useCase.create({
+        richTextHtml: '<p>Hello</p>',
+        filename: 'lesson.html',
+      });
+
+      expect(mockRepo.create).toHaveBeenCalledWith({
+        markdown: 'Hello',
+        richTextHtml: '<p>Hello</p>',
+        filename: 'lesson.html',
+      });
+    });
   });
 
   describe('findAll', () => {
@@ -185,6 +198,31 @@ describe('SavedDocumentUseCase', () => {
       const result = await useCase.update('missing', { markdown: 'x' });
 
       expect(result).toBeNull();
+    });
+
+    it('passes rich text updates through persistence resolver', async () => {
+      const updated = new SavedDocument(
+        'id-1',
+        '',
+        '<p>Updated</p>',
+        'test.html',
+        now,
+        '2024-01-02T00:00:00.000Z',
+        'idle',
+        null,
+        null,
+      );
+      mockRepo.update.mockResolvedValue(updated);
+
+      const result = await useCase.update('id-1', {
+        richTextHtml: '<p>Updated</p>',
+      });
+
+      expect(mockRepo.update).toHaveBeenCalledWith('id-1', {
+        markdown: 'Updated',
+        richTextHtml: '<p>Updated</p>',
+      });
+      expect(result?.richTextHtml).toBe('<p>Updated</p>');
     });
   });
 

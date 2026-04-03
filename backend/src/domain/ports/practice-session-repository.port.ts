@@ -7,6 +7,26 @@ export interface VocabularyAttemptStats {
   incorrectCount: number;
 }
 
+export interface GeneratedExerciseCacheKey {
+  vocabularyId: string;
+  contentSignature: string;
+}
+
+export interface CachedGeneratedExercise {
+  exerciseType: ExerciseType;
+  prompt: string;
+  correctAnswer: string;
+  options?: string[];
+}
+
+export interface CachedGeneratedExerciseSet {
+  setId: string;
+  vocabularyId: string;
+  contentSignature: string;
+  createdAt: string;
+  exercises: CachedGeneratedExercise[];
+}
+
 export abstract class IPracticeSessionRepository {
   abstract createSession(
     targetLang: string,
@@ -38,6 +58,14 @@ export abstract class IPracticeSessionRepository {
   abstract findVocabularyStats(
     vocabularyIds: string[],
   ): Promise<VocabularyAttemptStats[]>;
+  abstract findGeneratedExerciseSets(
+    keys: GeneratedExerciseCacheKey[],
+  ): Promise<CachedGeneratedExerciseSet[]>;
+  abstract saveGeneratedExerciseSet(
+    vocabularyId: string,
+    contentSignature: string,
+    exercises: CachedGeneratedExercise[],
+  ): Promise<void>;
   abstract updateAttemptMnemonic(
     attemptId: string,
     mnemonicSentence: string,

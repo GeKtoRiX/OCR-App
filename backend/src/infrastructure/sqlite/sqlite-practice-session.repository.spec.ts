@@ -122,4 +122,103 @@ describe('SqlitePracticeSessionRepository', () => {
       expect(attempts[0].mnemonicSentence).toBe('Big Elephants Are Ugly');
     });
   });
+
+  describe('generated exercise cache', () => {
+    it('stores and loads a valid generated exercise set', async () => {
+      await repo.saveGeneratedExerciseSet('v1', 'sig-1', [
+        {
+          exerciseType: 'multiple_choice',
+          prompt: 'Choose the right word.',
+          correctAnswer: 'beautiful',
+          options: ['sunrise', 'beautiful', 'harbor', 'beautifull'],
+        },
+        {
+          exerciseType: 'spelling',
+          prompt: 'Spell it.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          exerciseType: 'context_sentence',
+          prompt: 'Means very attractive.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          exerciseType: 'fill_blank',
+          prompt: 'The sunset was ___.',
+          correctAnswer: 'beautiful',
+        },
+      ]);
+
+      const sets = await repo.findGeneratedExerciseSets([
+        { vocabularyId: 'v1', contentSignature: 'sig-1' },
+      ]);
+
+      expect(sets).toHaveLength(1);
+      expect(sets[0].vocabularyId).toBe('v1');
+      expect(sets[0].exercises.map((exercise) => exercise.exerciseType).sort()).toEqual([
+        'context_sentence',
+        'fill_blank',
+        'multiple_choice',
+        'spelling',
+      ]);
+      expect(
+        sets[0].exercises.find((exercise) => exercise.exerciseType === 'multiple_choice')?.options,
+      ).toEqual(['sunrise', 'beautiful', 'harbor', 'beautifull']);
+    });
+
+    it('returns all valid variants for the same word and signature', async () => {
+      const exercises = [
+        {
+          exerciseType: 'multiple_choice' as const,
+          prompt: 'Choose the right word.',
+          correctAnswer: 'beautiful',
+          options: ['sunrise', 'beautiful', 'harbor', 'beautifull'],
+        },
+        {
+          exerciseType: 'spelling' as const,
+          prompt: 'Spell it.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          exerciseType: 'context_sentence' as const,
+          prompt: 'Means very attractive.',
+          correctAnswer: 'beautiful',
+        },
+        {
+          exerciseType: 'fill_blank' as const,
+          prompt: 'The sunset was ___.',
+          correctAnswer: 'beautiful',
+        },
+      ];
+      await repo.saveGeneratedExerciseSet('v1', 'sig-1', exercises);
+      await repo.saveGeneratedExerciseSet('v1', 'sig-1', [
+        { ...exercises[0], prompt: 'Choose the best answer.' },
+        exercises[1],
+        exercises[2],
+        exercises[3],
+      ]);
+
+      const sets = await repo.findGeneratedExerciseSets([
+        { vocabularyId: 'v1', contentSignature: 'sig-1' },
+      ]);
+
+      expect(sets).toHaveLength(2);
+    });
+
+    it('ignores incomplete cached sets when loading', async () => {
+      const db = (connection as any).db;
+      db.prepare(
+        'INSERT INTO generated_exercise_sets (id, vocabulary_id, content_signature, created_at) VALUES (?, ?, ?, ?)',
+      ).run('set-1', 'v1', 'sig-1', '2024-01-01T00:00:00.000Z');
+      db.prepare(
+        'INSERT INTO generated_exercises (id, set_id, exercise_type, prompt, correct_answer, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run('ex-1', 'set-1', 'spelling', 'Spell it.', 'beautiful', '2024-01-01T00:00:00.000Z');
+
+      const sets = await repo.findGeneratedExerciseSets([
+        { vocabularyId: 'v1', contentSignature: 'sig-1' },
+      ]);
+
+      expect(sets).toEqual([]);
+    });
+  });
 });

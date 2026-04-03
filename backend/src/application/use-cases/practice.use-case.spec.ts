@@ -1,6 +1,9 @@
 import { PracticeUseCase } from './practice.use-case';
 import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
-import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
+import {
+  IPracticeSessionRepository,
+  type CachedGeneratedExerciseSet,
+} from '../../domain/ports/practice-session-repository.port';
 import { IVocabularyLlmService } from '../../domain/ports/vocabulary-llm-service.port';
 import { VocabularyWord } from '../../domain/entities/vocabulary-word.entity';
 import { PracticeSession } from '../../domain/entities/practice-session.entity';
@@ -19,6 +22,13 @@ const secondWord = new VocabularyWord(
   'The sunrise was calm.', null,
   '2024-01-02T00:00:00.000Z', '2024-01-02T00:00:00.000Z',
   0, 2.5, 0, '2024-01-02T00:00:00.000Z',
+);
+
+const caseChangedWord = new VocabularyWord(
+  'v1', 'Beautiful', 'word', 'КРАСИВЫЙ', 'EN', 'RU',
+  'The sunset was BEAUTIFUL.', null,
+  '2024-01-01T00:00:00.000Z', '2024-01-03T00:00:00.000Z',
+  0, 2.5, 0, '2024-01-01T00:00:00.000Z',
 );
 
 const mockSession = new PracticeSession(
@@ -76,6 +86,8 @@ describe('PracticeUseCase', () => {
         { vocabularyId: 'v1', attemptCount: 0, incorrectCount: 0 },
         { vocabularyId: 'v2', attemptCount: 3, incorrectCount: 2 },
       ]),
+      findGeneratedExerciseSets: jest.fn().mockResolvedValue([]),
+      saveGeneratedExerciseSet: jest.fn().mockResolvedValue(undefined),
       updateAttemptMnemonic: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IPracticeSessionRepository>;
 
@@ -124,7 +136,9 @@ describe('PracticeUseCase', () => {
       const result = await useCase.startPractice({});
 
       expect(vocabRepo.findDueForReview).toHaveBeenCalledWith(10, undefined, undefined);
+      expect(sessionRepo.findGeneratedExerciseSets).toHaveBeenCalled();
       expect(llmService.generateExercises).toHaveBeenCalledWith([mockWord], 4);
+      expect(sessionRepo.saveGeneratedExerciseSet).toHaveBeenCalledTimes(1);
       expect(result.sessionId).toBe('sess-1');
       expect(result.exercises).toHaveLength(4);
       expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
@@ -213,6 +227,16 @@ describe('PracticeUseCase', () => {
       expect(sessionRepo.findSessionById).toHaveBeenCalledWith('sess-1');
       expect(vocabRepo.findByIds).toHaveBeenCalledWith(['v2']);
       expect(llmService.generateExercises).toHaveBeenCalledWith([secondWord], 4);
+      expect(sessionRepo.saveGeneratedExerciseSet).toHaveBeenCalledWith(
+        'v2',
+        expect.any(String),
+        expect.arrayContaining([
+          expect.objectContaining({ exerciseType: 'multiple_choice' }),
+          expect.objectContaining({ exerciseType: 'spelling' }),
+          expect.objectContaining({ exerciseType: 'context_sentence' }),
+          expect.objectContaining({ exerciseType: 'fill_blank' }),
+        ]),
+      );
       expect(result.exercises).toHaveLength(4);
       expect(result.exercises.map((exercise) => exercise.exerciseType)).toEqual(expectedExerciseOrder);
       expect(result.exercises.map((exercise) => exercise.vocabularyId)).toEqual([
@@ -378,6 +402,179 @@ describe('PracticeUseCase', () => {
         sessionId: 'missing',
         vocabularyIds: ['v1'],
       })).rejects.toThrow('Practice session not found');
+    });
+
+    it('reuses a valid cached set without calling the LLM', async () => {
+      const cachedSet: CachedGeneratedExerciseSet = {
+        setId: 'set-1',
+        vocabularyId: 'v2',
+        contentSignature: 'sig-1',
+        createdAt: '2024-01-04T00:00:00.000Z',
+        exercises: [
+          {
+            exerciseType: 'multiple_choice',
+            prompt: 'Cached multiple choice',
+            correctAnswer: 'sunrise',
+            options: ['harbor', 'sunrise', 'lantern', 'sunrize'],
+          },
+          {
+            exerciseType: 'spelling',
+            prompt: 'Cached spelling',
+            correctAnswer: 'sunrise',
+          },
+          {
+            exerciseType: 'context_sentence',
+            prompt: 'Cached context',
+            correctAnswer: 'sunrise',
+          },
+          {
+            exerciseType: 'fill_blank',
+            prompt: 'Cached blank',
+            correctAnswer: 'sunrise',
+          },
+        ],
+      };
+      vocabRepo.findByIds.mockResolvedValue([secondWord]);
+      sessionRepo.findGeneratedExerciseSets.mockResolvedValue([cachedSet]);
+
+      const result = await useCase.generatePracticeRound({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v2'],
+      });
+
+      expect(llmService.generateExercises).not.toHaveBeenCalled();
+      expect(sessionRepo.saveGeneratedExerciseSet).not.toHaveBeenCalled();
+      expect(result.exercises.map((exercise) => exercise.prompt)).toEqual([
+        'Cached multiple choice',
+        'Cached spelling',
+        'Cached context',
+        'Cached blank',
+      ]);
+    });
+
+    it('calls the LLM only for uncached words in a mixed batch', async () => {
+      const cachedSet: CachedGeneratedExerciseSet = {
+        setId: 'set-1',
+        vocabularyId: 'v1',
+        contentSignature: 'sig-1',
+        createdAt: '2024-01-04T00:00:00.000Z',
+        exercises: [
+          {
+            exerciseType: 'multiple_choice',
+            prompt: 'Cached beautiful multiple choice',
+            correctAnswer: 'beautiful',
+            options: ['sunrise', 'beautiful', 'harbor', 'beautifull'],
+          },
+          {
+            exerciseType: 'spelling',
+            prompt: 'Cached beautiful spelling',
+            correctAnswer: 'beautiful',
+          },
+          {
+            exerciseType: 'context_sentence',
+            prompt: 'Cached beautiful context',
+            correctAnswer: 'beautiful',
+          },
+          {
+            exerciseType: 'fill_blank',
+            prompt: 'Cached beautiful blank',
+            correctAnswer: 'beautiful',
+          },
+        ],
+      };
+      sessionRepo.findGeneratedExerciseSets.mockResolvedValue([cachedSet]);
+      llmService.generateExercises.mockResolvedValue([
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'multiple_choice',
+          prompt: 'Generated sunrise multiple choice',
+          correctAnswer: 'sunrise',
+          options: ['sunrise', 'sunrize', 'harbor', 'lantern'],
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'spelling',
+          prompt: 'Generated sunrise spelling',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'context_sentence',
+          prompt: 'Generated sunrise context',
+          correctAnswer: 'sunrise',
+        },
+        {
+          vocabularyId: 'v2',
+          word: 'sunrise',
+          exerciseType: 'fill_blank',
+          prompt: 'Generated sunrise blank',
+          correctAnswer: 'sunrise',
+        },
+      ]);
+
+      const result = await useCase.generatePracticeRound({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1', 'v2'],
+      });
+
+      expect(llmService.generateExercises).toHaveBeenCalledWith([secondWord], 4);
+      expect(sessionRepo.saveGeneratedExerciseSet).toHaveBeenCalledTimes(1);
+      expect(result.exercises.map((exercise) => `${exercise.vocabularyId}:${exercise.prompt}`)).toEqual([
+        'v1:Cached beautiful multiple choice',
+        'v2:Generated sunrise multiple choice',
+        'v1:Cached beautiful spelling',
+        'v2:Generated sunrise spelling',
+        'v1:Cached beautiful context',
+        'v2:Generated sunrise context',
+        'v1:Cached beautiful blank',
+        'v2:Generated sunrise blank',
+      ]);
+    });
+
+    it('reuses cache when a word changed only by letter case', async () => {
+      const cachedSet: CachedGeneratedExerciseSet = {
+        setId: 'set-1',
+        vocabularyId: 'v1',
+        contentSignature: 'sig-1',
+        createdAt: '2024-01-04T00:00:00.000Z',
+        exercises: [
+          {
+            exerciseType: 'multiple_choice',
+            prompt: 'Choose the word that best completes the sentence.\nThe sunset was ___.',
+            correctAnswer: 'beautiful',
+            options: ['sunrise', 'beautiful', 'harbor', 'beautifull'],
+          },
+          {
+            exerciseType: 'spelling',
+            prompt: 'Type the en word for "красивый".',
+            correctAnswer: 'beautiful',
+          },
+          {
+            exerciseType: 'context_sentence',
+            prompt: 'Name a word meaning very attractive.',
+            correctAnswer: 'beautiful',
+          },
+          {
+            exerciseType: 'fill_blank',
+            prompt: 'The sunset was ___.',
+            correctAnswer: 'beautiful',
+          },
+        ],
+      };
+      vocabRepo.findByIds.mockResolvedValue([caseChangedWord]);
+      sessionRepo.findGeneratedExerciseSets.mockResolvedValue([cachedSet]);
+
+      const result = await useCase.generatePracticeRound({
+        sessionId: 'sess-1',
+        vocabularyIds: ['v1'],
+      });
+
+      expect(llmService.generateExercises).not.toHaveBeenCalled();
+      expect(result.exercises.every((exercise) => exercise.correctAnswer === 'Beautiful')).toBe(true);
+      expect(result.exercises[0].options).toContain('Beautiful');
     });
   });
 

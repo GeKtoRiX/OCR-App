@@ -1,7 +1,12 @@
+import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { IVocabularyRepository } from '../../domain/ports/vocabulary-repository.port';
-import { IPracticeSessionRepository } from '../../domain/ports/practice-session-repository.port';
-import type { VocabularyAttemptStats } from '../../domain/ports/practice-session-repository.port';
+import {
+  IPracticeSessionRepository,
+  type CachedGeneratedExercise,
+  type CachedGeneratedExerciseSet,
+  type VocabularyAttemptStats,
+} from '../../domain/ports/practice-session-repository.port';
 import {
   IVocabularyLlmService,
   type GeneratedExercise,
@@ -321,6 +326,96 @@ function buildOrderedExercises(
   );
 }
 
+function groupExercisesByVocabularyId(
+  exercises: ExerciseOutput[],
+): Map<string, ExerciseOutput[]> {
+  const grouped = new Map<string, ExerciseOutput[]>();
+
+  for (const exercise of exercises) {
+    const current = grouped.get(exercise.vocabularyId) ?? [];
+    current.push(exercise);
+    grouped.set(exercise.vocabularyId, current);
+  }
+
+  return grouped;
+}
+
+function normalizeSignatureText(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function buildExerciseContentSignature(word: VocabularyWord): string {
+  const payload = JSON.stringify({
+    word: normalizeSignatureText(word.word),
+    translation: normalizeSignatureText(word.translation),
+    contextSentence: normalizeSignatureText(word.contextSentence),
+    vocabType: normalizeSignatureText(word.vocabType),
+    pos: normalizeSignatureText(word.pos),
+    targetLang: normalizeSignatureText(word.targetLang),
+    nativeLang: normalizeSignatureText(word.nativeLang),
+  });
+
+  return crypto.createHash('sha256').update(payload).digest('hex');
+}
+
+function toCachedGeneratedExercises(
+  exercises: ExerciseOutput[],
+): CachedGeneratedExercise[] {
+  return exercises.map((exercise) => ({
+    exerciseType: exercise.exerciseType,
+    prompt: exercise.prompt,
+    correctAnswer: exercise.correctAnswer,
+    options: exercise.options,
+  }));
+}
+
+function fromCachedGeneratedExerciseSet(
+  set: CachedGeneratedExerciseSet,
+  word: VocabularyWord,
+): ExerciseOutput[] {
+  const exercisesByType = new Map(
+    set.exercises.map((exercise) => [exercise.exerciseType, exercise]),
+  );
+
+  return REQUIRED_EXERCISE_ORDER.map((exerciseType) => {
+    const exercise = exercisesByType.get(exerciseType);
+    if (!exercise) {
+      return buildFallbackExercise(word, [word], exerciseType);
+    }
+
+    return {
+      vocabularyId: word.id,
+      word: word.word,
+      exerciseType,
+      prompt: exercise.prompt,
+      correctAnswer: word.word,
+      options: exercise.options?.map((option) =>
+        option.trim().toLowerCase() === word.word.trim().toLowerCase()
+          ? word.word
+          : option,
+      ),
+    };
+  });
+}
+
+function pickRandomItem<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function orderExercisesForWords(
+  words: VocabularyWord[],
+  exercisesByVocabularyId: Map<string, ExerciseOutput[]>,
+): ExerciseOutput[] {
+  return REQUIRED_EXERCISE_ORDER.flatMap((exerciseType) =>
+    words.map((word) => {
+      const exercise = exercisesByVocabularyId
+        .get(word.id)
+        ?.find((item) => item.exerciseType === exerciseType);
+      return exercise ?? buildFallbackExercise(word, [word], exerciseType);
+    }),
+  );
+}
+
 @Injectable()
 export class PracticeUseCase {
   constructor(
@@ -328,6 +423,72 @@ export class PracticeUseCase {
     private readonly sessionRepo: IPracticeSessionRepository,
     private readonly llmService: IVocabularyLlmService,
   ) {}
+
+  private async buildExercisesForWords(
+    words: VocabularyWord[],
+  ): Promise<ExerciseOutput[]> {
+    if (words.length === 0) {
+      return [];
+    }
+
+    const signaturesByWordId = new Map(
+      words.map((word) => [word.id, buildExerciseContentSignature(word)]),
+    );
+    const cachedSets = await this.sessionRepo.findGeneratedExerciseSets(
+      words.map((word) => ({
+        vocabularyId: word.id,
+        contentSignature: signaturesByWordId.get(word.id)!,
+      })),
+    );
+
+    const cachedSetsByWordId = new Map<string, CachedGeneratedExerciseSet[]>();
+    for (const set of cachedSets) {
+      const variants = cachedSetsByWordId.get(set.vocabularyId) ?? [];
+      variants.push(set);
+      cachedSetsByWordId.set(set.vocabularyId, variants);
+    }
+
+    const selectedExercisesByWordId = new Map<string, ExerciseOutput[]>();
+    const uncachedWords: VocabularyWord[] = [];
+
+    for (const word of words) {
+      const cachedVariants = cachedSetsByWordId.get(word.id) ?? [];
+      if (cachedVariants.length === 0) {
+        uncachedWords.push(word);
+        continue;
+      }
+
+      const selectedVariant = pickRandomItem(cachedVariants);
+      selectedExercisesByWordId.set(
+        word.id,
+        fromCachedGeneratedExerciseSet(selectedVariant, word),
+      );
+    }
+
+    if (uncachedWords.length > 0) {
+      const generated = await this.llmService.generateExercises(
+        uncachedWords,
+        uncachedWords.length * REQUIRED_EXERCISE_ORDER.length,
+      );
+      const normalizedExercises = buildOrderedExercises(uncachedWords, generated);
+      const generatedByWordId = groupExercisesByVocabularyId(normalizedExercises);
+
+      for (const word of uncachedWords) {
+        const wordExercises = generatedByWordId.get(word.id)
+          ?? REQUIRED_EXERCISE_ORDER.map((exerciseType) =>
+            buildFallbackExercise(word, uncachedWords, exerciseType),
+          );
+        selectedExercisesByWordId.set(word.id, wordExercises);
+        await this.sessionRepo.saveGeneratedExerciseSet(
+          word.id,
+          signaturesByWordId.get(word.id)!,
+          toCachedGeneratedExercises(wordExercises),
+        );
+      }
+    }
+
+    return orderExercisesForWords(words, selectedExercisesByWordId);
+  }
 
   async startPractice(
     input: StartPracticeInput,
@@ -338,17 +499,12 @@ export class PracticeUseCase {
       throw new Error('No words due for review');
     }
 
-    const generated = await this.llmService.generateExercises(
-      words,
-      words.length * REQUIRED_EXERCISE_ORDER.length,
-    );
-
     const session = await this.sessionRepo.createSession(
       input.targetLang ?? 'en',
       input.nativeLang ?? 'ru',
     );
 
-    const exercises = buildOrderedExercises(words, generated);
+    const exercises = await this.buildExercisesForWords(words);
 
     return { sessionId: session.id, exercises };
   }
@@ -413,11 +569,7 @@ export class PracticeUseCase {
       throw new Error('One or more vocabulary words were not found');
     }
 
-    const generated = await this.llmService.generateExercises(
-      orderedWords,
-      orderedWords.length * REQUIRED_EXERCISE_ORDER.length,
-    );
-    const exercises = buildOrderedExercises(orderedWords, generated);
+    const exercises = await this.buildExercisesForWords(orderedWords);
 
     return { exercises };
   }
