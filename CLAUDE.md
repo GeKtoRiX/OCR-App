@@ -117,7 +117,7 @@ The `agentic` bounded context remains isolated from the OCR/TTS/document/vocabul
 1. Gateway receives `POST /api/ocr`.
 2. OCR TCP service validates and routes to LM Studio vision OCR.
 3. LM Studio returns OCR text and line structure.
-5. Gateway returns `{ rawText, markdown, filename }`.
+4. Gateway returns `{ rawText, markdown, filename }`.
 
 ### Health
 

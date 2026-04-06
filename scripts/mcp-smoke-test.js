@@ -34,13 +34,16 @@ async function main() {
     const toolNames = tools.tools.map((tool) => tool.name).sort();
     const requiredTools = [
       'db_overview',
+      'debug_failed_document',
       'get_document',
+      'get_gateway_json',
       'get_project_health',
       'list_documents',
       'list_due_vocabulary',
       'list_practice_sessions',
       'read_runtime_log',
       'search_vocabulary',
+      'trace_word_lifecycle',
     ];
 
     for (const requiredTool of requiredTools) {
@@ -70,12 +73,36 @@ async function main() {
       throw new Error('list_documents returned no content');
     }
 
+    const dueVocabularyResult = await client.callTool({
+      name: 'list_due_vocabulary',
+      arguments: { limit: 2 },
+    });
+    if (!dueVocabularyResult.content?.length) {
+      throw new Error('list_due_vocabulary returned no content');
+    }
+
+    const dueVocabulary = JSON.parse(dueVocabularyResult.content[0].text);
+    if (!Array.isArray(dueVocabulary.results) || dueVocabulary.results.length === 0) {
+      throw new Error('list_due_vocabulary returned no due words');
+    }
+
+    const tracedWord = dueVocabulary.results[0].word;
+    const traceResult = await client.callTool({
+      name: 'trace_word_lifecycle',
+      arguments: { word: tracedWord, candidate_limit: 5, attempt_limit: 5 },
+    });
+    if (!traceResult.content?.length) {
+      throw new Error('trace_word_lifecycle returned no content');
+    }
+
     const summary = {
       tool_count: toolNames.length,
       resource_count: resourceUris.length,
       sample_tools: toolNames.slice(0, 8),
       sample_resources: resourceUris.slice(0, 5),
       list_documents_preview: documentsResult.content[0]?.text?.slice(0, 240) || '',
+      traced_word: tracedWord,
+      trace_preview: traceResult.content[0]?.text?.slice(0, 240) || '',
     };
 
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);

@@ -34,6 +34,7 @@ const LEGACY_DB_PATH = resolveProjectPath(
 const LOGS_DIR = path.join(ROOT, 'logs');
 const TEST_RESULTS_DIR = path.join(ROOT, 'test-results');
 const PERF_LOGS_DIR = path.join(ROOT, 'tmp', 'perf', 'logs');
+const E2E_LOGS_DIR = path.join(ROOT, 'tmp', 'e2e-logs');
 const OCR_LAUNCHER_PATH = path.join(ROOT, 'scripts', 'linux', 'ocr.sh');
 
 const dbCache = new Map();
@@ -58,6 +59,7 @@ const DATABASES = {
 
 const listLimitSchema = z.coerce.number().int().min(1).max(200).default(20);
 const tailLinesSchema = z.coerce.number().int().min(1).max(1000).default(200);
+const gatewayPathSchema = z.string().trim().min(1).max(300);
 
 function resolveProjectPath(relativePath) {
   return path.resolve(ROOT, String(relativePath));
@@ -170,14 +172,6 @@ function ensurePathInside(baseDir, requestedPath) {
   return resolved;
 }
 
-function ensureBasenameFile(dirPath, filename) {
-  const safeName = path.basename(String(filename || '').trim());
-  if (!safeName) {
-    throw new Error('filename is required');
-  }
-  return path.join(dirPath, safeName);
-}
-
 function ensureSafeFilename(filename) {
   const value = String(filename || '').trim();
   if (!value) {
@@ -279,6 +273,26 @@ async function fetchJson(url) {
     json,
     rawText,
   };
+}
+
+function normalizeGatewayPath(requestedPath) {
+  const value = String(requestedPath || '').trim();
+  if (!value.startsWith('/api/')) {
+    throw new Error('path must start with /api/');
+  }
+  return value;
+}
+
+function isAllowedGatewayPath(pathValue) {
+  const allowedPrefixes = [
+    '/api/health',
+    '/api/documents',
+    '/api/vocabulary',
+    '/api/practice/sessions',
+    '/api/practice/stats/',
+  ];
+
+  return allowedPrefixes.some((prefix) => pathValue === prefix || pathValue.startsWith(prefix));
 }
 
 function checkTcpPort(host, port, timeoutMs = 1500) {
@@ -383,7 +397,7 @@ function readDocumentById(id, candidateLimit = 50) {
   };
 }
 
-function searchVocabulary({ query, targetLang, nativeLang, limit }) {
+function searchVocabulary({ query, target_lang, native_lang, limit }) {
   const db = getDb('vocabulary');
   const parsedLimit = listLimitSchema.parse(limit);
   const params = [];
@@ -398,14 +412,14 @@ function searchVocabulary({ query, targetLang, nativeLang, limit }) {
   const like = normalizeLike(query);
   params.push(like, like, like);
 
-  if (targetLang) {
+  if (target_lang) {
     whereClause += ' AND target_lang = ?';
-    params.push(targetLang);
+    params.push(target_lang);
   }
 
-  if (nativeLang) {
+  if (native_lang) {
     whereClause += ' AND native_lang = ?';
-    params.push(nativeLang);
+    params.push(native_lang);
   }
 
   params.push(parsedLimit);
@@ -423,21 +437,21 @@ function searchVocabulary({ query, targetLang, nativeLang, limit }) {
   );
 }
 
-function readDueVocabulary({ limit, targetLang, nativeLang }) {
+function readDueVocabulary({ limit, target_lang, native_lang }) {
   const db = getDb('vocabulary');
   const parsedLimit = listLimitSchema.parse(limit);
   const now = new Date().toISOString();
   const params = [now];
   let whereClause = 'WHERE next_review_at <= ?';
 
-  if (targetLang) {
+  if (target_lang) {
     whereClause += ' AND target_lang = ?';
-    params.push(targetLang);
+    params.push(target_lang);
   }
 
-  if (nativeLang) {
+  if (native_lang) {
     whereClause += ' AND native_lang = ?';
-    params.push(nativeLang);
+    params.push(native_lang);
   }
 
   params.push(parsedLimit);
@@ -562,6 +576,323 @@ function readRecentPracticeMistakes(limit) {
   );
 }
 
+function findVocabularyByWord({ word, target_lang, native_lang, limit }) {
+  const db = getDb('vocabulary');
+  const parsedLimit = listLimitSchema.parse(limit);
+  const params = [String(word).trim().toLowerCase()];
+  let whereClause = 'WHERE lower(word) = ?';
+
+  if (target_lang) {
+    whereClause += ' AND target_lang = ?';
+    params.push(target_lang);
+  }
+
+  if (native_lang) {
+    whereClause += ' AND native_lang = ?';
+    params.push(native_lang);
+  }
+
+  params.push(parsedLimit);
+
+  return queryAll(
+    db,
+    `SELECT id, word, vocab_type, pos, translation, target_lang, native_lang,
+            context_sentence, source_document_id, created_at, updated_at,
+            interval_days, easiness_factor, repetitions, next_review_at
+     FROM vocabulary
+     ${whereClause}
+     ORDER BY updated_at DESC
+     LIMIT ?`,
+    params,
+  );
+}
+
+function findDocumentCandidatesByWord({ word, limit }) {
+  const db = getDb('documents');
+  const like = normalizeLike(word);
+
+  return queryAll(
+    db,
+    `SELECT dvc.id, dvc.document_id, dvc.surface, dvc.normalized, dvc.lemma,
+            dvc.vocab_type, dvc.pos, dvc.translation, dvc.context_sentence,
+            dvc.sentence_index, dvc.start_offset, dvc.end_offset,
+            dvc.selected_by_default, dvc.is_duplicate, dvc.review_source,
+            sd.filename, sd.analysis_status, sd.updated_at AS document_updated_at
+     FROM document_vocab_candidates dvc
+     JOIN saved_documents sd ON sd.id = dvc.document_id
+     WHERE lower(dvc.surface) LIKE ?
+        OR lower(dvc.normalized) LIKE ?
+        OR lower(dvc.lemma) LIKE ?
+     ORDER BY sd.updated_at DESC, dvc.sentence_index ASC, dvc.start_offset ASC
+     LIMIT ?`,
+    [like, like, like, listLimitSchema.parse(limit)],
+  ).map((row) => ({
+    ...row,
+    selected_by_default: Boolean(row.selected_by_default),
+    is_duplicate: Boolean(row.is_duplicate),
+  }));
+}
+
+async function getGatewayJson(pathValue) {
+  const normalizedPath = normalizeGatewayPath(pathValue);
+  if (!isAllowedGatewayPath(normalizedPath)) {
+    throw new Error('path is outside the allowed gateway read-only allowlist');
+  }
+
+  const url = `${GATEWAY_URL}${normalizedPath}`;
+  const response = await fetchJson(url).catch((error) => ({
+    ok: false,
+    status: null,
+    url,
+    json: null,
+    rawText: '',
+    error: error.message,
+  }));
+
+  return {
+    path: normalizedPath,
+    url,
+    ok: response.ok,
+    status: response.status,
+    json: response.json,
+    raw_text: response.json ? null : response.rawText || null,
+    error: response.error || null,
+  };
+}
+
+async function debugFailedDocument(documentId, candidateLimit = 20, linkedVocabularyLimit = 20) {
+  const documentsDb = getDb('documents');
+  const vocabularyDb = getDb('vocabulary');
+  const document = queryOne(
+    documentsDb,
+    `SELECT id, markdown, rich_text_html, filename, created_at, updated_at,
+            analysis_status, analysis_error, analysis_updated_at
+     FROM saved_documents
+     WHERE id = ?`,
+    [documentId],
+  );
+
+  if (!document) {
+    throw new Error(`Saved document not found: ${documentId}`);
+  }
+
+  const candidateCount = queryOne(
+    documentsDb,
+    'SELECT COUNT(*) AS count FROM document_vocab_candidates WHERE document_id = ?',
+    [documentId],
+  ).count;
+
+  const candidates = queryAll(
+    documentsDb,
+    `SELECT id, surface, normalized, lemma, vocab_type, pos, translation,
+            context_sentence, sentence_index, start_offset, end_offset,
+            selected_by_default, is_duplicate, review_source
+     FROM document_vocab_candidates
+     WHERE document_id = ?
+     ORDER BY sentence_index ASC, start_offset ASC, normalized ASC
+     LIMIT ?`,
+    [documentId, listLimitSchema.parse(candidateLimit)],
+  ).map((row) => ({
+    ...row,
+    selected_by_default: Boolean(row.selected_by_default),
+    is_duplicate: Boolean(row.is_duplicate),
+  }));
+
+  const candidateBreakdown = {
+    by_vocab_type: queryAll(
+      documentsDb,
+      `SELECT vocab_type, COUNT(*) AS count
+       FROM document_vocab_candidates
+       WHERE document_id = ?
+       GROUP BY vocab_type
+       ORDER BY count DESC, vocab_type ASC`,
+      [documentId],
+    ),
+    by_review_source: queryAll(
+      documentsDb,
+      `SELECT review_source, COUNT(*) AS count
+       FROM document_vocab_candidates
+       WHERE document_id = ?
+       GROUP BY review_source
+       ORDER BY count DESC, review_source ASC`,
+      [documentId],
+    ),
+  };
+
+  const linkedVocabularyCount = queryOne(
+    vocabularyDb,
+    'SELECT COUNT(*) AS count FROM vocabulary WHERE source_document_id = ?',
+    [documentId],
+  ).count;
+
+  const linkedVocabulary = queryAll(
+    vocabularyDb,
+    `SELECT id, word, vocab_type, pos, translation, target_lang, native_lang,
+            context_sentence, created_at, updated_at, repetitions, next_review_at
+     FROM vocabulary
+     WHERE source_document_id = ?
+     ORDER BY updated_at DESC
+     LIMIT ?`,
+    [documentId, listLimitSchema.parse(linkedVocabularyLimit)],
+  );
+
+  const health = await readProjectHealth();
+  const issues = [];
+
+  if (document.analysis_error) {
+    issues.push(`Document analysis_error is set: ${document.analysis_error}`);
+  }
+  if (document.analysis_status !== 'idle') {
+    issues.push(`Document analysis_status is ${document.analysis_status}.`);
+  }
+  if (candidateCount === 0) {
+    issues.push('No document_vocab_candidates found for this document.');
+  }
+  if (candidateCount === 0 && linkedVocabularyCount === 0) {
+    issues.push('No extracted candidates and no linked vocabulary found. Prepare/confirm flow may not have run yet.');
+  }
+  if (candidateCount === 0 && linkedVocabularyCount > 0) {
+    issues.push('Vocabulary items reference this document, but document_vocab_candidates are absent in documents.sqlite.');
+  }
+  if (!health.gateway.reachable) {
+    issues.push('Gateway /api/health is currently unreachable.');
+  }
+
+  return {
+    document: {
+      id: document.id,
+      filename: document.filename,
+      created_at: document.created_at,
+      updated_at: document.updated_at,
+      analysis_status: document.analysis_status,
+      analysis_error: document.analysis_error,
+      analysis_updated_at: document.analysis_updated_at,
+      rich_text_html_present: Boolean(document.rich_text_html),
+      markdown_preview: trimMarkdown(document.markdown, 1200),
+    },
+    candidate_summary: {
+      count: candidateCount,
+      breakdown: candidateBreakdown,
+      samples: candidates,
+    },
+    linked_vocabulary: {
+      count: linkedVocabularyCount,
+      samples: linkedVocabulary,
+    },
+    health_snapshot: health,
+    likely_issues: issues,
+  };
+}
+
+function traceWordLifecycle({
+  word,
+  target_lang,
+  native_lang,
+  attempt_limit = 20,
+  candidate_limit = 20,
+}) {
+  const documentsDb = getDb('documents');
+  const vocabularyDb = getDb('vocabulary');
+
+  const vocabularyMatches = findVocabularyByWord({
+    word,
+    target_lang,
+    native_lang,
+    limit: 50,
+  });
+
+  const attemptsByVocabulary = new Map();
+  const sourceDocumentsById = new Map();
+
+  for (const vocab of vocabularyMatches) {
+    const attempts = queryAll(
+      vocabularyDb,
+      `SELECT id, session_id, vocabulary_id, exercise_type, prompt, correct_answer,
+              user_answer, is_correct, error_position, quality_rating,
+              mnemonic_sentence, created_at
+       FROM exercise_attempts
+       WHERE vocabulary_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      [vocab.id, listLimitSchema.parse(attempt_limit)],
+    ).map((row) => ({
+      ...row,
+      is_correct: Boolean(row.is_correct),
+    }));
+    attemptsByVocabulary.set(vocab.id, attempts);
+
+    if (vocab.source_document_id && !sourceDocumentsById.has(vocab.source_document_id)) {
+      sourceDocumentsById.set(
+        vocab.source_document_id,
+        queryOne(
+          documentsDb,
+          `SELECT id, filename, analysis_status, analysis_error, analysis_updated_at, updated_at
+           FROM saved_documents
+           WHERE id = ?`,
+          [vocab.source_document_id],
+        ) || null,
+      );
+    }
+  }
+
+  const candidateMatches = findDocumentCandidatesByWord({
+    word,
+    limit: candidate_limit,
+  });
+
+  const lifecycle = vocabularyMatches.map((vocab) => {
+    const attempts = attemptsByVocabulary.get(vocab.id) || [];
+    const stats = queryOne(
+      vocabularyDb,
+      `SELECT COUNT(*) AS attempt_count,
+              SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END) AS incorrect_count,
+              MAX(created_at) AS last_attempt_at
+       FROM exercise_attempts
+       WHERE vocabulary_id = ?`,
+      [vocab.id],
+    );
+
+    return {
+      vocabulary: vocab,
+      source_document: vocab.source_document_id
+        ? sourceDocumentsById.get(vocab.source_document_id) || null
+        : null,
+      practice: {
+        attempt_count: stats.attempt_count || 0,
+        incorrect_count: stats.incorrect_count || 0,
+        last_attempt_at: stats.last_attempt_at || null,
+        latest_attempts: attempts,
+      },
+    };
+  });
+
+  const issues = [];
+  if (vocabularyMatches.length === 0) {
+    issues.push('No vocabulary entries matched this word.');
+  }
+  if (candidateMatches.length === 0) {
+    issues.push('No document_vocab_candidates matched this word in documents.sqlite.');
+  }
+  for (const item of lifecycle) {
+    if (item.vocabulary.source_document_id && !item.source_document) {
+      issues.push(
+        `Vocabulary ${item.vocabulary.id} references missing saved document ${item.vocabulary.source_document_id}.`,
+      );
+    }
+  }
+
+  return {
+    query: {
+      word,
+      target_lang: target_lang || null,
+      native_lang: native_lang || null,
+    },
+    vocabulary_matches: lifecycle,
+    candidate_matches: candidateMatches,
+    issues,
+  };
+}
+
 function readDatabaseOverview(databaseKey) {
   const database = databaseKey ? DATABASES[databaseKey] : null;
   if (databaseKey && !database) {
@@ -631,6 +962,7 @@ function readProjectOverview() {
     runtime_artifacts: {
       logs: listFiles(LOGS_DIR, { maxDepth: 0 }),
       perf_logs: listFiles(PERF_LOGS_DIR, { maxDepth: 0 }),
+      e2e_logs: listFiles(E2E_LOGS_DIR, { maxDepth: 0 }),
       test_results: listFiles(TEST_RESULTS_DIR, { maxDepth: 2, includeDirectories: true }),
     },
     endpoints: {
@@ -692,6 +1024,7 @@ async function readProjectHealth() {
     runtime_artifacts: {
       logs_dir: fileExistsStats(LOGS_DIR),
       perf_logs_dir: fileExistsStats(PERF_LOGS_DIR),
+      e2e_logs_dir: fileExistsStats(E2E_LOGS_DIR),
       test_results_dir: fileExistsStats(TEST_RESULTS_DIR),
     },
   };
@@ -715,6 +1048,19 @@ function createServer() {
     name: 'ocr-app-mcp',
     version: ROOT_PACKAGE.version || '0.0.0',
   });
+
+  server.registerTool(
+    'get_gateway_json',
+    {
+      title: 'Gateway JSON',
+      description:
+        'Fetches one allowlisted read-only gateway JSON endpoint such as /api/health, /api/documents, /api/vocabulary, or /api/practice/sessions.',
+      inputSchema: {
+        path: gatewayPathSchema,
+      },
+    },
+    async ({ path }) => toolJson(await getGatewayJson(path)),
+  );
 
   server.registerTool(
     'get_project_health',
@@ -753,6 +1099,22 @@ function createServer() {
   );
 
   server.registerTool(
+    'debug_failed_document',
+    {
+      title: 'Debug Failed Document',
+      description:
+        'Builds a compact incident report for one saved document: document state, extracted candidates, linked vocabulary, and a health snapshot.',
+      inputSchema: {
+        id: z.string().uuid(),
+        candidate_limit: listLimitSchema.optional(),
+        linked_vocabulary_limit: listLimitSchema.optional(),
+      },
+    },
+    async ({ id, candidate_limit, linked_vocabulary_limit }) =>
+      toolJson(await debugFailedDocument(id, candidate_limit, linked_vocabulary_limit)),
+  );
+
+  server.registerTool(
     'get_document',
     {
       title: 'Get Saved Document',
@@ -771,6 +1133,23 @@ function createServer() {
       }
       return toolJson(document);
     },
+  );
+
+  server.registerTool(
+    'trace_word_lifecycle',
+    {
+      title: 'Trace Word Lifecycle',
+      description:
+        'Traces a word across document candidates, persisted vocabulary, source-document links, and practice attempts.',
+      inputSchema: {
+        word: z.string().trim().min(1).max(120),
+        target_lang: z.string().trim().min(1).max(20).optional(),
+        native_lang: z.string().trim().min(1).max(20).optional(),
+        attempt_limit: listLimitSchema.optional(),
+        candidate_limit: listLimitSchema.optional(),
+      },
+    },
+    async (args) => toolJson(traceWordLifecycle(args)),
   );
 
   server.registerTool(
@@ -868,6 +1247,7 @@ function createServer() {
       toolJson({
         runtime_logs: listFiles(LOGS_DIR, { maxDepth: 0 }),
         perf_logs: listFiles(PERF_LOGS_DIR, { maxDepth: 0 }),
+        e2e_logs: listFiles(E2E_LOGS_DIR, { maxDepth: 0 }),
       }),
   );
 
@@ -879,12 +1259,16 @@ function createServer() {
         'Reads the tail of a real runtime log from logs/ or tmp/perf/logs/.',
       inputSchema: {
         filename: z.string().trim().min(1).max(200),
-        scope: z.enum(['runtime', 'perf']).default('runtime'),
+        scope: z.enum(['runtime', 'perf', 'e2e']).default('runtime'),
         lines: tailLinesSchema.optional(),
       },
     },
     async ({ filename, scope, lines }) => {
-      const dir = scope === 'perf' ? PERF_LOGS_DIR : LOGS_DIR;
+      const dir = scope === 'perf'
+        ? PERF_LOGS_DIR
+        : scope === 'e2e'
+          ? E2E_LOGS_DIR
+          : LOGS_DIR;
       const filePath = path.join(dir, ensureSafeFilename(filename));
       return toolJson({
         scope,
@@ -972,6 +1356,7 @@ function createServer() {
       jsonResource(uri, {
         runtime_logs: listFiles(LOGS_DIR, { maxDepth: 0 }),
         perf_logs: listFiles(PERF_LOGS_DIR, { maxDepth: 0 }),
+        e2e_logs: listFiles(E2E_LOGS_DIR, { maxDepth: 0 }),
       }),
   );
 
@@ -1015,7 +1400,7 @@ function createServer() {
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
-      const filePath = ensureBasenameFile(LOGS_DIR, decodeURIComponent(variables.filename));
+      const filePath = path.join(LOGS_DIR, ensureSafeFilename(decodeURIComponent(variables.filename)));
       return textResource(uri, tailTextFile(filePath, 200));
     },
   );
